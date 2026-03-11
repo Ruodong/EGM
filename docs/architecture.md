@@ -42,7 +42,7 @@ EGM/
 │       ├── components/      # UI 组件
 │       ├── lib/             # API 客户端、认证、常量
 │       └── types/           # TypeScript 类型定义
-├── api-tests/               # Pytest API 集成测试 (90 tests)
+├── api-tests/               # Pytest API 集成测试 (92 tests)
 ├── e2e-tests/               # Playwright E2E 浏览器测试 (28 tests)
 ├── scripts/
 │   ├── schema.sql           # 数据库 DDL
@@ -378,7 +378,7 @@ api-tests/
 ├── test_health.py                 # 1 test
 ├── test_auth.py                   # 5 tests
 ├── test_rbac.py                   # 13 tests
-├── test_governance_requests.py    # 22 tests
+├── test_governance_requests.py    # 24 tests
 ├── test_projects.py               # 5 tests
 ├── test_intake.py                 # 11 tests
 ├── test_domains.py                # 5 tests
@@ -386,7 +386,7 @@ api-tests/
 ├── test_dispatch.py               # 8 tests
 ├── test_info_requests.py          # 6 tests
 └── test_dashboard.py              # 5 tests
-                            Total: 90 tests
+                            Total: 92 tests
 ```
 
 使用同步 `httpx.Client` 直连后端 `http://localhost:4001/api`，覆盖全部 13 个路由的核心功能。

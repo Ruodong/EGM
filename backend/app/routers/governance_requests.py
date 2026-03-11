@@ -54,15 +54,15 @@ async def list_requests(
     params: dict = {}
 
     if status:
-        conditions.append(multi_value_condition("status", "status", status, params))
+        conditions.append(multi_value_condition("gr.status", "status", status, params))
     if priority:
-        conditions.append(multi_value_condition("priority", "priority", priority, params))
+        conditions.append(multi_value_condition("gr.priority", "priority", priority, params))
     if requestor:
         params["requestor"] = f"%{requestor}%"
-        conditions.append("(requestor ILIKE :requestor OR requestor_name ILIKE :requestor)")
+        conditions.append("(gr.requestor ILIKE :requestor OR gr.requestor_name ILIKE :requestor)")
     if search:
         params["search"] = f"%{search}%"
-        conditions.append("(request_id ILIKE :search OR title ILIKE :search)")
+        conditions.append("(gr.request_id ILIKE :search OR gr.title ILIKE :search)")
     if dateFrom:
         params["date_from"] = dt_date.fromisoformat(dateFrom)
         conditions.append("gr.create_at >= :date_from")

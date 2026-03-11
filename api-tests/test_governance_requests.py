@@ -257,3 +257,31 @@ def test_sort_by_create_at_desc(client: httpx.Client):
     if len(data) >= 2:
         dates = [r["createAt"] for r in data]
         assert dates == sorted(dates, reverse=True)
+
+
+def test_filter_by_status(client: httpx.Client):
+    """status query param filters results correctly (no ambiguous column with JOIN)."""
+    # Create a Draft request
+    client.post("/governance-requests", json={"title": "Status Filter Test"})
+
+    # Filter by Draft — should return at least one result, all with Draft status
+    resp = client.get("/governance-requests", params={"status": "Draft", "pageSize": 100})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] >= 1
+    assert all(r["status"] == "Draft" for r in data["data"])
+
+    # Filter by Completed — should return 200 (not 500) even if 0 results
+    resp = client.get("/governance-requests", params={"status": "Completed"})
+    assert resp.status_code == 200
+
+
+def test_filter_by_priority(client: httpx.Client):
+    """priority query param filters results correctly."""
+    client.post("/governance-requests", json={"title": "Priority Filter Test", "priority": "High"})
+
+    resp = client.get("/governance-requests", params={"priority": "High", "pageSize": 100})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] >= 1
+    assert all(r["priority"] == "High" for r in data["data"])

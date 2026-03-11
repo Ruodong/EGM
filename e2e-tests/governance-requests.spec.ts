@@ -40,17 +40,30 @@ test.describe('Governance Requests', () => {
     await expect(page.locator(`text=Detail View Test`)).toBeVisible({ timeout: 15000 });
   });
 
-  test('status filter dropdown works', async ({ page }) => {
+  test('status filter dropdown filters results', async ({ page }) => {
+    // Ensure a Draft request exists
+    await page.request.post('http://localhost:4001/api/governance-requests', {
+      data: { title: 'Status Filter E2E Test' },
+    });
     await page.goto('/requests');
     await expect(page.getByRole('heading', { name: 'Governance Requests' })).toBeVisible();
     // Status filter should be a dropdown select
     const statusSelect = page.getByTestId('status-filter');
     await expect(statusSelect).toBeVisible();
-    // Select "Draft" from dropdown
-    await statusSelect.selectOption('Draft');
-    await page.waitForTimeout(500);
-    // Page should still be visible
-    await expect(page.getByRole('heading', { name: 'Governance Requests' })).toBeVisible();
+    // Select "Draft" and wait for the filtered API response
+    const [response] = await Promise.all([
+      page.waitForResponse(
+        (resp) => resp.url().includes('/governance-requests') && resp.url().includes('status=Draft') && resp.request().method() === 'GET',
+        { timeout: 10000 },
+      ),
+      statusSelect.selectOption('Draft'),
+    ]);
+    expect(response.status()).toBe(200);
+    const body = await response.json();
+    // All returned rows should have Draft status
+    for (const row of body.data) {
+      expect(row.status).toBe('Draft');
+    }
   });
 
   test('search box filters requests', async ({ page }) => {
