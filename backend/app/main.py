@@ -1,0 +1,53 @@
+"""FastAPI application entry point."""
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from app.auth.middleware import AuthMiddleware
+from app.routers import (
+    auth,
+    health,
+    governance_requests,
+    projects,
+    intake,
+    domain_registry,
+    domain_reviews,
+    dispatcher,
+    dispatch_rules,
+    info_requests,
+    dashboard,
+    progress,
+    audit_log,
+)
+
+app = FastAPI(title="EGM API", version="1.0.0", description="Enterprise Governance Management")
+
+# Middleware — order matters: CORS first, then Auth
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+app.add_middleware(AuthMiddleware)
+
+# Register routers
+app.include_router(health.router, prefix="/api")
+app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
+app.include_router(governance_requests.router, prefix="/api/governance-requests", tags=["Governance Requests"])
+app.include_router(projects.router, prefix="/api/projects", tags=["Projects"])
+app.include_router(intake.router, prefix="/api/intake", tags=["Intake"])
+app.include_router(domain_registry.router, prefix="/api/domains", tags=["Domain Registry"])
+app.include_router(domain_reviews.router, prefix="/api/domain-reviews", tags=["Domain Reviews"])
+app.include_router(dispatcher.router, prefix="/api/dispatch", tags=["Dispatcher"])
+app.include_router(info_requests.router, prefix="/api/info-requests", tags=["Info Supplement Requests"])
+app.include_router(dashboard.router, prefix="/api/dashboard", tags=["Dashboard"])
+app.include_router(progress.router, prefix="/api/progress", tags=["Progress"])
+app.include_router(dispatch_rules.router, prefix="/api/dispatch-rules", tags=["Dispatch Rules"])
+app.include_router(audit_log.router, prefix="/api/audit-log", tags=["Audit Log"])
+
+
+if __name__ == "__main__":
+    import uvicorn
+    from app.config import settings
+    uvicorn.run("app.main:app", host=settings.HOST, port=settings.PORT, reload=True)

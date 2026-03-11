@@ -1,0 +1,14 @@
+node_modules/
+.next/
+__pycache__/
+*.pyc
+venv/
+.env
+*.egg-info/
+dist/
+build/
+.DS_Store
+nohup.out
+test-results/
+.pytest_cache/
+.claude/settings.local.json

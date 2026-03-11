@@ -1,0 +1,98 @@
+{
+  "_comment": "Cross-feature dependency graph. Used by Claude for impact assessment before implementing new features.",
+  "version": 1,
+  "features": {
+    "governance-requests": {
+      "doc": "docs/features/governance-requests.md",
+      "tables": ["governance_request", "audit_log"],
+      "routers": ["governance_requests.py"],
+      "frontendPaths": [
+        "frontend/src/app/(sidebar)/requests/",
+        "frontend/src/app/governance/"
+      ]
+    },
+    "intake-scoping": {
+      "doc": "docs/features/intake-scoping.md",
+      "tables": ["intake_template", "intake_response", "intake_change_log"],
+      "routers": ["intake.py"],
+      "frontendPaths": [
+        "frontend/src/app/governance/[requestId]/scoping/",
+        "frontend/src/app/governance/[requestId]/common-questionnaire/"
+      ]
+    },
+    "domain-dispatch": {
+      "doc": "docs/features/domain-dispatch.md",
+      "tables": [
+        "domain_registry", "dispatch_rule", "domain_review",
+        "domain_questionnaire_response", "domain_questionnaire_template",
+        "info_supplement_request", "review_action", "review_comment"
+      ],
+      "routers": [
+        "dispatcher.py", "dispatch_rules.py", "domain_registry.py",
+        "domain_reviews.py", "info_requests.py"
+      ],
+      "frontendPaths": [
+        "frontend/src/app/(sidebar)/settings/",
+        "frontend/src/app/(sidebar)/domains/",
+        "frontend/src/app/(sidebar)/reviews/",
+        "frontend/src/app/governance/[requestId]/reviews/"
+      ]
+    },
+    "project-linking": {
+      "doc": "docs/features/project-linking.md",
+      "tables": ["project"],
+      "routers": ["projects.py"],
+      "frontendPaths": [
+        "frontend/src/app/governance/create/"
+      ]
+    }
+  },
+  "edges": [
+    {
+      "from": "intake-scoping",
+      "to": "governance-requests",
+      "type": "FK+status_write",
+      "detail": "intake_response.request_id FK; evaluate endpoint sets governance_request.status = 'Scoping'"
+    },
+    {
+      "from": "domain-dispatch",
+      "to": "governance-requests",
+      "type": "FK+status_write",
+      "detail": "domain_review.request_id FK ON DELETE CASCADE; dispatcher sets status='In Review'; ISR sets 'Info Requested'; ISR resolve restores 'In Review'"
+    },
+    {
+      "from": "domain-dispatch",
+      "to": "intake-scoping",
+      "type": "data_read",
+      "detail": "dispatcher reads intake_response + intake_template.triggers_domain for scoping auto-evaluation"
+    },
+    {
+      "from": "domain-dispatch",
+      "to": "intake-scoping",
+      "type": "data_write",
+      "detail": "ISR change_reason links to intake_change_log entries"
+    },
+    {
+      "from": "governance-requests",
+      "to": "domain-dispatch",
+      "type": "guard",
+      "detail": "verdict endpoint checks all domain_review statuses are Complete/Waived + no open ISRs"
+    },
+    {
+      "from": "project-linking",
+      "to": "governance-requests",
+      "type": "FK",
+      "detail": "governance_request.project_id -> project.project_id ON DELETE SET NULL"
+    }
+  ],
+  "sharedTables": {
+    "governance_request": ["governance-requests", "intake-scoping", "domain-dispatch", "project-linking"],
+    "audit_log": ["governance-requests", "domain-dispatch"]
+  },
+  "globalFiles": [
+    "backend/app/database.py",
+    "backend/app/auth/",
+    "frontend/src/lib/api.ts",
+    "frontend/src/app/layout.tsx"
+  ]
+}

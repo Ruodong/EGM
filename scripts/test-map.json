@@ -1,0 +1,97 @@
+{
+  "_comment": "Single source of truth: source file → test file mapping. Used by run-affected-tests.sh and referenced in CLAUDE.md.",
+  "version": 1,
+  "mappings": {
+    "backend/app/routers/governance_requests.py": {
+      "api": ["api-tests/test_governance_requests.py"],
+      "e2e": []
+    },
+    "backend/app/routers/domain_reviews.py": {
+      "api": ["api-tests/test_domain_reviews.py"],
+      "e2e": []
+    },
+    "backend/app/routers/intake.py": {
+      "api": ["api-tests/test_intake.py"],
+      "e2e": []
+    },
+    "backend/app/routers/projects.py": {
+      "api": ["api-tests/test_projects.py"],
+      "e2e": []
+    },
+    "backend/app/routers/dashboard.py": {
+      "api": ["api-tests/test_dashboard.py"],
+      "e2e": []
+    },
+    "backend/app/routers/domain_registry.py": {
+      "api": ["api-tests/test_domains.py"],
+      "e2e": []
+    },
+    "backend/app/routers/dispatch_rules.py": {
+      "api": ["api-tests/test_dispatch.py"],
+      "e2e": []
+    },
+    "backend/app/routers/dispatcher.py": {
+      "api": ["api-tests/test_dispatch.py"],
+      "e2e": []
+    },
+    "backend/app/routers/info_requests.py": {
+      "api": ["api-tests/test_info_requests.py"],
+      "e2e": []
+    },
+    "backend/app/routers/auth.py": {
+      "api": ["api-tests/test_auth.py", "api-tests/test_rbac.py"],
+      "e2e": []
+    },
+    "backend/app/routers/audit_log.py": {
+      "api": [],
+      "e2e": []
+    },
+    "backend/app/routers/health.py": {
+      "api": ["api-tests/test_health.py"],
+      "e2e": []
+    },
+    "backend/app/auth/": {
+      "api": ["api-tests/test_auth.py", "api-tests/test_rbac.py"],
+      "e2e": []
+    },
+    "frontend/src/app/page.tsx": {
+      "api": [],
+      "e2e": ["e2e-tests/home.spec.ts"]
+    },
+    "frontend/src/app/governance/create/": {
+      "api": [],
+      "e2e": ["e2e-tests/governance-requests.spec.ts"]
+    },
+    "frontend/src/app/governance/": {
+      "api": [],
+      "e2e": ["e2e-tests/governance-requests.spec.ts"]
+    },
+    "frontend/src/app/(sidebar)/requests/": {
+      "api": [],
+      "e2e": ["e2e-tests/governance-requests.spec.ts"]
+    },
+    "frontend/src/app/(sidebar)/reviews/": {
+      "api": [],
+      "e2e": ["e2e-tests/dashboard.spec.ts"]
+    },
+    "frontend/src/app/(sidebar)/reports/": {
+      "api": [],
+      "e2e": ["e2e-tests/reports.spec.ts"]
+    },
+    "frontend/src/app/(sidebar)/settings/": {
+      "api": [],
+      "e2e": ["e2e-tests/settings.spec.ts"]
+    },
+    "frontend/src/app/(sidebar)/domains/": {
+      "api": [],
+      "e2e": ["e2e-tests/dashboard.spec.ts"]
+    }
+  },
+  "wildcards": {
+    "backend/app/database.py": { "api": ["api-tests/"], "e2e": [] },
+    "backend/app/auth/middleware.py": { "api": ["api-tests/"], "e2e": [] },
+    "frontend/src/lib/api.ts": { "api": [], "e2e": ["e2e-tests/"] },
+    "frontend/src/app/layout.tsx": { "api": [], "e2e": ["e2e-tests/"] },
+    "api-tests/conftest.py": { "api": ["api-tests/"], "e2e": [] }
+  }
+}
