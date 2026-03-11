@@ -80,15 +80,18 @@ test.describe('Governance Requests', () => {
     await expect(page.getByRole('heading', { name: 'Governance Requests' })).toBeVisible();
   });
 
-  test('date range pickers are visible', async ({ page }) => {
+  test('date preset dropdown and custom date pickers work', async ({ page }) => {
     await page.goto('/requests');
     await expect(page.getByRole('heading', { name: 'Governance Requests' })).toBeVisible();
-    // Date input fields should be present (From and To)
-    const dateInputs = page.locator('input[type="date"]');
-    await expect(dateInputs).toHaveCount(2);
-    // Labels should be visible — use exact match to avoid ambiguity
-    await expect(page.getByText('From', { exact: true })).toBeVisible();
-    await expect(page.getByText('To', { exact: true })).toBeVisible();
+    // Period dropdown should be visible with default "All Time"
+    const dateSelect = page.getByTestId('date-filter');
+    await expect(dateSelect).toBeVisible();
+    // Date inputs should NOT be visible by default
+    await expect(page.locator('input[type="date"]')).toHaveCount(0);
+    // Select "Custom" to reveal date pickers
+    await dateSelect.selectOption('custom');
+    await expect(page.getByTestId('custom-date-from')).toBeVisible();
+    await expect(page.getByTestId('custom-date-to')).toBeVisible();
   });
 
   test('column header sort indicators appear on click', async ({ page }) => {
