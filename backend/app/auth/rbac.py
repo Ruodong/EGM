@@ -28,6 +28,7 @@ ROLE_PERMISSIONS: dict[Role, dict[str, list[str]]] = {
         "review_comment": ["read", "write"],
         "shared_artifact": ["read", "write"],
         "info_supplement_request": ["read", "write"],
+        "user_authorization": ["read"],
         "progress": ["read"],
         "dashboard": ["read"],
         "report": ["read"],

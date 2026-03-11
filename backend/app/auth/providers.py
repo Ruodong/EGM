@@ -8,12 +8,34 @@ from typing import Any
 
 import httpx
 from fastapi import Request
+from sqlalchemy import text
 
 from app.auth.models import AuthUser, Role
 from app.auth.rbac import build_permission_list
 from app.config import settings
 
 logger = logging.getLogger("egm.auth")
+
+
+async def resolve_role_from_db(itcode: str) -> Role | None:
+    """Look up a user's assigned role from the user_role table.
+
+    Returns the Role enum if found, or None if no assignment exists.
+    This allows DB-assigned roles to override JWT/dev defaults.
+    """
+    from app.database import AsyncSessionLocal
+
+    try:
+        async with AsyncSessionLocal() as session:
+            row = (await session.execute(
+                text("SELECT role FROM user_role WHERE itcode = :itcode"),
+                {"itcode": itcode},
+            )).mappings().first()
+            if row:
+                return Role(row["role"])
+    except Exception as exc:
+        logger.warning("DB role lookup failed for %s: %s", itcode, exc)
+    return None
 
 
 class AuthProvider(abc.ABC):
@@ -34,7 +56,7 @@ class DevAuthProvider(AuthProvider):
     }
 
     async def authenticate(self, request: Request) -> AuthUser | None:
-        # Allow role override via header in dev mode
+        # Allow role override via header in dev mode (highest priority)
         override = request.headers.get("X-Dev-Role", "").strip()
         if override:
             try:
@@ -42,7 +64,9 @@ class DevAuthProvider(AuthProvider):
             except ValueError:
                 role = Role(settings.AUTH_DEV_ROLE)
         else:
-            role = Role(settings.AUTH_DEV_ROLE)
+            # Check DB for assigned role, fall back to dev default
+            db_role = await resolve_role_from_db(settings.AUTH_DEV_USER)
+            role = db_role if db_role else Role(settings.AUTH_DEV_ROLE)
 
         name = self._ROLE_NAMES.get(role, settings.AUTH_DEV_USER)
         return AuthUser(
@@ -79,7 +103,10 @@ class KeycloakAuthProvider(AuthProvider):
         username = payload.get("preferred_username", "")
         email = payload.get("email", "")
         name = payload.get("name", username)
-        role = self._resolve_role(payload)
+
+        # DB-assigned role takes priority over Keycloak JWT role
+        db_role = await resolve_role_from_db(username)
+        role = db_role if db_role else self._resolve_role(payload)
 
         return AuthUser(
             id=username,

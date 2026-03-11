@@ -119,3 +119,44 @@ def test_viewer_cannot_write_intake():
             "responses": [],
         })
         assert resp.status_code == 403
+
+
+# --- User Authorization RBAC ---
+
+def test_viewer_cannot_search_employees():
+    with _client_as("viewer") as c:
+        resp = c.get("/user-authorization/employees", params={"search": "test"})
+        assert resp.status_code == 403
+
+
+def test_requestor_cannot_read_user_authorization():
+    with _client_as("requestor") as c:
+        resp = c.get("/user-authorization/roles")
+        assert resp.status_code == 403
+
+
+def test_governance_lead_can_read_user_authorization():
+    with _client_as("governance_lead") as c:
+        resp = c.get("/user-authorization/roles")
+        assert resp.status_code == 200
+
+
+def test_governance_lead_cannot_assign_role():
+    with _client_as("governance_lead") as c:
+        resp = c.post("/user-authorization/roles", json={
+            "itcode": "0324lq",
+            "role": "viewer",
+        })
+        assert resp.status_code == 403
+
+
+def test_viewer_cannot_deactivate_domain():
+    with _client_as("viewer") as c:
+        resp = c.delete("/domains/EA")
+        assert resp.status_code == 403
+
+
+def test_requestor_cannot_deactivate_domain():
+    with _client_as("requestor") as c:
+        resp = c.delete("/domains/EA")
+        assert resp.status_code == 403

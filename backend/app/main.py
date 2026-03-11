@@ -17,6 +17,7 @@ from app.routers import (
     dashboard,
     progress,
     audit_log,
+    user_authorization,
 )
 
 app = FastAPI(title="EGM API", version="1.0.0", description="Enterprise Governance Management")
@@ -45,6 +46,7 @@ app.include_router(dashboard.router, prefix="/api/dashboard", tags=["Dashboard"]
 app.include_router(progress.router, prefix="/api/progress", tags=["Progress"])
 app.include_router(dispatch_rules.router, prefix="/api/dispatch-rules", tags=["Dispatch Rules"])
 app.include_router(audit_log.router, prefix="/api/audit-log", tags=["Audit Log"])
+app.include_router(user_authorization.router, prefix="/api/user-authorization", tags=["User Authorization"])
 
 
 if __name__ == "__main__":

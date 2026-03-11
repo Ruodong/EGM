@@ -46,7 +46,7 @@ export interface DataTableProps<T> {
 
 // ── Component ─────────────────────────────────────────────────────────
 
-export default function DataTable<T extends Record<string, unknown>>({
+export default function DataTable<T extends object>({
   columns,
   data,
   isLoading = false,
@@ -166,7 +166,7 @@ export default function DataTable<T extends Record<string, unknown>>({
                 >
                   {columns.map((col) => (
                     <td key={col.key} className="p-3">
-                      {col.render ? col.render(row) : String(row[col.key] ?? '-')}
+                      {col.render ? col.render(row) : String((row as Record<string, unknown>)[col.key] ?? '-')}
                     </td>
                   ))}
                 </tr>

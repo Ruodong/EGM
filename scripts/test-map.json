@@ -101,6 +101,18 @@
     "frontend/src/app/(sidebar)/domains/": {
       "api": [],
       "e2e": ["e2e-tests/dashboard.spec.ts"]
+    },
+    "backend/app/routers/user_authorization.py": {
+      "api": ["api-tests/test_user_authorization.py"],
+      "e2e": []
+    },
+    "frontend/src/app/(sidebar)/settings/user-authorization/": {
+      "api": [],
+      "e2e": ["e2e-tests/user-authorization.spec.ts"]
+    },
+    "frontend/src/app/(sidebar)/settings/domains/": {
+      "api": [],
+      "e2e": ["e2e-tests/domain-management.spec.ts"]
     }
   },
   "wildcards": {

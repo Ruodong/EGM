@@ -8,6 +8,7 @@ import {
   Settings,
   HelpCircle,
   Shield,
+  Users,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -58,6 +59,8 @@ export const sidebarNavItems: NavItem[] = [
       { label: 'Scoping Templates', href: '/settings/scoping-templates', icon: Settings },
       { label: 'Questionnaire Templates', href: '/settings/questionnaire-templates', icon: Settings },
       { label: 'Dispatch Rules', href: '/settings/dispatch-rules', icon: Settings },
+      { label: 'Domain Management', href: '/settings/domains', icon: Puzzle },
+      { label: 'User Authorization', href: '/settings/user-authorization', icon: Users },
       { label: 'Audit Log', href: '/settings/audit-log', icon: Shield },
     ],
   },

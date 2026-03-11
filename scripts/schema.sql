@@ -266,3 +266,37 @@ CREATE TABLE IF NOT EXISTS audit_log (
     performed_by    VARCHAR,
     performed_at    TIMESTAMP DEFAULT NOW()
 );
+
+-- ═══════════════════════════════════════════════════════
+-- G: Employee Info (synced from EAM)
+-- ═══════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS employee_info (
+    itcode          VARCHAR(255) PRIMARY KEY,
+    name            VARCHAR,
+    email           VARCHAR,
+    job_role        VARCHAR,
+    worker_type     VARCHAR,
+    country         VARCHAR,
+    primary_skill   VARCHAR,
+    skill_level     VARCHAR,
+    tier_1_org      VARCHAR,
+    tier_2_org      VARCHAR,
+    manager_itcode  VARCHAR,
+    manager_name    VARCHAR,
+    synced_at       TIMESTAMP DEFAULT NOW()
+);
+
+-- ═══════════════════════════════════════════════════════
+-- H: User Role Assignments
+-- ═══════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS user_role (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    itcode          VARCHAR(255) NOT NULL UNIQUE REFERENCES employee_info(itcode),
+    role            VARCHAR NOT NULL DEFAULT 'viewer',
+    assigned_by     VARCHAR,
+    assigned_at     TIMESTAMP DEFAULT NOW(),
+    update_by       VARCHAR,
+    update_at       TIMESTAMP DEFAULT NOW()
+);

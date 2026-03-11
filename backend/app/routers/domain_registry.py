@@ -1,7 +1,8 @@
 """Domain Registry router — manage governance domain definitions."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+import json
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
@@ -27,9 +28,13 @@ def _map(r: dict) -> dict:
 
 
 @router.get("", dependencies=[Depends(require_permission("domain_registry", "read"))])
-async def list_domains(db: AsyncSession = Depends(get_db)):
+async def list_domains(
+    includeInactive: bool = Query(False, description="Include inactive domains"),
+    db: AsyncSession = Depends(get_db),
+):
+    where = "" if includeInactive else "WHERE is_active = true"
     rows = (await db.execute(text(
-        "SELECT * FROM domain_registry WHERE is_active = true ORDER BY sort_order, domain_name"
+        f"SELECT * FROM domain_registry {where} ORDER BY sort_order, domain_name"
     ))).mappings().all()
     return {"data": [_map(dict(r)) for r in rows]}
 
@@ -86,3 +91,36 @@ async def update_domain(code: str, body: dict, db: AsyncSession = Depends(get_db
         raise HTTPException(status_code=404, detail="Not found")
     await db.commit()
     return _map(dict(row))
+
+
+@router.delete("/{code}", dependencies=[Depends(require_role(Role.ADMIN))])
+async def deactivate_domain(
+    code: str,
+    user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Soft-delete a domain by setting is_active = false."""
+    row = (await db.execute(text(
+        "SELECT * FROM domain_registry WHERE domain_code = :code"
+    ), {"code": code})).mappings().first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Domain not found")
+
+    await db.execute(text(
+        "UPDATE domain_registry SET is_active = false WHERE domain_code = :code"
+    ), {"code": code})
+    await db.commit()
+
+    # Audit log
+    await db.execute(text("""
+        INSERT INTO audit_log (entity_type, entity_id, action, old_value, new_value, performed_by)
+        VALUES ('domain_registry', :id, 'deactivate', CAST(:old AS jsonb), CAST(:new AS jsonb), :user)
+    """), {
+        "id": row["id"],
+        "old": json.dumps({"domainCode": code, "isActive": True}),
+        "new": json.dumps({"domainCode": code, "isActive": False}),
+        "user": user.id,
+    })
+    await db.commit()
+
+    return {"message": f"Domain {code} deactivated"}

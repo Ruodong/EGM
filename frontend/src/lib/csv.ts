@@ -18,7 +18,7 @@ function escapeCsvValue(value: unknown): string {
   return str;
 }
 
-export function exportToCsv<T extends Record<string, unknown>>(
+export function exportToCsv<T extends object>(
   filename: string,
   columns: CsvColumn[],
   data: T[],
@@ -32,7 +32,7 @@ export function exportToCsv<T extends Record<string, unknown>>(
     columns
       .map((col) => {
         const extractor = valueExtractors?.[col.key];
-        const value = extractor ? extractor(row) : row[col.key];
+        const value = extractor ? extractor(row) : (row as Record<string, unknown>)[col.key];
         return escapeCsvValue(value);
       })
       .join(','),
