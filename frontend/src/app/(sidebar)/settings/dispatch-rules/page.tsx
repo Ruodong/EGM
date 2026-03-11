@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import clsx from 'clsx';
+import { PlusCircle, Pencil, Trash2 } from 'lucide-react';
 
 interface DispatchRule {
   id: string;
@@ -120,8 +121,8 @@ export default function DispatchRulesPage() {
           <h1 className="text-xl font-bold">Dispatch Rules</h1>
           <p className="text-sm text-text-secondary mt-1">Set up rules that map scoping answers to governance domains</p>
         </div>
-        <button onClick={() => { resetForm(); setShowForm(true); }} className="btn-teal">
-          + Add Rule
+        <button onClick={() => { resetForm(); setShowForm(true); }} className="btn-teal flex items-center gap-1.5">
+          <PlusCircle size={16} /> Add Rule
         </button>
       </div>
 
@@ -205,7 +206,7 @@ export default function DispatchRulesPage() {
                 <th className="text-left px-4 py-2 font-medium">Condition</th>
                 <th className="text-left px-4 py-2 font-medium">Priority</th>
                 <th className="text-left px-4 py-2 font-medium">Status</th>
-                <th className="text-left px-4 py-2 font-medium">Actions</th>
+                <th className="text-left px-4 py-2 font-medium">Operation</th>
               </tr>
             </thead>
             <tbody>
@@ -229,10 +230,16 @@ export default function DispatchRulesPage() {
                     </span>
                   </td>
                   <td className="px-4 py-2">
-                    <button onClick={() => openEdit(r)} className="text-primary-blue hover:underline text-xs mr-2">Edit</button>
-                    {r.isActive && (
-                      <button onClick={() => deleteMutation.mutate(r.id)} className="text-red-500 hover:underline text-xs">Deactivate</button>
-                    )}
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => openEdit(r)} title="Edit" className="text-primary-blue hover:text-blue-700 p-1">
+                        <Pencil size={16} />
+                      </button>
+                      {r.isActive && (
+                        <button onClick={() => deleteMutation.mutate(r.id)} title="Deactivate" className="text-blue-400 hover:text-red-600 p-1">
+                          <Trash2 size={16} />
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}

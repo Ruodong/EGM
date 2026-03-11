@@ -4,6 +4,7 @@ import { useState, useRef, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import clsx from 'clsx';
+import { PlusCircle, Pencil, Trash2 } from 'lucide-react';
 
 interface Employee {
   itcode: string;
@@ -154,10 +155,10 @@ export default function UserAuthorizationPage() {
         </div>
         <button
           onClick={() => { resetForm(); setShowForm(true); }}
-          className="btn-teal"
+          className="btn-teal flex items-center gap-1.5"
           data-testid="assign-role-btn"
         >
-          + Assign Role
+          <PlusCircle size={16} /> Assign Role
         </button>
       </div>
 
@@ -272,7 +273,7 @@ export default function UserAuthorizationPage() {
                 <th className="text-left px-4 py-2 font-medium">Role</th>
                 <th className="text-left px-4 py-2 font-medium">Organization</th>
                 <th className="text-left px-4 py-2 font-medium">Assigned By</th>
-                <th className="text-left px-4 py-2 font-medium">Actions</th>
+                <th className="text-left px-4 py-2 font-medium">Operation</th>
               </tr>
             </thead>
             <tbody>
@@ -295,14 +296,19 @@ export default function UserAuthorizationPage() {
                     <td className="px-4 py-2 text-text-secondary">{r.tier1Org || '-'}</td>
                     <td className="px-4 py-2 text-text-secondary">{r.assignedBy || '-'}</td>
                     <td className="px-4 py-2">
-                      <button onClick={() => openEdit(r)} className="text-primary-blue hover:underline text-xs mr-2">Edit</button>
-                      <button
-                        onClick={() => deleteMutation.mutate(r.itcode)}
-                        className="text-red-500 hover:underline text-xs"
-                        data-testid={`remove-role-${r.itcode}`}
-                      >
-                        Remove
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => openEdit(r)} title="Edit" className="text-primary-blue hover:text-blue-700 p-1">
+                          <Pencil size={16} />
+                        </button>
+                        <button
+                          onClick={() => deleteMutation.mutate(r.itcode)}
+                          title="Remove"
+                          className="text-blue-400 hover:text-red-600 p-1"
+                          data-testid={`remove-role-${r.itcode}`}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))

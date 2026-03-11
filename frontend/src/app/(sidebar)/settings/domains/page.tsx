@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import clsx from 'clsx';
+import { PlusCircle, Pencil, Trash2, RotateCcw } from 'lucide-react';
 
 interface Domain {
   id: string;
@@ -108,10 +109,10 @@ export default function DomainManagementPage() {
         </div>
         <button
           onClick={() => { resetForm(); setShowForm(true); }}
-          className="btn-teal"
+          className="btn-teal flex items-center gap-1.5"
           data-testid="add-domain-btn"
         >
-          + Add Domain
+          <PlusCircle size={16} /> Add Domain
         </button>
       </div>
 
@@ -240,7 +241,7 @@ export default function DomainManagementPage() {
                 <th className="text-left px-4 py-2 font-medium">Type</th>
                 <th className="text-left px-4 py-2 font-medium">Status</th>
                 <th className="text-left px-4 py-2 font-medium">Sort</th>
-                <th className="text-left px-4 py-2 font-medium">Actions</th>
+                <th className="text-left px-4 py-2 font-medium">Operation</th>
               </tr>
             </thead>
             <tbody>
@@ -280,26 +281,30 @@ export default function DomainManagementPage() {
                     </td>
                     <td className="px-4 py-2 text-text-secondary">{d.sortOrder}</td>
                     <td className="px-4 py-2">
-                      <button onClick={() => openEdit(d)} className="text-primary-blue hover:underline text-xs mr-2">
-                        Edit
-                      </button>
-                      {d.isActive ? (
-                        <button
-                          onClick={() => deactivateMutation.mutate(d.domainCode)}
-                          className="text-red-500 hover:underline text-xs"
-                          data-testid={`deactivate-${d.domainCode}`}
-                        >
-                          Deactivate
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => openEdit(d)} title="Edit" className="text-primary-blue hover:text-blue-700 p-1">
+                          <Pencil size={16} />
                         </button>
-                      ) : (
-                        <button
-                          onClick={() => reactivateMutation.mutate(d.domainCode)}
-                          className="text-green-600 hover:underline text-xs"
-                          data-testid={`reactivate-${d.domainCode}`}
-                        >
-                          Reactivate
-                        </button>
-                      )}
+                        {d.isActive ? (
+                          <button
+                            onClick={() => deactivateMutation.mutate(d.domainCode)}
+                            title="Deactivate"
+                            className="text-blue-400 hover:text-red-600 p-1"
+                            data-testid={`deactivate-${d.domainCode}`}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => reactivateMutation.mutate(d.domainCode)}
+                            title="Reactivate"
+                            className="text-green-500 hover:text-green-700 p-1"
+                            data-testid={`reactivate-${d.domainCode}`}
+                          >
+                            <RotateCcw size={16} />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))
