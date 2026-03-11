@@ -101,6 +101,34 @@ test.describe('Governance Requests', () => {
     await expect(page.getByTestId('sort-indicator-title')).toBeVisible();
   });
 
+  test('submit draft request via detail page', async ({ page }) => {
+    // Create a Draft request via API
+    const resp = await page.request.post('http://localhost:4001/api/governance-requests', {
+      data: { title: 'Submit Flow E2E Test' },
+    });
+    const gr = await resp.json();
+    expect(gr.status).toBe('Draft');
+
+    // Navigate to detail page
+    await page.goto(`/governance/${gr.requestId}`);
+    await expect(page.getByTestId('submit-request-btn')).toBeVisible();
+
+    // Click Submit and intercept the PUT response
+    const [submitResp] = await Promise.all([
+      page.waitForResponse(
+        (r) => r.url().includes(`/governance-requests/${gr.requestId}/submit`) && r.request().method() === 'PUT',
+        { timeout: 10000 },
+      ),
+      page.getByTestId('submit-request-btn').click(),
+    ]);
+    expect(submitResp.status()).toBe(200);
+    const updated = await submitResp.json();
+    expect(updated.status).toBe('Submitted');
+
+    // Submit button should disappear (no longer Draft)
+    await expect(page.getByTestId('submit-request-btn')).not.toBeVisible();
+  });
+
   test('export CSV button is visible', async ({ page }) => {
     // Create a request first so data exists
     await page.request.post('http://localhost:4001/api/governance-requests', {

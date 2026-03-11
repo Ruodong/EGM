@@ -1,9 +1,10 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import { PageLayout } from '@/components/layout/PageLayout';
+import { useToast } from '@/components/ui/Toast';
 import { statusColors } from '@/lib/constants';
 import Link from 'next/link';
 import clsx from 'clsx';
@@ -35,10 +36,21 @@ interface ProgressData {
 export default function RequestDetailPage() {
   const params = useParams();
   const requestId = params.requestId as string;
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
 
   const { data: request, isLoading } = useQuery<GovRequest>({
     queryKey: ['governance-request', requestId],
     queryFn: () => api.get(`/governance-requests/${requestId}`),
+  });
+
+  const submitMutation = useMutation({
+    mutationFn: () => api.put(`/governance-requests/${requestId}/submit`, {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['governance-request', requestId] });
+      toast('Request submitted for review', 'success');
+    },
+    onError: () => toast('Failed to submit request', 'error'),
   });
 
   const { data: progress } = useQuery<ProgressData>({
@@ -76,6 +88,16 @@ export default function RequestDetailPage() {
               )}
             </div>
           </div>
+          {request.status === 'Draft' && (
+            <button
+              className="btn-teal"
+              onClick={() => submitMutation.mutate()}
+              disabled={submitMutation.isPending}
+              data-testid="submit-request-btn"
+            >
+              {submitMutation.isPending ? 'Submitting...' : 'Submit for Review'}
+            </button>
+          )}
         </div>
 
         {/* Step indicator */}
