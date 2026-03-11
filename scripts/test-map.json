@@ -50,6 +50,10 @@
       "api": ["api-tests/test_dashboard.py"],
       "e2e": []
     },
+    "frontend/src/components/shared/FilterBar.tsx": {
+      "api": [],
+      "e2e": ["e2e-tests/governance-requests.spec.ts"]
+    },
     "frontend/src/components/shared/DataTable.tsx": {
       "api": [],
       "e2e": ["e2e-tests/governance-requests.spec.ts"]

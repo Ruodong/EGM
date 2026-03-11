@@ -80,6 +80,23 @@ test.describe('Governance Requests', () => {
     await expect(page.getByRole('heading', { name: 'Governance Requests' })).toBeVisible();
   });
 
+  test('requestor filter input filters results', async ({ page }) => {
+    await page.goto('/requests');
+    await expect(page.getByRole('heading', { name: 'Governance Requests' })).toBeVisible();
+    // Requestor filter input should be visible
+    const requestorInput = page.getByTestId('requestor-filter');
+    await expect(requestorInput).toBeVisible();
+    // Type a requestor name and wait for debounced API call
+    const [response] = await Promise.all([
+      page.waitForResponse(
+        (resp) => resp.url().includes('/governance-requests') && resp.url().includes('requestor=') && resp.request().method() === 'GET',
+        { timeout: 10000 },
+      ),
+      requestorInput.fill('system'),
+    ]);
+    expect(response.status()).toBe(200);
+  });
+
   test('date preset dropdown and custom date pickers work', async ({ page }) => {
     await page.goto('/requests');
     await expect(page.getByRole('heading', { name: 'Governance Requests' })).toBeVisible();
