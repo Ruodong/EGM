@@ -30,7 +30,7 @@ EGM/
 │   │   │   ├── rbac.py      # 角色-资源-操作 权限矩阵
 │   │   │   ├── middleware.py # 请求级身份注入
 │   │   │   └── deps.py      # get_current_user, require_permission
-│   │   ├── routers/         # 12 个 API 路由模块
+│   │   ├── routers/         # 13 个 API 路由模块
 │   │   └── utils/           # 分页、过滤工具
 │   ├── requirements.txt
 │   └── .env
@@ -42,8 +42,8 @@ EGM/
 │       ├── components/      # UI 组件
 │       ├── lib/             # API 客户端、认证、常量
 │       └── types/           # TypeScript 类型定义
-├── api-tests/               # Pytest API 集成测试 (57 tests)
-├── e2e-tests/               # Playwright E2E 浏览器测试 (14 tests)
+├── api-tests/               # Pytest API 集成测试 (90 tests)
+├── e2e-tests/               # Playwright E2E 浏览器测试 (28 tests)
 ├── scripts/
 │   ├── schema.sql           # 数据库 DDL
 │   └── seed_data.sql        # 初始数据
@@ -57,14 +57,14 @@ EGM/
 
 ### 3.1 应用入口 (`main.py`)
 
-FastAPI 实例注册两层中间件（顺序敏感）和 12 个路由模块：
+FastAPI 实例注册两层中间件（顺序敏感）和 13 个路由模块：
 
 ```
 CORSMiddleware (allow_origins=["*"])
     ↓
 AuthMiddleware (注入 request.state.user)
     ↓
-12 Routers (prefix=/api)
+13 Routers (prefix=/api)
 ```
 
 ### 3.2 路由模块
@@ -74,6 +74,7 @@ AuthMiddleware (注入 request.state.user)
 | `health` | `/api/health` | 健康检查 |
 | `auth` | `/api/auth` | 用户信息、权限列表、Token 交换 |
 | `governance_requests` | `/api/governance-requests` | 治理请求 CRUD + 状态流转 |
+| `projects` | `/api/projects` | EAM 项目列表查询 (用于请求关联) |
 | `intake` | `/api/intake` | 问卷模板管理 + 答案收集 + 范围评估 |
 | `domain_registry` | `/api/domains` | 领域注册表 CRUD |
 | `domain_reviews` | `/api/domain-reviews` | 领域评审生命周期 |
@@ -131,7 +132,7 @@ HTTP Request
 |------|------|
 | 框架 | Next.js 15.3 (App Router + Turbopack) |
 | UI 库 | React 19 |
-| 状态管理 | TanStack Query v5 (服务端) + Zustand v5 (客户端) |
+| 状态管理 | TanStack Query v5 (服务端缓存 + 数据获取) |
 | 样式 | Tailwind CSS 3.4 + 自定义主题色 |
 | 图标 | Lucide React |
 | 语言 | TypeScript 5.7 |
@@ -375,28 +376,33 @@ WHERE request_id = :id OR id::text = :id
 api-tests/
 ├── conftest.py                    # 共享 fixtures
 ├── test_health.py                 # 1 test
-├── test_auth.py                   # 2 tests
-├── test_governance_requests.py    # 13 tests
-├── test_intake.py                 # 10 tests
+├── test_auth.py                   # 5 tests
+├── test_rbac.py                   # 13 tests
+├── test_governance_requests.py    # 22 tests
+├── test_projects.py               # 5 tests
+├── test_intake.py                 # 11 tests
 ├── test_domains.py                # 5 tests
 ├── test_domain_reviews.py         # 9 tests
-├── test_dispatch.py               # 6 tests
+├── test_dispatch.py               # 8 tests
 ├── test_info_requests.py          # 6 tests
 └── test_dashboard.py              # 5 tests
-                            Total: 57 tests
+                            Total: 90 tests
 ```
 
-使用同步 `httpx.Client` 直连后端 `http://localhost:4001/api`，覆盖全部 12 个路由的核心功能。
+使用同步 `httpx.Client` 直连后端 `http://localhost:4001/api`，覆盖全部 13 个路由的核心功能。
 
 ### 8.2 E2E 浏览器测试 (Playwright)
 
 ```
 e2e-tests/
 ├── home.spec.ts                   # 3 tests — 首页加载、导航
-├── governance-requests.spec.ts    # 4 tests — 列表、创建、详情、筛选
+├── governance-requests.spec.ts    # 8 tests — 列表、创建、详情、筛选、排序、导出
+├── intake.spec.ts                 # 3 tests — 范围界定 + 问卷页面
+├── role-switcher.spec.ts          # 4 tests — 角色切换 UI
 ├── dashboard.spec.ts              # 2 tests — 仪表盘、评审列表
-└── settings.spec.ts               # 5 tests — 设置页面
-                            Total: 14 tests
+├── settings.spec.ts               # 5 tests — 设置页面
+└── reports.spec.ts                # 3 tests — 报表页面
+                            Total: 28 tests
 ```
 
 使用 Chromium 浏览器测试完整用户流程。
@@ -450,6 +456,6 @@ KEYCLOAK_CLIENT_SECRET=
 | PostgreSQL 序列生成业务 ID | 原子性保证无竞态，比 SELECT MAX + 1 安全 |
 | JSONB 存储问卷答案 | 支持多种答案类型 (文本、数组、布尔) |
 | Next.js rewrites 代理 API | 避免 CORS 问题，前端无需知道后端地址 |
-| TanStack Query 管理服务端状态 | 自动缓存、失效、重试，减少手动状态管理 |
+| TanStack Query 管理服务端状态 | 自动缓存、失效、重试，无需额外客户端状态管理库 |
 | RBAC 矩阵而非 ACL | 角色数量有限，矩阵方式简单直观 |
 | 双模式认证 (Dev/Keycloak) | 开发效率与生产安全的平衡 |

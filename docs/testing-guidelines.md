@@ -11,7 +11,8 @@ api-tests/           # Backend API integration tests (pytest + httpx)
   conftest.py         # Shared fixtures: client, create_request, dispatched_request, etc.
   test_auth.py        # Auth endpoints + role switching
   test_rbac.py        # Permission enforcement per role
-  test_governance_requests.py  # CRUD + lifecycle
+  test_governance_requests.py  # CRUD + lifecycle + sort + search + date filter
+  test_projects.py    # Project list + search
   test_intake.py      # Templates, responses, scoping, changelog
   test_dispatch.py    # Dispatch rules + execution
   test_domain_reviews.py  # Review lifecycle
