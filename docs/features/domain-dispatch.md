@@ -215,12 +215,12 @@ When `POST /api/dispatch/execute/{request_id}` is called:
 ## Test Map Entries
 
 ```
-backend/app/routers/dispatch_rules.py -> api-tests/test_dispatch.py + e2e-tests/settings.spec.ts
-backend/app/routers/dispatcher.py     -> api-tests/test_dispatch.py
-backend/app/routers/domain_reviews.py -> api-tests/test_domain_reviews.py
+backend/app/routers/dispatch_rules.py  -> api-tests/test_dispatch.py
+backend/app/routers/dispatcher.py      -> api-tests/test_dispatch.py
+backend/app/routers/domain_reviews.py  -> api-tests/test_domain_reviews.py
 backend/app/routers/domain_registry.py -> api-tests/test_domains.py
-frontend/src/app/(sidebar)/settings/dispatch-rules/page.tsx -> e2e-tests/settings.spec.ts
-frontend/src/app/(sidebar)/domains/page.tsx                 -> e2e-tests/settings.spec.ts
+frontend/src/app/(sidebar)/settings/dispatch-rules/ -> e2e-tests/settings.spec.ts
+frontend/src/app/(sidebar)/domains/                 -> e2e-tests/settings.spec.ts
 ```
 
 ## Notes

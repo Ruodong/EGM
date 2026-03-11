@@ -45,6 +45,34 @@
       "frontendPaths": [
         "frontend/src/app/governance/create/"
       ]
+    },
+    "auth": {
+      "doc": null,
+      "tables": [],
+      "routers": ["auth.py"],
+      "frontendPaths": []
+    },
+    "dashboard": {
+      "doc": null,
+      "tables": [],
+      "routers": ["dashboard.py"],
+      "frontendPaths": [
+        "frontend/src/app/(sidebar)/reports/"
+      ]
+    },
+    "progress": {
+      "doc": null,
+      "tables": [],
+      "routers": ["progress.py"],
+      "frontendPaths": []
+    },
+    "audit-log": {
+      "doc": null,
+      "tables": ["audit_log"],
+      "routers": ["audit_log.py"],
+      "frontendPaths": [
+        "frontend/src/app/(sidebar)/settings/audit-log/"
+      ]
     }
   },
   "edges": [
@@ -87,7 +115,7 @@
   ],
   "sharedTables": {
     "governance_request": ["governance-requests", "intake-scoping", "domain-dispatch", "project-linking"],
-    "audit_log": ["governance-requests", "domain-dispatch"]
+    "audit_log": ["governance-requests", "domain-dispatch", "audit-log"]
   },
   "globalFiles": [
     "backend/app/database.py",

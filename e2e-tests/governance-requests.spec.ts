@@ -40,11 +40,14 @@ test.describe('Governance Requests', () => {
     await expect(page.locator(`text=Detail View Test`)).toBeVisible({ timeout: 15000 });
   });
 
-  test('status filter tabs work', async ({ page }) => {
+  test('status filter dropdown works', async ({ page }) => {
     await page.goto('/requests');
     await expect(page.getByRole('heading', { name: 'Governance Requests' })).toBeVisible();
-    // Click on "Draft" filter button
-    await page.getByRole('button', { name: 'Draft' }).click();
+    // Status filter should be a dropdown select
+    const statusSelect = page.getByTestId('status-filter');
+    await expect(statusSelect).toBeVisible();
+    // Select "Draft" from dropdown
+    await statusSelect.selectOption('Draft');
     await page.waitForTimeout(500);
     // Page should still be visible
     await expect(page.getByRole('heading', { name: 'Governance Requests' })).toBeVisible();
@@ -73,5 +76,29 @@ test.describe('Governance Requests', () => {
     // Labels should be visible — use exact match to avoid ambiguity
     await expect(page.getByText('From', { exact: true })).toBeVisible();
     await expect(page.getByText('To', { exact: true })).toBeVisible();
+  });
+
+  test('column header sort indicators appear on click', async ({ page }) => {
+    await page.goto('/requests');
+    await expect(page.getByRole('heading', { name: 'Governance Requests' })).toBeVisible();
+    // Click on "Title" column header to sort
+    await page.getByRole('columnheader', { name: /Title/ }).click();
+    await page.waitForTimeout(500);
+    // Sort indicator should appear (▲ for ASC)
+    await expect(page.getByTestId('sort-indicator-title')).toBeVisible();
+  });
+
+  test('export CSV button is visible', async ({ page }) => {
+    // Create a request first so data exists
+    await page.request.post('http://localhost:4001/api/governance-requests', {
+      data: { title: 'CSV Export Test' },
+    });
+    await page.goto('/requests');
+    await expect(page.getByRole('heading', { name: 'Governance Requests' })).toBeVisible();
+    // Wait for data to load
+    await page.waitForTimeout(1000);
+    // Export CSV button should be visible
+    await expect(page.getByTestId('export-csv-btn')).toBeVisible();
+    await expect(page.getByTestId('export-csv-btn')).toHaveText(/Export CSV/);
   });
 });

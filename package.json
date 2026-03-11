@@ -11,7 +11,11 @@
     "dev:frontend": "cd frontend && npm run dev",
     "dev:backend": "cd backend && source venv/bin/activate && uvicorn app.main:app --reload --host 0.0.0.0 --port 4001",
     "build": "npm run build:frontend",
-    "build:frontend": "cd frontend && npm run build"
+    "build:frontend": "cd frontend && npm run build",
+    "test": "npm run test:api && npm run test:e2e",
+    "test:api": "python3 -m pytest api-tests/ -v --tb=short",
+    "test:e2e": "npx playwright test --reporter=list",
+    "test:affected": "./scripts/run-affected-tests.sh"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",

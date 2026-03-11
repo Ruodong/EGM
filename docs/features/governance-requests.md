@@ -2,7 +2,7 @@
 
 **Status**: Implemented
 **Date**: 2026-03-11
-**Spec Version**: 2
+**Spec Version**: 3
 
 ## Summary
 
@@ -14,7 +14,9 @@ Governance Requests is the core feature of EGM, providing full CRUD lifecycle ma
 - `backend/app/routers/governance_requests.py` — CRUD endpoints, status transitions (submit, verdict), delete, filter options, pagination/sorting
 
 ### Frontend
-- `frontend/src/app/(sidebar)/requests/page.tsx` — List view with status filter tabs, paginated table, links to detail and create pages
+- `frontend/src/app/(sidebar)/requests/page.tsx` — List view with DataTable (sortable columns, CSV export), status dropdown filter, search, date range pickers, pagination
+- `frontend/src/components/shared/DataTable.tsx` — Reusable table component with column sorting, CSV export, pagination
+- `frontend/src/lib/csv.ts` — CSV generation + browser download utility
 - `frontend/src/app/governance/create/page.tsx` — Create form with project search/select, priority picker, target date, and organization fields
 - `frontend/src/app/governance/[requestId]/page.tsx` — Detail view with step indicator, request metadata, review progress panel, and verdict display
 
@@ -44,8 +46,10 @@ Governance Requests is the core feature of EGM, providing full CRUD lifecycle ma
   - Keyword search: debounced (300ms) text input, searches Request ID and Title via `search` param
   - Date range: two date pickers (From / To) filter by `create_at` via `dateFrom`/`dateTo` params
   - All filters combine with AND logic; changing any filter resets pagination to page 1
-- Status filter tabs: All, Draft, Submitted, In Review, Info Requested, Completed
-- Clicking a filter tab resets pagination to page 1 and filters the list by that status
+- Status filter dropdown: All, Draft, Submitted, In Review, Info Requested, Completed
+- Changing the dropdown selection resets pagination to page 1 and filters the list by that status
+- Column headers (Request ID, Title, Status, Priority, Requestor, Created) support click-to-sort with ASC/DESC toggle indicators
+- "Export CSV" button above the table downloads the current page data as a .csv file
 - "New Request" button in the top-right navigates to the create form
 - Request ID column is a clickable link to the detail page
 - Pagination controls shown at the bottom when total pages exceed 1
@@ -94,6 +98,9 @@ Governance Requests is the core feature of EGM, providing full CRUD lifecycle ma
 - [x] AC-18: List endpoint supports dateFrom and dateTo query params to filter by create_at date range
 - [x] AC-19: The list page displays a keyword search input that filters by Request ID or Title with 300ms debounce
 - [x] AC-20: The list page displays date range pickers (From/To) that filter results by creation date
+- [x] AC-21: List page table headers support click-to-sort with ASC/DESC toggle indicators, sort params sent to backend
+- [x] AC-22: List page has an "Export CSV" button that downloads the current filtered page data as a .csv file
+- [x] AC-23: Status filter is a dropdown select instead of tab buttons
 
 ## Test Coverage
 
@@ -118,23 +125,28 @@ Governance Requests is the core feature of EGM, providing full CRUD lifecycle ma
 - `test_create_request_with_empty_optional_fields` — covers AC-13 (graceful NULL handling)
 - `test_filter_by_date_range` — covers AC-18 (dateFrom/dateTo filter by create_at)
 - `test_search_by_keyword` — covers AC-19 (search param filters by request_id or title)
+- `test_sort_by_title_asc` — covers AC-21 (sortField=title returns alphabetically sorted data)
+- `test_sort_by_create_at_desc` — covers AC-21 (default sort order is create_at DESC)
 
 ### E2E Tests (`e2e-tests/governance-requests.spec.ts`)
 - `"list page loads with table"` — covers AC-15 (heading and New Request button visible)
 - `"create new request via form"` — covers AC-1, AC-16 (fill title, submit, redirect to detail)
 - `"view request detail page"` — covers AC-17 (detail page renders request title)
-- `"status filter tabs work"` — covers AC-15 (clicking Draft filter tab)
+- `"status filter dropdown works"` — covers AC-23 (status dropdown select works)
 - `"search box filters requests"` — covers AC-19 (search input visible and functional)
 - `"date range pickers are visible"` — covers AC-20 (date From/To inputs rendered)
+- `"column header sort indicators appear on click"` — covers AC-21 (sort indicator on click)
+- `"export CSV button is visible"` — covers AC-22 (Export CSV button visible)
 
 ## Test Map Entries
 
 ```
 backend/app/routers/governance_requests.py -> api-tests/test_governance_requests.py
-backend/app/routers/governance_requests.py -> e2e-tests/governance-requests.spec.ts
 frontend/src/app/governance/create/       -> e2e-tests/governance-requests.spec.ts
 frontend/src/app/governance/[requestId]/  -> e2e-tests/governance-requests.spec.ts
 frontend/src/app/(sidebar)/requests/      -> e2e-tests/governance-requests.spec.ts
+frontend/src/components/shared/DataTable.tsx -> e2e-tests/governance-requests.spec.ts
+frontend/src/lib/csv.ts                   -> e2e-tests/governance-requests.spec.ts
 ```
 
 ## Notes

@@ -43,8 +43,20 @@
       "e2e": []
     },
     "backend/app/routers/audit_log.py": {
-      "api": [],
+      "api": ["api-tests/test_dashboard.py"],
       "e2e": []
+    },
+    "backend/app/routers/progress.py": {
+      "api": ["api-tests/test_dashboard.py"],
+      "e2e": []
+    },
+    "frontend/src/components/shared/DataTable.tsx": {
+      "api": [],
+      "e2e": ["e2e-tests/governance-requests.spec.ts"]
+    },
+    "frontend/src/lib/csv.ts": {
+      "api": [],
+      "e2e": ["e2e-tests/governance-requests.spec.ts"]
     },
     "backend/app/routers/health.py": {
       "api": ["api-tests/test_health.py"],

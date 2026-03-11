@@ -6,6 +6,7 @@ import { statusColors } from '@/lib/constants';
 import Link from 'next/link';
 import { useState, useRef, useCallback } from 'react';
 import clsx from 'clsx';
+import DataTable, { type Column } from '@/components/shared/DataTable';
 
 interface GovRequest {
   id: string;
@@ -28,6 +29,8 @@ interface PaginatedResponse {
   totalPages: number;
 }
 
+const STATUS_OPTIONS = ['', 'Draft', 'Submitted', 'In Review', 'Info Requested', 'Completed'];
+
 export default function RequestsPage() {
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState('');
@@ -35,6 +38,8 @@ export default function RequestsPage() {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [sortField, setSortField] = useState('create_at');
+  const [sortOrder, setSortOrder] = useState<'ASC' | 'DESC'>('DESC');
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const handleSearchChange = useCallback((value: string) => {
@@ -56,18 +61,91 @@ export default function RequestsPage() {
     setPage(1);
   };
 
+  const handleSort = useCallback((field: string, order: 'ASC' | 'DESC') => {
+    setSortField(field);
+    setSortOrder(order);
+    setPage(1);
+  }, []);
+
   const { data, isLoading } = useQuery<PaginatedResponse>({
-    queryKey: ['governance-requests', page, statusFilter, debouncedSearch, dateFrom, dateTo],
+    queryKey: ['governance-requests', page, statusFilter, debouncedSearch, dateFrom, dateTo, sortField, sortOrder],
     queryFn: () =>
       api.get('/governance-requests', {
         page,
         pageSize: 20,
+        sortField,
+        sortOrder,
         ...(statusFilter && { status: statusFilter }),
         ...(debouncedSearch && { search: debouncedSearch }),
         ...(dateFrom && { dateFrom }),
         ...(dateTo && { dateTo }),
       }),
   });
+
+  // ── Column definitions (reusable pattern) ───────────────────────
+
+  const columns: Column<GovRequest>[] = [
+    {
+      key: 'request_id',
+      label: 'Request ID',
+      sortable: true,
+      render: (r) => (
+        <Link href={`/governance/${r.requestId}`} className="text-primary-blue hover:underline">
+          {r.requestId}
+        </Link>
+      ),
+      exportValue: (r) => r.requestId,
+    },
+    {
+      key: 'title',
+      label: 'Title',
+      sortable: true,
+      render: (r) => <>{r.title}</>,
+      exportValue: (r) => r.title,
+    },
+    {
+      key: 'status',
+      label: 'Status',
+      sortable: true,
+      render: (r) => (
+        <span className={clsx('px-2 py-0.5 rounded text-xs text-white', statusColors[r.status] || 'bg-gray-400')}>
+          {r.status}
+        </span>
+      ),
+      exportValue: (r) => r.status,
+    },
+    {
+      key: 'priority',
+      label: 'Priority',
+      sortable: true,
+      render: (r) => <>{r.priority}</>,
+      exportValue: (r) => r.priority,
+    },
+    {
+      key: 'requestor',
+      label: 'Requestor',
+      sortable: true,
+      render: (r) => <>{r.requestorName || r.requestor}</>,
+      exportValue: (r) => r.requestorName || r.requestor,
+    },
+    {
+      key: 'overallVerdict',
+      label: 'Verdict',
+      render: (r) => <>{r.overallVerdict || '-'}</>,
+      exportValue: (r) => r.overallVerdict || '',
+    },
+    {
+      key: 'create_at',
+      label: 'Created',
+      sortable: true,
+      render: (r) => (
+        <span className="text-text-secondary">
+          {r.createAt ? new Date(r.createAt).toLocaleDateString() : '-'}
+        </span>
+      ),
+      exportValue: (r) => (r.createAt ? new Date(r.createAt).toLocaleDateString() : ''),
+    },
+  ];
 
   return (
     <div>
@@ -78,7 +156,7 @@ export default function RequestsPage() {
         </Link>
       </div>
 
-      {/* Filter bar: search + date range */}
+      {/* Filter bar: search + status dropdown + date range */}
       <div className="mb-4 flex items-center gap-4">
         <div className="flex-1">
           <input
@@ -88,6 +166,19 @@ export default function RequestsPage() {
             onChange={(e) => handleSearchChange(e.target.value)}
             className="input-field w-full"
           />
+        </div>
+        <div className="flex items-center gap-2 text-sm">
+          <label className="text-text-secondary whitespace-nowrap">Status</label>
+          <select
+            value={statusFilter}
+            onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+            className="input-field"
+            data-testid="status-filter"
+          >
+            {STATUS_OPTIONS.map((s) => (
+              <option key={s} value={s}>{s || 'All'}</option>
+            ))}
+          </select>
         </div>
         <div className="flex items-center gap-2 text-sm">
           <label className="text-text-secondary whitespace-nowrap">From</label>
@@ -115,83 +206,27 @@ export default function RequestsPage() {
         </div>
       </div>
 
-      {/* Status filter tabs */}
-      <div className="mb-4 flex gap-2">
-        {['', 'Draft', 'Submitted', 'In Review', 'Info Requested', 'Completed'].map((s) => (
-          <button
-            key={s}
-            onClick={() => { setStatusFilter(s); setPage(1); }}
-            className={clsx(
-              'px-3 py-1 rounded text-sm border',
-              statusFilter === s ? 'bg-primary-blue text-white border-primary-blue' : 'border-border-light hover:border-primary-blue'
-            )}
-          >
-            {s || 'All'}
-          </button>
-        ))}
-      </div>
-
-      <div className="bg-white rounded-lg border border-border-light">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border-light bg-bg-gray">
-              <th className="text-left p-3 font-medium">Request ID</th>
-              <th className="text-left p-3 font-medium">Title</th>
-              <th className="text-left p-3 font-medium">Status</th>
-              <th className="text-left p-3 font-medium">Priority</th>
-              <th className="text-left p-3 font-medium">Requestor</th>
-              <th className="text-left p-3 font-medium">Verdict</th>
-              <th className="text-left p-3 font-medium">Created</th>
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading ? (
-              <tr><td colSpan={7} className="p-4 text-center text-text-secondary">Loading...</td></tr>
-            ) : data?.data.length === 0 ? (
-              <tr><td colSpan={7} className="p-4 text-center text-text-secondary">No data available</td></tr>
-            ) : (
-              data?.data.map((r) => (
-                <tr key={r.id} className="border-b border-border-light hover:bg-gray-50">
-                  <td className="p-3">
-                    <Link href={`/governance/${r.requestId}`} className="text-primary-blue hover:underline">
-                      {r.requestId}
-                    </Link>
-                  </td>
-                  <td className="p-3">{r.title}</td>
-                  <td className="p-3">
-                    <span className={clsx('px-2 py-0.5 rounded text-xs text-white', statusColors[r.status] || 'bg-gray-400')}>
-                      {r.status}
-                    </span>
-                  </td>
-                  <td className="p-3">{r.priority}</td>
-                  <td className="p-3">{r.requestorName || r.requestor}</td>
-                  <td className="p-3">{r.overallVerdict || '-'}</td>
-                  <td className="p-3 text-text-secondary">{r.createAt ? new Date(r.createAt).toLocaleDateString() : '-'}</td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-        {data && data.totalPages > 1 && (
-          <div className="flex items-center justify-between p-3 border-t border-border-light">
-            <span className="text-sm text-text-secondary">Total {data.total} items</span>
-            <div className="flex gap-1">
-              {Array.from({ length: data.totalPages }, (_, i) => (
-                <button
-                  key={i + 1}
-                  onClick={() => setPage(i + 1)}
-                  className={clsx(
-                    'px-3 py-1 rounded text-sm',
-                    page === i + 1 ? 'bg-primary-blue text-white' : 'hover:bg-gray-100'
-                  )}
-                >
-                  {i + 1}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
+      {/* Data table */}
+      <DataTable<GovRequest>
+        columns={columns}
+        data={data?.data ?? []}
+        isLoading={isLoading}
+        rowKey={(r) => r.id}
+        sortField={sortField}
+        sortOrder={sortOrder}
+        onSort={handleSort}
+        exportFilename="governance-requests"
+        pagination={
+          data && data.totalPages > 1
+            ? {
+                page,
+                totalPages: data.totalPages,
+                total: data.total,
+                onPageChange: setPage,
+              }
+            : undefined
+        }
+      />
     </div>
   );
 }

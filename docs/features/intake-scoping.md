@@ -145,7 +145,6 @@ After evaluation, the governance request status is updated to `'Scoping'`. The e
 
 ```
 backend/app/routers/intake.py       -> api-tests/test_intake.py
-backend/app/routers/intake.py       -> e2e-tests/intake.spec.ts
 frontend/src/app/governance/[requestId]/scoping/          -> e2e-tests/intake.spec.ts
 frontend/src/app/governance/[requestId]/common-questionnaire/ -> e2e-tests/intake.spec.ts
 ```

@@ -230,3 +230,30 @@ def test_search_by_keyword(client: httpx.Client):
     resp = client.get("/governance-requests", params={"search": "ZZZZNONEXISTENT999"})
     assert resp.status_code == 200
     assert resp.json()["total"] == 0
+
+
+def test_sort_by_title_asc(client: httpx.Client):
+    """sortField=title&sortOrder=ASC returns alphabetically sorted data."""
+    # Create two requests with known titles
+    client.post("/governance-requests", json={"title": "AAA Sort First"})
+    client.post("/governance-requests", json={"title": "ZZZ Sort Last"})
+
+    resp = client.get("/governance-requests", params={
+        "sortField": "title",
+        "sortOrder": "ASC",
+        "pageSize": 100,
+    })
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    titles = [r["title"] for r in data]
+    assert titles == sorted(titles, key=str.lower)
+
+
+def test_sort_by_create_at_desc(client: httpx.Client):
+    """Default sort (create_at DESC) returns newest first."""
+    resp = client.get("/governance-requests", params={"pageSize": 10})
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    if len(data) >= 2:
+        dates = [r["createAt"] for r in data]
+        assert dates == sorted(dates, reverse=True)
