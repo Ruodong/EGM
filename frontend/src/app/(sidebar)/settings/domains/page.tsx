@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { useAuth } from '@/lib/auth-context';
 import clsx from 'clsx';
 import { PlusCircle, Pencil, ToggleLeft, ToggleRight } from 'lucide-react';
 import { getDomainIcon } from '@/lib/domain-icons';
@@ -29,6 +30,8 @@ const emptyForm = {
 
 export default function DomainManagementPage() {
   const qc = useQueryClient();
+  const { hasPermission } = useAuth();
+  const canWrite = hasPermission('domain_registry', 'write');
   const [editing, setEditing] = useState<Domain | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
@@ -96,13 +99,15 @@ export default function DomainManagementPage() {
           <h1 className="text-xl font-bold">Domain Management</h1>
           <p className="text-sm text-text-secondary mt-1">Create, edit and manage governance domain definitions</p>
         </div>
-        <button
-          onClick={() => { resetForm(); setShowForm(true); }}
-          className="btn-teal flex items-center gap-1.5"
-          data-testid="add-domain-btn"
-        >
-          <PlusCircle size={16} /> Add Domain
-        </button>
+        {canWrite && (
+          <button
+            onClick={() => { resetForm(); setShowForm(true); }}
+            className="btn-teal flex items-center gap-1.5"
+            data-testid="add-domain-btn"
+          >
+            <PlusCircle size={16} /> Add Domain
+          </button>
+        )}
       </div>
 
       {/* Form */}
@@ -210,7 +215,7 @@ export default function DomainManagementPage() {
                 <th className="text-left px-4 py-2 font-medium">Name</th>
                 <th className="text-left px-4 py-2 font-medium">Type</th>
                 <th className="text-left px-4 py-2 font-medium">Status</th>
-                <th className="text-left px-4 py-2 font-medium">Operation</th>
+                {canWrite && <th className="text-left px-4 py-2 font-medium">Operation</th>}
               </tr>
             </thead>
             <tbody>
@@ -257,21 +262,23 @@ export default function DomainManagementPage() {
                           {d.isActive ? 'Active' : 'Inactive'}
                         </span>
                       </td>
-                      <td className="px-4 py-2">
-                        <div className="flex items-center gap-1">
-                          <button onClick={() => openEdit(d)} title="Edit" className="text-primary-blue hover:text-blue-700 p-1">
-                            <Pencil size={16} />
-                          </button>
-                          <button
-                            onClick={() => toggleActiveMutation.mutate(d.domainCode)}
-                            title={d.isActive ? 'Deactivate' : 'Activate'}
-                            className={clsx('p-1', d.isActive ? 'text-green-500 hover:text-red-500' : 'text-gray-400 hover:text-green-600')}
-                            data-testid={d.isActive ? `deactivate-${d.domainCode}` : `reactivate-${d.domainCode}`}
-                          >
-                            {d.isActive ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
-                          </button>
-                        </div>
-                      </td>
+                      {canWrite && (
+                        <td className="px-4 py-2">
+                          <div className="flex items-center gap-1">
+                            <button onClick={() => openEdit(d)} title="Edit" className="text-primary-blue hover:text-blue-700 p-1">
+                              <Pencil size={16} />
+                            </button>
+                            <button
+                              onClick={() => toggleActiveMutation.mutate(d.domainCode)}
+                              title={d.isActive ? 'Deactivate' : 'Activate'}
+                              className={clsx('p-1', d.isActive ? 'text-green-500 hover:text-red-500' : 'text-gray-400 hover:text-green-600')}
+                              data-testid={d.isActive ? `deactivate-${d.domainCode}` : `reactivate-${d.domainCode}`}
+                            >
+                              {d.isActive ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
+                            </button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   );
                 })

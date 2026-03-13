@@ -49,7 +49,9 @@ test.describe('Role Switcher', () => {
 
     await expect(page.locator(`text=(${USERS.domainReviewer.label})`)).toBeVisible();
     await expect(page.locator('nav >> text=Reviews')).toBeVisible();
-    await expect(page.locator('nav >> text=Settings')).not.toBeVisible();
+    // Domain Reviewer CAN see Settings (Questionnaire Templates + Dispatch Rules children are visible)
+    await expect(page.locator('nav >> text=Settings')).toBeVisible();
+    // But should NOT see Domains (requires domain_registry:read)
     await expect(page.locator('nav >> text=Domains')).not.toBeVisible();
   });
 

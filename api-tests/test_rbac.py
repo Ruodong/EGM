@@ -1,5 +1,6 @@
 """Test role-based access control — verify permission enforcement across roles."""
 import httpx
+from conftest import _dev_delete
 
 BASE_URL = "http://localhost:4001/api"
 
@@ -19,7 +20,8 @@ def test_requestor_can_create_request():
     with _client_as("requestor") as c:
         resp = c.post("/governance-requests", json={"title": "Requestor Test", "govProjectType": "PoC", "businessUnit": "IDG", "productSoftwareType": "Hardware", "productEndUser": ["Lenovo internal employee/contractors"], "userRegion": ["PRC"]})
         assert resp.status_code == 200
-        assert resp.json()["requestId"].startswith("GR-")
+        assert resp.json()["requestId"].startswith("EGQ")
+        _dev_delete({"governanceRequests": [resp.json()["requestId"]]})
 
 
 def test_requestor_can_list_requests():
@@ -97,35 +99,7 @@ def test_reviewer_cannot_delete_dispatch_rule():
         assert resp.status_code == 403
 
 
-# --- Viewer role ---
-
-def test_viewer_can_read_requests():
-    with _client_as("viewer") as c:
-        resp = c.get("/governance-requests")
-        assert resp.status_code == 200
-
-
-def test_viewer_cannot_create_request():
-    with _client_as("viewer") as c:
-        resp = c.post("/governance-requests", json={"title": "Should Fail"})
-        assert resp.status_code == 403
-
-
-def test_viewer_cannot_write_intake():
-    with _client_as("viewer") as c:
-        resp = c.post("/intake/responses", json={
-            "requestId": "GR-000001",
-            "responses": [],
-        })
-        assert resp.status_code == 403
-
-
 # --- User Authorization RBAC ---
-
-def test_viewer_cannot_search_employees():
-    with _client_as("viewer") as c:
-        resp = c.get("/user-authorization/employees", params={"search": "test"})
-        assert resp.status_code == 403
 
 
 def test_requestor_cannot_read_user_authorization():
@@ -140,19 +114,16 @@ def test_governance_lead_can_read_user_authorization():
         assert resp.status_code == 200
 
 
-def test_governance_lead_cannot_assign_role():
+def test_governance_lead_can_assign_role():
+    """Governance lead now has user_authorization:write permission."""
     with _client_as("governance_lead") as c:
+        c.delete("/user-authorization/roles/0324lq/requestor")
         resp = c.post("/user-authorization/roles", json={
             "itcode": "0324lq",
-            "role": "viewer",
+            "role": "requestor",
         })
-        assert resp.status_code == 403
-
-
-def test_viewer_cannot_deactivate_domain():
-    with _client_as("viewer") as c:
-        resp = c.delete("/domains/EA")
-        assert resp.status_code == 403
+        assert resp.status_code == 200
+        c.delete("/user-authorization/roles/0324lq/requestor")
 
 
 def test_requestor_cannot_deactivate_domain():

@@ -5,7 +5,7 @@ test.describe('Home Page', () => {
     await page.goto('/');
     await expect(page.getByRole('heading', { name: 'Enterprise Governance Portal' })).toBeVisible();
     await expect(page.locator('text=Total Requests')).toBeVisible();
-    await expect(page.locator('text=In Review')).toBeVisible();
+    await expect(page.locator('text=In Progress')).toBeVisible();
     await expect(page.locator('text=Completed')).toBeVisible();
   });
 

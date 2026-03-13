@@ -1,13 +1,44 @@
 'use client';
 
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { useParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import { PageLayout } from '@/components/layout/PageLayout';
 import { useToast } from '@/components/ui/Toast';
 import { statusColors } from '@/lib/constants';
-import Link from 'next/link';
+import { ArrowLeft } from 'lucide-react';
+import { SectionCard } from '../_components/SectionCard';
+import { GovernanceScopeDetermination } from '../_components/GovernanceScopeDetermination';
+import { FileUpload } from '../_components/FileUpload';
+import { ProcessingLogStepper } from '../_components/ProcessingLogStepper';
+import { ChangeHighlight, ChangeEntry } from '../_components/ChangeHighlight';
+import projectTypes from '@/config/project-types.json';
+import businessUnits from '@/config/business-units.json';
 import clsx from 'clsx';
+
+interface Project {
+  projectId: string;
+  projectName: string;
+  type: string;
+  status: string;
+  pm: string;
+  pmItcode: string;
+  dtLead: string;
+  dtLeadItcode: string;
+  itLead: string;
+  itLeadItcode: string;
+  startDate: string;
+  goLiveDate: string;
+  endDate: string;
+  aiRelated: string;
+}
+
+interface Employee {
+  itcode: string;
+  name: string;
+  email: string;
+}
 
 interface Attachment {
   id: string;
@@ -21,7 +52,6 @@ interface Attachment {
 interface GovRequest {
   id: string;
   requestId: string;
-  egqId: string | null;
   title: string;
   description: string;
   govProjectType: string | null;
@@ -66,22 +96,21 @@ interface ProgressData {
 
 export default function RequestDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const requestId = params.requestId as string;
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
+  // --- Data fetching ---
   const { data: request, isLoading } = useQuery<GovRequest>({
     queryKey: ['governance-request', requestId],
     queryFn: () => api.get(`/governance-requests/${requestId}`),
   });
 
-  const submitMutation = useMutation({
-    mutationFn: () => api.put(`/governance-requests/${requestId}/submit`, {}),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['governance-request', requestId] });
-      toast('Request submitted for review', 'success');
-    },
-    onError: () => toast('Failed to submit request', 'error'),
+  const { data: changelogData } = useQuery<{ data: ChangeEntry[] }>({
+    queryKey: ['changelog', requestId],
+    queryFn: () => api.get(`/governance-requests/${requestId}/changelog`),
+    enabled: !!request,
   });
 
   const { data: progress } = useQuery<ProgressData>({
@@ -96,26 +125,265 @@ export default function RequestDetailPage() {
     enabled: !!request,
   });
 
+  const changelog: ChangeEntry[] = changelogData?.data ?? [];
+
+  // --- Edit state ---
+  const [selectedRules, setSelectedRules] = useState<string[]>([]);
+  const [govProjectType, setGovProjectType] = useState('');
+  const [businessUnit, setBusinessUnit] = useState('');
+  const [productSoftwareType, setProductSoftwareType] = useState('');
+  const [productSoftwareTypeOther, setProductSoftwareTypeOther] = useState('');
+  const [productEndUser, setProductEndUser] = useState<string[]>([]);
+  const [userRegion, setUserRegion] = useState<string[]>([]);
+  const [thirdPartyVendor, setThirdPartyVendor] = useState('');
+  const [projectType, setProjectType] = useState<'mspo' | 'non_mspo'>('mspo');
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+  const [projectSearch, setProjectSearch] = useState('');
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [projectLoading, setProjectLoading] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  const [nonMspo, setNonMspo] = useState({
+    projectCode: '',
+    projectName: '',
+    projectDescription: '',
+    projectPm: '',
+    projectPmItcode: '',
+    projectStartDate: '',
+    projectGoLiveDate: '',
+    projectEndDate: '',
+  });
+
+  const [pmSearch, setPmSearch] = useState('');
+  const [pmResults, setPmResults] = useState<Employee[]>([]);
+  const [showPmDropdown, setShowPmDropdown] = useState(false);
+  const [pmLoading, setPmLoading] = useState(false);
+  const pmDropdownRef = useRef<HTMLDivElement>(null);
+  const pmDebounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  const [attachments, setAttachments] = useState<File[]>([]);
+  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+  const [initialized, setInitialized] = useState(false);
+
+  // --- Initialize form from fetched data ---
+  useEffect(() => {
+    if (!request || initialized) return;
+    setSelectedRules(request.ruleCodes || []);
+    setGovProjectType(request.govProjectType || '');
+    setBusinessUnit(request.businessUnit || '');
+    setProductSoftwareType(request.productSoftwareType || '');
+    setProductSoftwareTypeOther(request.productSoftwareTypeOther || '');
+    setProductEndUser(request.productEndUser || []);
+    setUserRegion(request.userRegion || []);
+    setThirdPartyVendor(request.thirdPartyVendor || '');
+
+    if (request.projectType === 'non_mspo') {
+      setProjectType('non_mspo');
+      setNonMspo({
+        projectCode: request.projectCode || '',
+        projectName: request.projectName || '',
+        projectDescription: request.projectDescription || '',
+        projectPm: request.projectPm || '',
+        projectPmItcode: request.projectPmItcode || '',
+        projectStartDate: request.projectStartDate || '',
+        projectGoLiveDate: request.projectGoLiveDate || '',
+        projectEndDate: request.projectEndDate || '',
+      });
+    } else if (request.projectType === 'mspo' && request.projectId) {
+      setProjectType('mspo');
+      setSelectedProject({
+        projectId: request.projectId,
+        projectName: request.projectName || '',
+        type: request.projectProjType || '',
+        status: request.projectStatus || '',
+        pm: request.projectPm || '',
+        pmItcode: request.projectPmItcode || '',
+        dtLead: request.projectDtLead || '',
+        dtLeadItcode: request.projectDtLeadItcode || '',
+        itLead: request.projectItLead || '',
+        itLeadItcode: request.projectItLeadItcode || '',
+        startDate: request.projectStartDate || '',
+        goLiveDate: request.projectGoLiveDate || '',
+        endDate: request.projectEndDate || '',
+        aiRelated: request.projectAiRelated || '',
+      });
+    }
+    setInitialized(true);
+  }, [request, initialized]);
+
+  // Close dropdowns on click outside
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) setShowDropdown(false);
+      if (pmDropdownRef.current && !pmDropdownRef.current.contains(e.target as Node)) setShowPmDropdown(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const isReadOnly = request?.status === 'Completed';
+  const isEditable = !isReadOnly;
+
+  // --- Project search ---
+  const searchProjects = useCallback(async (query: string) => {
+    if (!query.trim()) { setProjects([]); return; }
+    setProjectLoading(true);
+    try {
+      const res = await api.get<{ data: Project[] }>('/projects', { search: query, pageSize: 10 });
+      setProjects(res.data);
+    } catch { setProjects([]); } finally { setProjectLoading(false); }
+  }, []);
+
+  const handleProjectSearchChange = (value: string) => {
+    setProjectSearch(value);
+    setShowDropdown(true);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => searchProjects(value), 300);
+  };
+
+  const selectProject = (p: Project) => { setSelectedProject(p); setProjectSearch(''); setShowDropdown(false); };
+  const clearProject = () => { setSelectedProject(null); setProjectSearch(''); };
+
+  // --- PM search ---
+  const searchEmployees = useCallback(async (query: string) => {
+    if (!query.trim()) { setPmResults([]); return; }
+    setPmLoading(true);
+    try {
+      const res = await api.get<{ data: Employee[] }>('/employees/search', { q: query });
+      setPmResults(res.data);
+    } catch { setPmResults([]); } finally { setPmLoading(false); }
+  }, []);
+
+  const handlePmSearchChange = (value: string) => {
+    setPmSearch(value);
+    setShowPmDropdown(true);
+    if (pmDebounceRef.current) clearTimeout(pmDebounceRef.current);
+    pmDebounceRef.current = setTimeout(() => searchEmployees(value), 300);
+  };
+
+  const selectPm = (emp: Employee) => {
+    setNonMspo((prev) => ({ ...prev, projectPm: emp.name, projectPmItcode: emp.itcode }));
+    setPmSearch(''); setShowPmDropdown(false);
+  };
+
+  const clearPm = () => {
+    setNonMspo((prev) => ({ ...prev, projectPm: '', projectPmItcode: '' }));
+    setPmSearch('');
+  };
+
+  // --- Submit ---
+  const submitMutation = useMutation({
+    mutationFn: () => api.put(`/governance-requests/${requestId}/submit`, {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['governance-request', requestId] });
+      queryClient.invalidateQueries({ queryKey: ['changelog', requestId] });
+      toast('Request submitted for review', 'success');
+    },
+    onError: () => toast('Failed to submit request', 'error'),
+  });
+
+  // --- Save ---
+  const handleSave = async (validate = true) => {
+    // Validate required fields only when explicitly requested (Submit / Save Changes)
+    if (validate) {
+      const errors: Record<string, string> = {};
+      if (!govProjectType) errors.govProjectType = 'Project Type is required';
+      if (!businessUnit) errors.businessUnit = 'Business Unit is required';
+      if (projectType === 'non_mspo') {
+        if (!nonMspo.projectCode) errors.projectCode = 'Project Code is required';
+        if (!nonMspo.projectName) errors.projectName = 'Project Name is required';
+        if (!nonMspo.projectPm) errors.projectPm = 'Project Manager is required';
+        if (!nonMspo.projectStartDate) errors.projectStartDate = 'Start Date is required';
+        if (!nonMspo.projectGoLiveDate) errors.projectGoLiveDate = 'Go Live Date is required';
+      }
+      if (!productSoftwareType) errors.productSoftwareType = 'Product/Software Type is required';
+      if (productSoftwareType === 'Other' && !productSoftwareTypeOther.trim()) errors.productSoftwareTypeOther = 'Please specify the type';
+      if (productEndUser.length === 0) errors.productEndUser = 'At least one end user must be selected';
+      if (userRegion.length === 0) errors.userRegion = 'At least one region must be selected';
+      if (Object.keys(errors).length > 0) { setValidationErrors(errors); return; }
+      setValidationErrors({});
+    }
+
+    setSaving(true);
+    try {
+      const payload: Record<string, unknown> = {
+        ruleCodes: selectedRules,
+        govProjectType: govProjectType || undefined,
+        businessUnit: businessUnit || undefined,
+        productSoftwareType,
+        productSoftwareTypeOther: productSoftwareType === 'Other' ? productSoftwareTypeOther : undefined,
+        productEndUser,
+        userRegion,
+        thirdPartyVendor: thirdPartyVendor.trim() || undefined,
+      };
+
+      if (projectType === 'mspo' && selectedProject) {
+        payload.projectType = 'mspo';
+        payload.projectId = selectedProject.projectId;
+      } else if (projectType === 'non_mspo' && (nonMspo.projectCode || nonMspo.projectName)) {
+        payload.projectType = 'non_mspo';
+        payload.projectCode = nonMspo.projectCode;
+        payload.projectName = nonMspo.projectName;
+        payload.projectDescription = nonMspo.projectDescription;
+        payload.projectPm = nonMspo.projectPm;
+        payload.projectPmItcode = nonMspo.projectPmItcode || undefined;
+        payload.projectStartDate = nonMspo.projectStartDate;
+        payload.projectGoLiveDate = nonMspo.projectGoLiveDate;
+        payload.projectEndDate = nonMspo.projectEndDate;
+      }
+
+      await api.put(`/governance-requests/${requestId}`, payload);
+
+      // Upload new attachments
+      for (const file of attachments) {
+        const formData = new FormData();
+        formData.append('file', file);
+        try {
+          await api.upload(`/governance-requests/${requestId}/attachments`, formData);
+        } catch {
+          toast(`Failed to upload ${file.name}`, 'error');
+        }
+      }
+      setAttachments([]);
+
+      queryClient.invalidateQueries({ queryKey: ['governance-request', requestId] });
+      queryClient.invalidateQueries({ queryKey: ['changelog', requestId] });
+      queryClient.invalidateQueries({ queryKey: ['attachments', requestId] });
+      toast('Changes saved', 'success');
+    } catch {
+      toast('Failed to save changes', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
   if (isLoading) return <PageLayout><p>Loading...</p></PageLayout>;
   if (!request) return <PageLayout><p>Request not found</p></PageLayout>;
 
-  const steps = [
-    { label: 'Create', href: '#', done: true },
-    { label: 'Scoping', href: `/governance/${requestId}/scoping`, done: ['Scoping', 'In Review', 'Info Requested', 'Completed'].includes(request.status) },
-    { label: 'Questionnaire', href: `/governance/${requestId}/common-questionnaire`, done: ['In Review', 'Info Requested', 'Completed'].includes(request.status) },
-    { label: 'Reviews', href: `/governance/${requestId}/reviews`, done: ['In Review', 'Info Requested', 'Completed'].includes(request.status) },
-    { label: 'Summary', href: `/governance/${requestId}/summary`, done: request.status === 'Completed' },
-  ];
-
   return (
     <PageLayout>
-      <div className="max-w-5xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
+      <div className="max-w-2xl mx-auto">
+        {/* Back button */}
+        <button
+          type="button"
+          onClick={() => router.push('/requests')}
+          className="flex items-center gap-1.5 text-sm text-text-secondary hover:text-primary-blue mb-4 transition-colors"
+          data-testid="back-to-list-btn"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to Requests
+        </button>
+
+        {/* Header */}
+        <div className="flex items-center justify-between mb-2">
           <div>
             <h1 className="text-xl font-bold">
-              {request.egqId || request.requestId}
+              {request.requestId}
               {request.govProjectType && <span className="text-text-secondary font-normal"> · {request.govProjectType}</span>}
               {request.projectName && <span className="text-text-secondary font-normal"> · {request.projectName}</span>}
             </h1>
@@ -123,7 +391,6 @@ export default function RequestDetailPage() {
               <span className={clsx('px-2 py-0.5 rounded text-xs text-white', statusColors[request.status] || 'bg-gray-400')}>
                 {request.status}
               </span>
-              {request.productSoftwareType && <span className="text-sm text-text-secondary">{request.productSoftwareType === 'Other' ? request.productSoftwareTypeOther : request.productSoftwareType}</span>}
               {request.overallVerdict && (
                 <span className={clsx('px-2 py-0.5 rounded text-xs text-white', statusColors[request.overallVerdict] || 'bg-gray-400')}>
                   {request.overallVerdict}
@@ -131,149 +398,522 @@ export default function RequestDetailPage() {
               )}
             </div>
           </div>
-          {request.status === 'Draft' && (
-            <button
-              className="btn-teal"
-              onClick={() => submitMutation.mutate()}
-              disabled={submitMutation.isPending}
-              data-testid="submit-request-btn"
-            >
-              {submitMutation.isPending ? 'Submitting...' : 'Submit for Review'}
-            </button>
-          )}
         </div>
 
-        {/* Step indicator */}
-        <div className="flex items-center gap-2 mb-8 bg-white p-4 rounded-lg border border-border-light">
-          {steps.map((step, i) => (
-            <div key={step.label} className="flex items-center">
-              {i > 0 && <div className={clsx('w-8 h-0.5 mx-2', step.done ? 'bg-egm-teal' : 'bg-border-light')} />}
-              <Link
-                href={step.href}
-                className={clsx(
-                  'px-4 py-2 rounded text-sm font-medium',
-                  step.done ? 'bg-egm-teal/10 text-egm-teal' : 'bg-gray-50 text-text-secondary'
+        {/* Processing Log Stepper */}
+        <div className="bg-white rounded-lg border border-border-light p-4 mb-4">
+          <ProcessingLogStepper currentStatus={request.status} />
+        </div>
+
+        {/* Form sections */}
+        <div className="space-y-4">
+          {/* Section 1: Governance Scope Determination */}
+          <SectionCard title="Governance Scope Determination" subtitle="Select applicable compliance rules to determine governance domains">
+            {isReadOnly ? (
+              <div data-testid="rules-readonly">
+                {request.ruleCodes && request.ruleCodes.length > 0 ? (
+                  <div className="flex flex-wrap gap-1">
+                    {request.ruleCodes.map((code) => (
+                      <span key={code} className="px-2 py-0.5 rounded text-xs bg-purple-50 text-purple-700 font-medium font-mono">
+                        {code}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <span className="text-sm text-text-secondary">No rules selected</span>
                 )}
-              >
-                {step.label}
-              </Link>
-            </div>
-          ))}
-        </div>
-
-        {/* Request details */}
-        <div className="grid grid-cols-2 gap-6">
-          <div className="bg-white rounded-lg border border-border-light p-6">
-            <h2 className="text-lg font-semibold mb-4">Request Details</h2>
-            <dl className="space-y-3 text-sm">
-              <div className="flex"><dt className="w-32 text-text-secondary">Requestor</dt><dd>{request.requestorName || request.requestor}</dd></div>
-              <div className="flex"><dt className="w-32 text-text-secondary">Business Unit</dt><dd data-testid="request-bu">{request.businessUnit || '-'}</dd></div>
-              <div className="flex"><dt className="w-32 text-text-secondary">End User</dt><dd>{request.productEndUser?.join(', ') || '-'}</dd></div>
-              <div className="flex"><dt className="w-32 text-text-secondary">User Region</dt><dd>{request.userRegion?.join(', ') || '-'}</dd></div>
-              {request.thirdPartyVendor && <div className="flex"><dt className="w-32 text-text-secondary">3rd-party Vendor</dt><dd>{request.thirdPartyVendor}</dd></div>}
-              <div className="flex"><dt className="w-32 text-text-secondary">Project</dt><dd>{request.projectCode || request.projectId ? `${request.projectCode || request.projectId}${request.projectName ? ` — ${request.projectName}` : ''}` : '-'}</dd></div>
-              <div className="flex"><dt className="w-32 text-text-secondary">Created</dt><dd>{request.createAt ? new Date(request.createAt).toLocaleDateString() : '-'}</dd></div>
-              <div className="flex"><dt className="w-32 text-text-secondary">Description</dt><dd>{request.description || '-'}</dd></div>
-              <div className="flex">
-                <dt className="w-32 text-text-secondary">Rules</dt>
-                <dd data-testid="request-rule-codes">
-                  {request.ruleCodes && request.ruleCodes.length > 0 ? (
-                    <div className="flex flex-wrap gap-1">
-                      {request.ruleCodes.map((code) => (
-                        <span key={code} className="px-2 py-0.5 rounded text-xs bg-purple-50 text-purple-700 font-medium font-mono">
-                          {code}
-                        </span>
-                      ))}
-                    </div>
-                  ) : '-'}
-                </dd>
               </div>
-            </dl>
-          </div>
+            ) : (
+              <ChangeHighlight fieldName="ruleCodes" changelog={changelog}>
+                <GovernanceScopeDetermination
+                  selectedRules={selectedRules}
+                  onRulesChange={setSelectedRules}
+                />
+              </ChangeHighlight>
+            )}
+          </SectionCard>
 
-          {(request.projectType || request.projectCode || request.projectId) && (
-            <div className="bg-white rounded-lg border border-border-light p-6" data-testid="project-info-card">
-              <h2 className="text-lg font-semibold mb-4">
-                Project Information
-                {request.projectType && (
-                  <span className="ml-2 text-xs font-normal px-2 py-0.5 rounded bg-gray-100 text-text-secondary">
+          {/* Section 2: Project Information */}
+          <SectionCard title="Project Information">
+            <div className="space-y-4">
+              {/* Request ID */}
+              <div>
+                <label className="block text-sm font-medium mb-1">Request ID</label>
+                <div className="px-3 py-2 rounded-lg border border-border-light bg-gray-50 text-sm text-text-secondary" data-testid="request-id-value">
+                  {request.requestId}
+                </div>
+              </div>
+
+              {/* Project Type + Business Unit */}
+              <div className="grid grid-cols-2 gap-4">
+                <ChangeHighlight fieldName="govProjectType" changelog={changelog}>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Project Type <span className="text-red-500">*</span></label>
+                    {isReadOnly ? (
+                      <div className="px-3 py-2 rounded-lg border border-border-light bg-gray-50 text-sm">{govProjectType || '-'}</div>
+                    ) : (
+                      <>
+                        <select
+                          className={`select-field ${validationErrors.govProjectType ? 'border-red-400' : ''}`}
+                          value={govProjectType}
+                          onChange={(e) => { setGovProjectType(e.target.value); setValidationErrors((v) => { const { govProjectType: _, ...rest } = v; return rest; }); }}
+                          data-testid="select-gov-project-type"
+                        >
+                          <option value="">-- Select Project Type --</option>
+                          {projectTypes.map((pt) => (
+                            <option key={pt.value} value={pt.value}>{pt.label}</option>
+                          ))}
+                        </select>
+                        {validationErrors.govProjectType && <p className="text-xs text-red-500 mt-1">{validationErrors.govProjectType}</p>}
+                      </>
+                    )}
+                  </div>
+                </ChangeHighlight>
+                <ChangeHighlight fieldName="businessUnit" changelog={changelog}>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Business Unit <span className="text-red-500">*</span></label>
+                    {isReadOnly ? (
+                      <div className="px-3 py-2 rounded-lg border border-border-light bg-gray-50 text-sm">{businessUnit || '-'}</div>
+                    ) : (
+                      <>
+                        <select
+                          className={`select-field ${validationErrors.businessUnit ? 'border-red-400' : ''}`}
+                          value={businessUnit}
+                          onChange={(e) => { setBusinessUnit(e.target.value); setValidationErrors((v) => { const { businessUnit: _, ...rest } = v; return rest; }); }}
+                          data-testid="select-business-unit"
+                        >
+                          <option value="">-- Select Business Unit --</option>
+                          {businessUnits.map((bu) => (
+                            <option key={bu.value} value={bu.value}>{bu.label}</option>
+                          ))}
+                        </select>
+                        {validationErrors.businessUnit && <p className="text-xs text-red-500 mt-1">{validationErrors.businessUnit}</p>}
+                      </>
+                    )}
+                  </div>
+                </ChangeHighlight>
+              </div>
+
+              {/* Project Type Toggle */}
+              {isReadOnly ? (
+                <div>
+                  <label className="block text-sm font-medium mb-2">Project</label>
+                  <span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-text-secondary">
                     {request.projectType === 'mspo' ? 'MSPO' : 'Non-MSPO'}
                   </span>
-                )}
-              </h2>
-              <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-                {request.projectCode && <div><dt className="text-text-secondary">Code</dt><dd>{request.projectCode}</dd></div>}
-                {request.projectName && <div><dt className="text-text-secondary">Name</dt><dd>{request.projectName}</dd></div>}
-                {request.projectProjType && <div><dt className="text-text-secondary">Type</dt><dd>{request.projectProjType}</dd></div>}
-                {request.projectStatus && <div><dt className="text-text-secondary">Status</dt><dd>{request.projectStatus}</dd></div>}
-                {request.projectPm && <div><dt className="text-text-secondary">PM</dt><dd>{request.projectPm}{request.projectPmItcode ? ` (${request.projectPmItcode})` : ''}</dd></div>}
-                {request.projectDtLead && <div><dt className="text-text-secondary">DT Lead</dt><dd>{request.projectDtLead}</dd></div>}
-                {request.projectItLead && <div><dt className="text-text-secondary">IT Lead</dt><dd>{request.projectItLead}</dd></div>}
-                {request.projectStartDate && <div><dt className="text-text-secondary">Start Date</dt><dd>{request.projectStartDate}</dd></div>}
-                {request.projectGoLiveDate && <div><dt className="text-text-secondary">Go Live Date</dt><dd>{request.projectGoLiveDate}</dd></div>}
-                {request.projectEndDate && <div><dt className="text-text-secondary">End Date</dt><dd>{request.projectEndDate}</dd></div>}
-                {request.projectAiRelated && <div><dt className="text-text-secondary">AI Related</dt><dd>{request.projectAiRelated}</dd></div>}
-                {request.projectDescription && (
-                  <div className="col-span-2"><dt className="text-text-secondary">Description</dt><dd>{request.projectDescription}</dd></div>
-                )}
-              </dl>
-            </div>
-          )}
-
-          {attachmentsData && attachmentsData.data.length > 0 && (
-            <div className="bg-white rounded-lg border border-border-light p-6" data-testid="attachments-card">
-              <h2 className="text-lg font-semibold mb-4">Attachments</h2>
-              <ul className="space-y-2">
-                {attachmentsData.data.map((att) => (
-                  <li key={att.id} className="flex items-center justify-between text-sm p-2 bg-bg-gray rounded">
-                    <span className="font-medium truncate">{att.fileName}</span>
-                    <div className="flex items-center gap-3">
-                      <span className="text-text-secondary text-xs">
-                        {att.fileSize < 1024 ? `${att.fileSize} B` : att.fileSize < 1048576 ? `${(att.fileSize / 1024).toFixed(1)} KB` : `${(att.fileSize / 1048576).toFixed(1)} MB`}
-                      </span>
-                      <a
-                        href={`${API_BASE}/governance-requests/${requestId}/attachments/${att.id}`}
-                        className="text-egm-teal hover:underline text-xs"
-                        download
-                      >
-                        Download
-                      </a>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {progress && progress.totalDomains > 0 && (
-            <div className="bg-white rounded-lg border border-border-light p-6">
-              <h2 className="text-lg font-semibold mb-4">Review Progress</h2>
-              <div className="mb-4">
-                <div className="flex justify-between text-sm mb-1">
-                  <span>{progress.completedDomains}/{progress.totalDomains} domains complete</span>
-                  <span>{progress.progressPercent}%</span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div className="bg-egm-teal h-2 rounded-full transition-all" style={{ width: `${progress.progressPercent}%` }} />
-                </div>
-              </div>
-              {progress.openInfoRequests > 0 && (
-                <p className="text-sm text-status-info-requested mb-3">{progress.openInfoRequests} open info request(s)</p>
-              )}
-              <div className="space-y-2">
-                {progress.domains.map((d) => (
-                  <div key={d.domainCode} className="flex items-center justify-between text-sm p-2 bg-bg-gray rounded">
-                    <span className="font-medium">{d.domainCode}</span>
-                    <span className={clsx('px-2 py-0.5 rounded text-xs text-white', statusColors[d.status] || 'bg-gray-400')}>
-                      {d.status}
-                    </span>
+                  <div className="grid grid-cols-2 gap-3 p-3 mt-2 bg-gray-50 rounded-lg border border-border-light">
+                    {request.projectCode && <ReadOnlyField label="Project Code" value={request.projectCode} />}
+                    {request.projectName && <ReadOnlyField label="Project Name" value={request.projectName} />}
+                    {request.projectProjType && <ReadOnlyField label="Type" value={request.projectProjType} />}
+                    {request.projectStatus && <ReadOnlyField label="Status" value={request.projectStatus} />}
+                    {request.projectPm && <ReadOnlyField label="PM" value={`${request.projectPm}${request.projectPmItcode ? ` (${request.projectPmItcode})` : ''}`} />}
+                    {request.projectDtLead && <ReadOnlyField label="DT Lead" value={request.projectDtLead} />}
+                    {request.projectItLead && <ReadOnlyField label="IT Lead" value={request.projectItLead} />}
+                    {request.projectStartDate && <ReadOnlyField label="Start Date" value={request.projectStartDate} />}
+                    {request.projectGoLiveDate && <ReadOnlyField label="Go Live Date" value={request.projectGoLiveDate} />}
+                    {request.projectEndDate && <ReadOnlyField label="End Date" value={request.projectEndDate} />}
+                    {request.projectAiRelated && <ReadOnlyField label="AI Related" value={request.projectAiRelated} />}
+                    {request.projectDescription && (
+                      <div className="col-span-2"><ReadOnlyField label="Description" value={request.projectDescription} /></div>
+                    )}
                   </div>
-                ))}
-              </div>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-sm font-medium mb-2">Project</label>
+                  <div className="flex gap-2 mb-3" data-testid="project-type-toggle">
+                    <button
+                      type="button"
+                      onClick={() => setProjectType('mspo')}
+                      className={clsx('px-4 py-1.5 rounded-lg text-sm font-medium transition-colors',
+                        projectType === 'mspo' ? 'bg-egm-teal text-white' : 'bg-gray-100 text-text-secondary hover:bg-gray-200'
+                      )}
+                      data-testid="btn-mspo"
+                    >
+                      MSPO Project
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setProjectType('non_mspo')}
+                      className={clsx('px-4 py-1.5 rounded-lg text-sm font-medium transition-colors',
+                        projectType === 'non_mspo' ? 'bg-egm-teal text-white' : 'bg-gray-100 text-text-secondary hover:bg-gray-200'
+                      )}
+                      data-testid="btn-non-mspo"
+                    >
+                      Non-MSPO Project
+                    </button>
+                  </div>
+
+                  {projectType === 'mspo' ? (
+                    <div className="space-y-3">
+                      <div ref={dropdownRef} className="relative">
+                        {selectedProject ? (
+                          <div className="flex items-center gap-2">
+                            <span className="flex-1 px-3 py-2 rounded-lg border border-border-light bg-gray-50 text-sm">
+                              {selectedProject.projectId} — {selectedProject.projectName || 'Untitled'}
+                            </span>
+                            <button type="button" onClick={clearProject} className="text-sm text-red-500 hover:text-red-700">Clear</button>
+                          </div>
+                        ) : (
+                          <input
+                            className="input-field"
+                            placeholder="Search by project ID or name..."
+                            value={projectSearch}
+                            onChange={(e) => handleProjectSearchChange(e.target.value)}
+                            onFocus={() => { if (projectSearch.trim()) setShowDropdown(true); }}
+                            data-testid="input-project-search"
+                          />
+                        )}
+                        {showDropdown && (
+                          <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-border-light rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                            {projectLoading && <div className="px-3 py-2 text-sm text-text-secondary">Searching...</div>}
+                            {!projectLoading && projects.length === 0 && projectSearch.trim() && <div className="px-3 py-2 text-sm text-text-secondary">No projects found</div>}
+                            {projects.map((p) => (
+                              <button key={p.projectId} type="button" onClick={() => selectProject(p)} className="w-full text-left px-3 py-2 hover:bg-gray-50 transition-colors border-b border-border-light last:border-0">
+                                <div className="text-sm font-medium">{p.projectId}</div>
+                                <div className="text-xs text-text-secondary">{p.projectName || 'Untitled'} {p.pm ? `· PM: ${p.pm}` : ''}</div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      {selectedProject && (
+                        <div className="grid grid-cols-2 gap-3 p-3 bg-gray-50 rounded-lg border border-border-light" data-testid="mspo-project-details">
+                          <ReadOnlyField label="Project Code" value={selectedProject.projectId} />
+                          <ReadOnlyField label="Project Name" value={selectedProject.projectName} />
+                          <ReadOnlyField label="Type" value={selectedProject.type} />
+                          <ReadOnlyField label="Status" value={selectedProject.status} />
+                          <ReadOnlyField label="PM" value={selectedProject.pm} />
+                          <ReadOnlyField label="DT Lead" value={selectedProject.dtLead} />
+                          <ReadOnlyField label="IT Lead" value={selectedProject.itLead} />
+                          <ReadOnlyField label="Start Date" value={selectedProject.startDate} />
+                          <ReadOnlyField label="Go Live Date" value={selectedProject.goLiveDate} />
+                          <ReadOnlyField label="End Date" value={selectedProject.endDate} />
+                          <ReadOnlyField label="AI Related" value={selectedProject.aiRelated} />
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-3" data-testid="non-mspo-form">
+                      <div className="grid grid-cols-2 gap-3">
+                        <ChangeHighlight fieldName="projectCode" changelog={changelog}>
+                          <div>
+                            <label className="block text-xs font-medium text-text-secondary mb-1">Project Code <span className="text-red-500">*</span></label>
+                            <input className={`input-field ${validationErrors.projectCode ? 'border-red-400' : ''}`} value={nonMspo.projectCode} onChange={(e) => { setNonMspo({ ...nonMspo, projectCode: e.target.value }); setValidationErrors((v) => { const { projectCode: _, ...rest } = v; return rest; }); }} data-testid="input-project-code" />
+                            {validationErrors.projectCode && <p className="text-xs text-red-500 mt-1">{validationErrors.projectCode}</p>}
+                          </div>
+                        </ChangeHighlight>
+                        <ChangeHighlight fieldName="projectName" changelog={changelog}>
+                          <div>
+                            <label className="block text-xs font-medium text-text-secondary mb-1">Project Name <span className="text-red-500">*</span></label>
+                            <input className={`input-field ${validationErrors.projectName ? 'border-red-400' : ''}`} value={nonMspo.projectName} onChange={(e) => { setNonMspo({ ...nonMspo, projectName: e.target.value }); setValidationErrors((v) => { const { projectName: _, ...rest } = v; return rest; }); }} data-testid="input-project-name" />
+                            {validationErrors.projectName && <p className="text-xs text-red-500 mt-1">{validationErrors.projectName}</p>}
+                          </div>
+                        </ChangeHighlight>
+                      </div>
+                      <ChangeHighlight fieldName="projectDescription" changelog={changelog}>
+                        <div>
+                          <label className="block text-xs font-medium text-text-secondary mb-1">Description</label>
+                          <textarea className="input-field h-20" value={nonMspo.projectDescription} onChange={(e) => setNonMspo({ ...nonMspo, projectDescription: e.target.value })} data-testid="input-project-description" />
+                        </div>
+                      </ChangeHighlight>
+                      <ChangeHighlight fieldName="projectPm" changelog={changelog}>
+                        <div>
+                          <label className="block text-xs font-medium text-text-secondary mb-1">Project Manager <span className="text-red-500">*</span></label>
+                          {validationErrors.projectPm && <p className="text-xs text-red-500 mb-1">{validationErrors.projectPm}</p>}
+                          <div ref={pmDropdownRef} className="relative">
+                            {nonMspo.projectPmItcode ? (
+                              <div className="flex items-center gap-2">
+                                <span className="flex-1 px-3 py-2 rounded-lg border border-border-light bg-gray-50 text-sm" data-testid="pm-selected">
+                                  {nonMspo.projectPm} ({nonMspo.projectPmItcode})
+                                </span>
+                                <button type="button" onClick={clearPm} className="text-sm text-red-500 hover:text-red-700">Clear</button>
+                              </div>
+                            ) : (
+                              <input className="input-field" placeholder="Search by itcode or name..." value={pmSearch} onChange={(e) => handlePmSearchChange(e.target.value)} onFocus={() => { if (pmSearch.trim()) setShowPmDropdown(true); }} data-testid="input-project-pm" />
+                            )}
+                            {showPmDropdown && (
+                              <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-border-light rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                                {pmLoading && <div className="px-3 py-2 text-sm text-text-secondary">Searching...</div>}
+                                {!pmLoading && pmResults.length === 0 && pmSearch.trim() && <div className="px-3 py-2 text-sm text-text-secondary">No employees found</div>}
+                                {pmResults.map((emp) => (
+                                  <button key={emp.itcode} type="button" onClick={() => selectPm(emp)} className="w-full text-left px-3 py-2 hover:bg-gray-50 transition-colors border-b border-border-light last:border-0" data-testid={`pm-option-${emp.itcode}`}>
+                                    <div className="text-sm font-medium">{emp.itcode}</div>
+                                    <div className="text-xs text-text-secondary">{emp.name}{emp.email ? ` · ${emp.email}` : ''}</div>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </ChangeHighlight>
+                      <div className="grid grid-cols-3 gap-3">
+                        <ChangeHighlight fieldName="projectStartDate" changelog={changelog}>
+                          <div>
+                            <label className="block text-xs font-medium text-text-secondary mb-1">Start Date <span className="text-red-500">*</span></label>
+                            <input type="date" className={`input-field ${validationErrors.projectStartDate ? 'border-red-400' : ''}`} value={nonMspo.projectStartDate} onChange={(e) => { setNonMspo({ ...nonMspo, projectStartDate: e.target.value }); setValidationErrors((v) => { const { projectStartDate: _, ...rest } = v; return rest; }); }} data-testid="input-project-start-date" />
+                            {validationErrors.projectStartDate && <p className="text-xs text-red-500 mt-1">{validationErrors.projectStartDate}</p>}
+                          </div>
+                        </ChangeHighlight>
+                        <ChangeHighlight fieldName="projectGoLiveDate" changelog={changelog}>
+                          <div>
+                            <label className="block text-xs font-medium text-text-secondary mb-1">Go Live Date <span className="text-red-500">*</span></label>
+                            <input type="date" className={`input-field ${validationErrors.projectGoLiveDate ? 'border-red-400' : ''}`} value={nonMspo.projectGoLiveDate} onChange={(e) => { setNonMspo({ ...nonMspo, projectGoLiveDate: e.target.value }); setValidationErrors((v) => { const { projectGoLiveDate: _, ...rest } = v; return rest; }); }} data-testid="input-project-go-live-date" />
+                            {validationErrors.projectGoLiveDate && <p className="text-xs text-red-500 mt-1">{validationErrors.projectGoLiveDate}</p>}
+                          </div>
+                        </ChangeHighlight>
+                        <ChangeHighlight fieldName="projectEndDate" changelog={changelog}>
+                          <div>
+                            <label className="block text-xs font-medium text-text-secondary mb-1">End Date</label>
+                            <input type="date" className="input-field" value={nonMspo.projectEndDate} onChange={(e) => setNonMspo({ ...nonMspo, projectEndDate: e.target.value })} data-testid="input-project-end-date" />
+                          </div>
+                        </ChangeHighlight>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Attachments */}
+              {isEditable && <FileUpload files={attachments} onChange={setAttachments} />}
+              {attachmentsData && attachmentsData.data.length > 0 && (
+                <div data-testid="attachments-card">
+                  <label className="block text-sm font-medium mb-2">Existing Attachments</label>
+                  <ul className="space-y-1">
+                    {attachmentsData.data.map((att) => (
+                      <li key={att.id} className="flex items-center justify-between text-sm p-2 bg-gray-50 rounded">
+                        <span className="font-medium truncate">{att.fileName}</span>
+                        <div className="flex items-center gap-3">
+                          <span className="text-text-secondary text-xs">
+                            {att.fileSize < 1024 ? `${att.fileSize} B` : att.fileSize < 1048576 ? `${(att.fileSize / 1024).toFixed(1)} KB` : `${(att.fileSize / 1048576).toFixed(1)} MB`}
+                          </span>
+                          <a href={`${API_BASE}/governance-requests/${requestId}/attachments/${att.id}`} className="text-egm-teal hover:underline text-xs" download>Download</a>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
+          </SectionCard>
+
+          {/* Section 3: Business & Product Information */}
+          <SectionCard title="Business & Product Information">
+            <div className="space-y-4">
+              <ChangeHighlight fieldName="productSoftwareType" changelog={changelog}>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Product/Software Type <span className="text-red-500">*</span></label>
+                  {isReadOnly ? (
+                    <div className="px-3 py-2 rounded-lg border border-border-light bg-gray-50 text-sm">
+                      {productSoftwareType === 'Other' ? productSoftwareTypeOther : productSoftwareType || '-'}
+                    </div>
+                  ) : (
+                    <>
+                      <select
+                        data-testid="select-product-software-type"
+                        className={`select-field ${validationErrors.productSoftwareType ? 'border-red-400' : ''}`}
+                        value={productSoftwareType}
+                        onChange={(e) => {
+                          setProductSoftwareType(e.target.value);
+                          if (e.target.value !== 'Other') setProductSoftwareTypeOther('');
+                          setValidationErrors(prev => { const n = {...prev}; delete n.productSoftwareType; delete n.productSoftwareTypeOther; return n; });
+                        }}
+                      >
+                        <option value="">-- Select --</option>
+                        <option value="Hardware">Hardware</option>
+                        <option value="Software-Client based">Software-Client based</option>
+                        <option value="Software-Web Based">Software-Web Based</option>
+                        <option value="Other">Other</option>
+                      </select>
+                      {validationErrors.productSoftwareType && <p className="text-red-500 text-xs mt-1">{validationErrors.productSoftwareType}</p>}
+                      {productSoftwareType === 'Other' && (
+                        <div className="mt-2">
+                          <input
+                            data-testid="input-product-software-type-other"
+                            className={`input-field ${validationErrors.productSoftwareTypeOther ? 'border-red-400' : ''}`}
+                            placeholder="Please specify..."
+                            value={productSoftwareTypeOther}
+                            onChange={(e) => {
+                              setProductSoftwareTypeOther(e.target.value);
+                              setValidationErrors(prev => { const n = {...prev}; delete n.productSoftwareTypeOther; return n; });
+                            }}
+                          />
+                          {validationErrors.productSoftwareTypeOther && <p className="text-red-500 text-xs mt-1">{validationErrors.productSoftwareTypeOther}</p>}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </ChangeHighlight>
+
+              <ChangeHighlight fieldName="productEndUser" changelog={changelog}>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Product/Project End User <span className="text-red-500">*</span></label>
+                  {isReadOnly ? (
+                    <div className="px-3 py-2 rounded-lg border border-border-light bg-gray-50 text-sm">{productEndUser.join(', ') || '-'}</div>
+                  ) : (
+                    <>
+                      <div className="space-y-2">
+                        {[
+                          { value: 'Lenovo internal employee/contractors', id: 'internal' },
+                          { value: 'Lenovo partners (such as distributors, resellers, service partner, etc.)', id: 'partners' },
+                          { value: 'External customer-facing', id: 'external' },
+                        ].map(({ value: option, id }) => (
+                          <label key={option} className="flex items-start gap-2 text-sm cursor-pointer">
+                            <input
+                              type="checkbox"
+                              className="mt-0.5"
+                              data-testid={`checkbox-end-user-${id}`}
+                              checked={productEndUser.includes(option)}
+                              onChange={(e) => {
+                                setProductEndUser(prev => e.target.checked ? [...prev, option] : prev.filter(v => v !== option));
+                                setValidationErrors(prev => { const n = {...prev}; delete n.productEndUser; return n; });
+                              }}
+                            />
+                            <span>{option}</span>
+                          </label>
+                        ))}
+                      </div>
+                      {validationErrors.productEndUser && <p className="text-red-500 text-xs mt-1">{validationErrors.productEndUser}</p>}
+                    </>
+                  )}
+                </div>
+              </ChangeHighlight>
+
+              <ChangeHighlight fieldName="userRegion" changelog={changelog}>
+                <div>
+                  <label className="block text-sm font-medium mb-1">User Region <span className="text-red-500">*</span></label>
+                  {isReadOnly ? (
+                    <div className="px-3 py-2 rounded-lg border border-border-light bg-gray-50 text-sm">{userRegion.join(', ') || '-'}</div>
+                  ) : (
+                    <>
+                      <div className="flex flex-wrap gap-4">
+                        {['PRC', 'EMEA', 'AP', 'LA', 'NA', 'META'].map((region) => (
+                          <label key={region} className="flex items-center gap-1.5 text-sm cursor-pointer">
+                            <input
+                              type="checkbox"
+                              data-testid={`checkbox-region-${region.toLowerCase()}`}
+                              checked={userRegion.includes(region)}
+                              onChange={(e) => {
+                                setUserRegion(prev => e.target.checked ? [...prev, region] : prev.filter(v => v !== region));
+                                setValidationErrors(prev => { const n = {...prev}; delete n.userRegion; return n; });
+                              }}
+                            />
+                            <span>{region}</span>
+                          </label>
+                        ))}
+                      </div>
+                      {validationErrors.userRegion && <p className="text-red-500 text-xs mt-1">{validationErrors.userRegion}</p>}
+                    </>
+                  )}
+                </div>
+              </ChangeHighlight>
+
+              <ChangeHighlight fieldName="thirdPartyVendor" changelog={changelog}>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Third-party Vendor Involvement</label>
+                  {isReadOnly ? (
+                    <div className="px-3 py-2 rounded-lg border border-border-light bg-gray-50 text-sm">{thirdPartyVendor || '-'}</div>
+                  ) : (
+                    <input
+                      data-testid="input-third-party-vendor"
+                      className="input-field"
+                      placeholder="Describe any third-party vendor involvement..."
+                      value={thirdPartyVendor}
+                      onChange={(e) => setThirdPartyVendor(e.target.value)}
+                    />
+                  )}
+                </div>
+              </ChangeHighlight>
+            </div>
+          </SectionCard>
+
+          {/* Review Progress */}
+          {progress && progress.totalDomains > 0 && (
+            <SectionCard title="Review Progress">
+              <div>
+                <div className="mb-4">
+                  <div className="flex justify-between text-sm mb-1">
+                    <span>{progress.completedDomains}/{progress.totalDomains} domains complete</span>
+                    <span>{progress.progressPercent}%</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div className="bg-egm-teal h-2 rounded-full transition-all" style={{ width: `${progress.progressPercent}%` }} />
+                  </div>
+                </div>
+                {progress.openInfoRequests > 0 && (
+                  <p className="text-sm text-status-info-requested mb-3">{progress.openInfoRequests} open info request(s)</p>
+                )}
+                <div className="space-y-2">
+                  {progress.domains.map((d) => (
+                    <div key={d.domainCode} className="flex items-center justify-between text-sm p-2 bg-bg-gray rounded">
+                      <span className="font-medium">{d.domainCode}</span>
+                      <span className={clsx('px-2 py-0.5 rounded text-xs text-white', statusColors[d.status] || 'bg-gray-400')}>
+                        {d.status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </SectionCard>
           )}
+
+          {/* Action buttons */}
+          <div className="flex justify-end gap-3 pt-2 pb-8">
+            <button type="button" className="btn-default" onClick={() => router.push('/requests')} data-testid="back-btn">Back</button>
+            {isEditable && (
+              <>
+                <button type="button" className="btn-default" onClick={() => router.back()} data-testid="cancel-btn">Cancel</button>
+                {request.status === 'Draft' && (
+                  <>
+                    <button
+                      type="button"
+                      className="btn-default"
+                      disabled={saving}
+                      onClick={() => handleSave(false)}
+                      data-testid="save-draft-btn"
+                    >
+                      {saving ? 'Saving...' : 'Save'}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-teal"
+                      disabled={submitMutation.isPending}
+                      onClick={async () => {
+                        await handleSave();
+                        submitMutation.mutate();
+                      }}
+                      data-testid="submit-request-btn"
+                    >
+                      {submitMutation.isPending ? 'Submitting...' : 'Submit Request'}
+                    </button>
+                  </>
+                )}
+                {(request.status === 'Submitted' || request.status === 'In Progress') && (
+                  <button
+                    type="button"
+                    className="btn-teal"
+                    disabled={saving}
+                    onClick={handleSave}
+                    data-testid="save-changes-btn"
+                  >
+                    {saving ? 'Saving...' : 'Save Changes'}
+                  </button>
+                )}
+              </>
+            )}
+          </div>
         </div>
       </div>
     </PageLayout>
+  );
+}
+
+function ReadOnlyField({ label, value }: { label: string; value: string | null | undefined }) {
+  return (
+    <div>
+      <div className="text-xs text-text-secondary">{label}</div>
+      <div className="text-sm text-text-primary">{value || '—'}</div>
+    </div>
   );
 }

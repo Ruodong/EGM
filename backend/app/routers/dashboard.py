@@ -37,7 +37,7 @@ async def dashboard_stats(db: AsyncSession = Depends(get_db)):
 async def home_stats(db: AsyncSession = Depends(get_db)):
     total = (await db.execute(text("SELECT COUNT(*) FROM governance_request"))).scalar() or 0
     in_review = (await db.execute(text(
-        "SELECT COUNT(*) FROM governance_request WHERE status IN ('In Review', 'Info Requested')"
+        "SELECT COUNT(*) FROM governance_request WHERE status = 'In Progress'"
     ))).scalar() or 0
     completed = (await db.execute(text(
         "SELECT COUNT(*) FROM governance_request WHERE status = 'Completed'"

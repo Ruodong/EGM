@@ -77,9 +77,9 @@ async def execute_dispatch(request_id: str, body: dict, user: AuthUser = Depends
                 "status": row["status"],
             })
 
-    # Update governance request status to "In Review"
+    # Update governance request status to "In Progress"
     await db.execute(text(
-        "UPDATE governance_request SET status = 'In Review', update_by = :user, update_at = NOW() "
+        "UPDATE governance_request SET status = 'In Progress', update_by = :user, update_at = NOW() "
         "WHERE id = :rid"
     ), {"rid": str(gr), "user": user.id})
 

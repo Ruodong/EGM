@@ -200,6 +200,7 @@ test.describe('Dispatch Rules', () => {
 
   test('exclusion section visible in settings', async ({ page }) => {
     await page.goto('/settings/dispatch-rules');
+    await page.getByTestId('tab-exclusions').click();
     await expect(page.getByTestId('exclusions-section')).toBeVisible();
     // Save button should be disabled initially (no changes)
     await expect(page.getByTestId('save-exclusions-btn')).toBeDisabled();
@@ -207,6 +208,7 @@ test.describe('Dispatch Rules', () => {
 
   test('seed exclusions are pre-checked', async ({ page }) => {
     await page.goto('/settings/dispatch-rules');
+    await page.getByTestId('tab-exclusions').click();
     await expect(page.getByTestId('exclusions-section')).toBeVisible();
     // INTERNAL_ONLY <-> EXTERNAL_USING should be checked
     const checkbox = page.getByTestId('excl-INTERNAL_ONLY-EXTERNAL_USING');
@@ -264,6 +266,63 @@ test.describe('Dispatch Rules', () => {
     await page.request.put('http://localhost:4001/api/dispatch-rules/AI', {
       headers: { 'X-Dev-Role': 'admin' },
       data: { isMandatory: false },
+    });
+  });
+
+  // ── Dependencies ──────────────────────────────────────────
+
+  test('dependencies section visible in settings', async ({ page }) => {
+    await page.goto('/settings/dispatch-rules');
+    await page.getByTestId('tab-dependencies').click();
+    await expect(page.getByTestId('dependencies-section')).toBeVisible();
+    // Save button should be disabled initially (no changes)
+    await expect(page.getByTestId('save-dependencies-btn')).toBeDisabled();
+  });
+
+  test('toggle dependency checkbox enables save button', async ({ page }) => {
+    await page.goto('/settings/dispatch-rules');
+    await page.getByTestId('tab-dependencies').click();
+    await expect(page.getByTestId('dependencies-section')).toBeVisible();
+    // Click a dependency checkbox
+    const checkbox = page.getByTestId('dep-OPEN_SOURCE-EXTERNAL');
+    await checkbox.check();
+    // Save button should now be enabled
+    await expect(page.getByTestId('save-dependencies-btn')).toBeEnabled();
+  });
+
+  test.afterAll(async () => {
+    await fetch('http://localhost:4001/api/dev/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dispatchRules: ['E2E_CHILD_1', 'E2E_MULTI_A', 'E2E_MULTI_B', 'E2E_TOGGLE', 'E2E_MAND'] }),
+    });
+  });
+
+  test('dependency blocks rule on create form', async ({ page }) => {
+    // Set up dependency: PII requires AI via API
+    // PII is a leaf level-1 rule (no children) so it has YES/NO toggle buttons
+    await page.request.put('http://localhost:4001/api/dispatch-rules/dependencies', {
+      headers: { 'X-Dev-Role': 'admin' },
+      data: {
+        dependencies: [
+          { ruleCode: 'PII', requiredRuleCode: 'AI' },
+        ],
+      },
+    });
+
+    await page.goto('/governance/create');
+    // PII YES button should be disabled (AI not selected)
+    await expect(page.getByTestId('rule-toggle-PII-yes')).toBeDisabled();
+
+    // Select AI
+    await page.getByTestId('rule-toggle-AI-yes').click();
+    // PII YES button should now be enabled
+    await expect(page.getByTestId('rule-toggle-PII-yes')).toBeEnabled();
+
+    // Cleanup
+    await page.request.put('http://localhost:4001/api/dispatch-rules/dependencies', {
+      headers: { 'X-Dev-Role': 'admin' },
+      data: { dependencies: [] },
     });
   });
 });

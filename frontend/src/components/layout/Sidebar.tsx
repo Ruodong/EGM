@@ -13,12 +13,23 @@ function NavLink({ item, depth = 0, collapsed = false }: { item: NavItem; depth?
   const { hasPermission } = useAuth();
   const [expanded, setExpanded] = useState(false);
 
+  // Check own permission
   if (item.requiredResource && !hasPermission(item.requiredResource, item.requiredScope || 'read')) {
     return null;
   }
 
+  // Filter children by permission — hide parent if no children are visible
+  const visibleChildren = item.children?.filter(
+    (child) => !child.requiredResource || hasPermission(child.requiredResource, child.requiredScope || 'read')
+  );
+  const hasChildren = visibleChildren && visibleChildren.length > 0;
+
+  // If item originally had children but none are visible after filtering, hide parent
+  if (item.children && item.children.length > 0 && !hasChildren) {
+    return null;
+  }
+
   const isActive = pathname === item.href;
-  const hasChildren = item.children && item.children.length > 0;
   const Icon = item.icon;
 
   // Collapsed mode: show only icons, no children, link everything
@@ -68,7 +79,7 @@ function NavLink({ item, depth = 0, collapsed = false }: { item: NavItem; depth?
       </div>
       {hasChildren && expanded && (
         <div>
-          {item.children!.map((child) => (
+          {visibleChildren!.map((child) => (
             <NavLink key={child.href} item={child} depth={depth + 1} />
           ))}
         </div>

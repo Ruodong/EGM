@@ -17,7 +17,17 @@ test.describe('User Authorization', () => {
     await page.goto('/settings/user-authorization');
     await page.getByTestId('assign-role-btn').click();
     await expect(page.getByTestId('employee-search')).toBeVisible();
-    await expect(page.getByTestId('role-select')).toBeVisible();
+    // Role checkboxes should be visible (multi-role selection)
+    await expect(page.getByTestId('role-checkbox-admin')).toBeVisible();
+    await expect(page.getByTestId('role-checkbox-requestor')).toBeVisible();
+  });
+
+  test('role definitions panel is visible', async ({ page }) => {
+    await page.goto('/settings/user-authorization');
+    await expect(page.getByTestId('role-definitions')).toBeVisible();
+    // Should show all 4 role definitions
+    await expect(page.getByText('Full access to all features')).toBeVisible();
+    await expect(page.getByText('Submit, track, and modify own Requests')).toBeVisible();
   });
 
   test('employee search shows results', async ({ page }) => {

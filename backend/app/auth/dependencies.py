@@ -35,10 +35,10 @@ def require_role(*roles: Role) -> Callable:
     """Return a dependency that requires the user to have one of *roles*."""
 
     async def _check(user: AuthUser = Depends(get_current_user)) -> AuthUser:
-        if user.role not in roles:
+        if not any(r in user.roles for r in roles):
             raise HTTPException(
                 status_code=403,
-                detail=f"Insufficient role. Required: {[r.value for r in roles]}, have: {user.role.value}",
+                detail=f"Insufficient role. Required: {[r.value for r in roles]}, have: {[r.value for r in user.roles]}",
             )
         return user
 
@@ -49,7 +49,7 @@ def require_permission(resource: str, scope: str = "read") -> Callable:
     """Return a dependency that requires *scope* on *resource*."""
 
     async def _check(user: AuthUser = Depends(get_current_user)) -> AuthUser:
-        if not _check_permission(user.role, resource, scope):
+        if not _check_permission(user.roles, resource, scope):
             raise HTTPException(
                 status_code=403,
                 detail=f"No permission: {resource}:{scope}",

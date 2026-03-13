@@ -20,15 +20,15 @@ ROLE_PERMISSIONS: dict[Role, dict[str, list[str]]] = {
         "governance_request": ["read", "write"],
         "intake": ["read", "write"],
         "intake_template": ["read", "write"],
-        "domain_registry": ["read"],
-        "domain_review": ["read", "write", "assign"],
+        "domain_registry": ["read", "write"],
+        "domain_review": ["read", "assign"],
         "domain_questionnaire": ["read", "write"],
-        "dispatch_rule": ["read"],
+        "dispatch_rule": ["read", "write"],
         "review_action": ["read", "write"],
         "review_comment": ["read", "write"],
         "shared_artifact": ["read", "write"],
         "info_supplement_request": ["read", "write"],
-        "user_authorization": ["read"],
+        "user_authorization": ["read", "write"],
         "progress": ["read"],
         "dashboard": ["read"],
         "report": ["read"],
@@ -38,8 +38,10 @@ ROLE_PERMISSIONS: dict[Role, dict[str, list[str]]] = {
     Role.DOMAIN_REVIEWER: {
         "governance_request": ["read"],
         "intake": ["read"],
-        "domain_review": ["read", "write"],
+        "intake_template": ["read"],
+        "domain_review": ["read", "write", "assign"],
         "domain_questionnaire": ["read", "write"],
+        "dispatch_rule": ["read"],
         "review_action": ["read", "write"],
         "review_comment": ["read", "write"],
         "shared_artifact": ["read", "write"],
@@ -52,23 +54,12 @@ ROLE_PERMISSIONS: dict[Role, dict[str, list[str]]] = {
     Role.REQUESTOR: {
         "governance_request": ["read", "write"],
         "intake": ["read", "write"],
-        "dispatch_rule": ["read"],
         "domain_review": ["read"],
         "review_action": ["read"],
         "shared_artifact": ["read"],
         "info_supplement_request": ["read", "write"],
         "progress": ["read"],
         "dashboard": ["read"],
-    },
-    Role.VIEWER: {
-        "governance_request": ["read"],
-        "intake": ["read"],
-        "domain_review": ["read"],
-        "review_action": ["read"],
-        "shared_artifact": ["read"],
-        "progress": ["read"],
-        "dashboard": ["read"],
-        "report": ["read"],
     },
 }
 
@@ -77,23 +68,44 @@ ROLE_PERMISSIONS: dict[Role, dict[str, list[str]]] = {
 # Check helpers
 # ---------------------------------------------------------------------------
 
-def check_permission(role: Role, resource: str, scope: str) -> bool:
-    """Return True if *role* is allowed *scope* on *resource*."""
-    perms = ROLE_PERMISSIONS.get(role, {})
+def check_permission(roles: Role | list[Role], resource: str, scope: str) -> bool:
+    """Return True if any role in *roles* is allowed *scope* on *resource*.
 
-    # Wildcard role (admin)
-    if "*" in perms and ("*" in perms["*"] or scope in perms["*"]):
-        return True
+    Accepts a single Role or a list of Roles for backward compatibility.
+    """
+    if isinstance(roles, Role):
+        roles = [roles]
 
-    allowed_scopes = perms.get(resource, [])
-    return "*" in allowed_scopes or scope in allowed_scopes
+    for role in roles:
+        perms = ROLE_PERMISSIONS.get(role, {})
+
+        # Wildcard role (admin)
+        if "*" in perms and ("*" in perms["*"] or scope in perms["*"]):
+            return True
+
+        allowed_scopes = perms.get(resource, [])
+        if "*" in allowed_scopes or scope in allowed_scopes:
+            return True
+
+    return False
 
 
-def build_permission_list(role: Role) -> list[str]:
-    """Return a flat list like ["governance_request:read", ...] for *role*."""
-    perms = ROLE_PERMISSIONS.get(role, {})
+def build_permission_list(roles: Role | list[Role]) -> list[str]:
+    """Return a flat deduplicated list like ["governance_request:read", ...].
+
+    Accepts a single Role or a list of Roles for backward compatibility.
+    """
+    if isinstance(roles, Role):
+        roles = [roles]
+
+    seen: set[str] = set()
     result: list[str] = []
-    for resource, scopes in perms.items():
-        for scope in scopes:
-            result.append(f"{resource}:{scope}")
+    for role in roles:
+        perms = ROLE_PERMISSIONS.get(role, {})
+        for resource, scopes in perms.items():
+            for scope in scopes:
+                key = f"{resource}:{scope}"
+                if key not in seen:
+                    seen.add(key)
+                    result.append(key)
     return result

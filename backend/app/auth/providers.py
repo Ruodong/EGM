@@ -17,25 +17,41 @@ from app.config import settings
 logger = logging.getLogger("egm.auth")
 
 
-async def resolve_role_from_db(itcode: str) -> Role | None:
-    """Look up a user's assigned role from the user_role table.
+async def resolve_roles_from_db(itcode: str) -> tuple[list[Role], list[str]]:
+    """Look up a user's assigned roles and domain codes from the DB.
 
-    Returns the Role enum if found, or None if no assignment exists.
-    This allows DB-assigned roles to override JWT/dev defaults.
+    Returns (roles, domain_codes).  Empty lists if no assignment exists.
     """
     from app.database import AsyncSessionLocal
 
+    roles: list[Role] = []
+    domain_codes: list[str] = []
     try:
         async with AsyncSessionLocal() as session:
-            row = (await session.execute(
-                text("SELECT role FROM user_role WHERE itcode = :itcode"),
+            # Fetch all roles for this user
+            rows = (await session.execute(
+                text("SELECT id, role FROM egm.user_role WHERE itcode = :itcode"),
                 {"itcode": itcode},
-            )).mappings().first()
-            if row:
-                return Role(row["role"])
+            )).mappings().all()
+            role_ids: list[str] = []
+            for row in rows:
+                try:
+                    roles.append(Role(row["role"]))
+                    if row["role"] == "domain_reviewer":
+                        role_ids.append(str(row["id"]))
+                except ValueError:
+                    pass
+
+            # Fetch domain codes for domain_reviewer role entries
+            if role_ids:
+                dc_rows = (await session.execute(
+                    text("SELECT domain_code FROM egm.user_role_domain WHERE user_role_id = ANY(:ids)"),
+                    {"ids": role_ids},
+                )).mappings().all()
+                domain_codes = [r["domain_code"] for r in dc_rows]
     except Exception as exc:
         logger.warning("DB role lookup failed for %s: %s", itcode, exc)
-    return None
+    return roles, domain_codes
 
 
 async def resolve_employee_info(itcode: str) -> tuple[str, str]:
@@ -48,7 +64,7 @@ async def resolve_employee_info(itcode: str) -> tuple[str, str]:
     try:
         async with AsyncSessionLocal() as session:
             row = (await session.execute(
-                text("SELECT name, email FROM employee_info WHERE itcode = :itcode"),
+                text("SELECT name, email FROM egm.employee_info WHERE itcode = :itcode"),
                 {"itcode": itcode},
             )).mappings().first()
             if row:
@@ -72,42 +88,51 @@ class DevAuthProvider(AuthProvider):
         Role.GOVERNANCE_LEAD: "Governance Lead",
         Role.DOMAIN_REVIEWER: "Domain Reviewer",
         Role.REQUESTOR: "Requestor",
-        Role.VIEWER: "Viewer",
     }
 
     async def authenticate(self, request: Request) -> AuthUser | None:
         # X-Dev-User: switch to a real user identity from employee_info + user_role
         dev_user = request.headers.get("X-Dev-User", "").strip()
         if dev_user:
-            role = await resolve_role_from_db(dev_user) or Role(settings.AUTH_DEV_ROLE)
+            db_roles, domain_codes = await resolve_roles_from_db(dev_user)
+            roles = db_roles if db_roles else [Role(settings.AUTH_DEV_ROLE)]
             name, email = await resolve_employee_info(dev_user)
             return AuthUser(
                 id=dev_user,
                 name=name,
                 email=email,
-                role=role,
-                permissions=build_permission_list(role),
+                roles=roles,
+                domain_codes=domain_codes,
+                permissions=build_permission_list(roles),
             )
 
         # Allow role override via header in dev mode (highest priority)
+        # Supports comma-separated roles: X-Dev-Role: requestor,domain_reviewer
         override = request.headers.get("X-Dev-Role", "").strip()
         if override:
-            try:
-                role = Role(override)
-            except ValueError:
-                role = Role(settings.AUTH_DEV_ROLE)
+            roles: list[Role] = []
+            for part in override.split(","):
+                part = part.strip()
+                try:
+                    roles.append(Role(part))
+                except ValueError:
+                    pass
+            if not roles:
+                roles = [Role(settings.AUTH_DEV_ROLE)]
+            domain_codes = []
         else:
-            # Check DB for assigned role, fall back to dev default
-            db_role = await resolve_role_from_db(settings.AUTH_DEV_USER)
-            role = db_role if db_role else Role(settings.AUTH_DEV_ROLE)
+            # Check DB for assigned roles, fall back to dev default
+            db_roles, domain_codes = await resolve_roles_from_db(settings.AUTH_DEV_USER)
+            roles = db_roles if db_roles else [Role(settings.AUTH_DEV_ROLE)]
 
-        name = self._ROLE_NAMES.get(role, settings.AUTH_DEV_USER)
+        name = self._ROLE_NAMES.get(roles[0], settings.AUTH_DEV_USER)
         return AuthUser(
             id=settings.AUTH_DEV_USER,
             name=name,
             email=f"{settings.AUTH_DEV_USER}@dev.local",
-            role=role,
-            permissions=build_permission_list(role),
+            roles=roles,
+            domain_codes=domain_codes,
+            permissions=build_permission_list(roles),
         )
 
 
@@ -137,16 +162,21 @@ class KeycloakAuthProvider(AuthProvider):
         email = payload.get("email", "")
         name = payload.get("name", username)
 
-        # DB-assigned role takes priority over Keycloak JWT role
-        db_role = await resolve_role_from_db(username)
-        role = db_role if db_role else self._resolve_role(payload)
+        # DB-assigned roles take priority over Keycloak JWT roles
+        db_roles, domain_codes = await resolve_roles_from_db(username)
+        if db_roles:
+            roles = db_roles
+        else:
+            roles = [self._resolve_role(payload)]
+            domain_codes = []
 
         return AuthUser(
             id=username,
             name=name,
             email=email,
-            role=role,
-            permissions=build_permission_list(role),
+            roles=roles,
+            domain_codes=domain_codes,
+            permissions=build_permission_list(roles),
         )
 
     async def _fetch_jwks(self) -> dict[str, Any]:

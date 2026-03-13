@@ -86,10 +86,8 @@ async def create_isr(body: dict, user: AuthUser = Depends(get_current_user), db:
         "user": user.id,
     })).mappings().first()
 
-    # Update governance request status to "Info Requested"
-    await db.execute(text(
-        "UPDATE governance_request SET status = 'Info Requested', update_at = NOW() WHERE id = :rid"
-    ), {"rid": rid})
+    # NOTE: Status is no longer changed to "Info Requested". The governance
+    # request stays in its current status (In Progress) while ISRs are open.
 
     await write_audit(db, "info_supplement_request", str(row["id"]), "created", user.id,
                       new_value={"requestId": rid, "category": body.get("category"), "description": body["description"]})
@@ -126,16 +124,8 @@ async def resolve_isr(isr_id: str, body: dict, user: AuthUser = Depends(get_curr
         "WHERE request_id = :rid AND status NOT IN ('Review Complete', 'Waived')"
     ), {"rid": str(row["request_id"])})
 
-    # Check if all ISRs are resolved; if so, return request to "In Review"
-    open_count = (await db.execute(text(
-        "SELECT COUNT(*) FROM info_supplement_request "
-        "WHERE request_id = :rid AND status NOT IN ('Resolved', 'Closed')"
-    ), {"rid": str(row["request_id"])})).scalar() or 0
-
-    if open_count == 0:
-        await db.execute(text(
-            "UPDATE governance_request SET status = 'In Review', update_at = NOW() WHERE id = :rid"
-        ), {"rid": str(row["request_id"])})
+    # NOTE: Status is no longer toggled between "Info Requested" and "In Review".
+    # The governance request stays "In Progress" throughout the ISR lifecycle.
 
     await db.commit()
     return _map(dict(row))

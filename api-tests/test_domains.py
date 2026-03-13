@@ -1,6 +1,7 @@
 """Test domain registry endpoints."""
 import uuid
 import httpx
+from conftest import _dev_delete
 
 
 def test_list_domains(client: httpx.Client):
@@ -25,6 +26,7 @@ def test_create_domain(client: httpx.Client):
     assert data["integrationType"] == "internal"
     assert data["isActive"] is True
     assert "sortOrder" not in data
+    _dev_delete({"domains": [code]})
 
 
 def test_get_domain(client: httpx.Client, create_domain):

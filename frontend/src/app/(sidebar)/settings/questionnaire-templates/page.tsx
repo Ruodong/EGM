@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { useAuth } from '@/lib/auth-context';
 import clsx from 'clsx';
 
 interface Template {
@@ -34,6 +35,8 @@ const emptyForm = {
 
 export default function QuestionnaireTemplatesPage() {
   const qc = useQueryClient();
+  const { hasPermission } = useAuth();
+  const canWrite = hasPermission('domain_questionnaire', 'write');
   const [editing, setEditing] = useState<Template | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
@@ -107,9 +110,11 @@ export default function QuestionnaireTemplatesPage() {
           <h1 className="text-xl font-bold">Questionnaire Templates</h1>
           <p className="text-sm text-text-secondary mt-1">Configure common questionnaire sections and questions</p>
         </div>
-        <button onClick={() => { resetForm(); setShowForm(true); }} className="btn-teal">
-          + Add Question
-        </button>
+        {canWrite && (
+          <button onClick={() => { resetForm(); setShowForm(true); }} className="btn-teal">
+            + Add Question
+          </button>
+        )}
       </div>
 
       {/* Form modal */}
@@ -187,7 +192,7 @@ export default function QuestionnaireTemplatesPage() {
                     <th className="text-left px-4 py-2 font-medium">Type</th>
                     <th className="text-left px-4 py-2 font-medium">Required</th>
                     <th className="text-left px-4 py-2 font-medium">Status</th>
-                    <th className="text-left px-4 py-2 font-medium">Actions</th>
+                    {canWrite && <th className="text-left px-4 py-2 font-medium">Actions</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -207,12 +212,14 @@ export default function QuestionnaireTemplatesPage() {
                             {t.isActive ? 'Active' : 'Inactive'}
                           </span>
                         </td>
-                        <td className="px-4 py-2">
-                          <button onClick={() => openEdit(t)} className="text-primary-blue hover:underline text-xs mr-2">Edit</button>
-                          {t.isActive && (
-                            <button onClick={() => deleteMutation.mutate(t.id)} className="text-red-500 hover:underline text-xs">Deactivate</button>
-                          )}
-                        </td>
+                        {canWrite && (
+                          <td className="px-4 py-2">
+                            <button onClick={() => openEdit(t)} className="text-primary-blue hover:underline text-xs mr-2">Edit</button>
+                            {t.isActive && (
+                              <button onClick={() => deleteMutation.mutate(t.id)} className="text-red-500 hover:underline text-xs">Deactivate</button>
+                            )}
+                          </td>
+                        )}
                       </tr>
                     ))}
                 </tbody>

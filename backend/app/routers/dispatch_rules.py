@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
 from app.database import get_db
-from app.auth import require_permission, require_role, Role, get_current_user, AuthUser
+from app.auth import require_permission, require_role, require_auth, Role, get_current_user, AuthUser
 
 router = APIRouter()
 
@@ -35,7 +35,7 @@ def _map_rule(r: dict) -> dict:
 
 @router.get(
     "/",
-    dependencies=[Depends(require_permission("dispatch_rule", "read"))],
+    dependencies=[Depends(require_auth)],
 )
 async def list_rules(
     includeInactive: bool = Query(False),
@@ -80,11 +80,20 @@ async def list_rules(
     for ex in excl_rows:
         exclusions_by_rule.setdefault(ex["rule_code"], []).append(ex["excluded_rule_code"])
 
+    # Fetch dependency relationships
+    dep_rows = (await db.execute(text(
+        "SELECT rule_code, required_rule_code FROM dispatch_rule_dependency"
+    ))).mappings().all()
+    dependencies_by_rule: dict[str, list[str]] = {}
+    for dep in dep_rows:
+        dependencies_by_rule.setdefault(dep["rule_code"], []).append(dep["required_rule_code"])
+
     result = []
     for r in rows:
         rule = _map_rule(dict(r))
         rule["domains"] = domains_by_rule.get(rule["id"], [])
         rule["exclusions"] = exclusions_by_rule.get(rule["ruleCode"], [])
+        rule["dependencies"] = dependencies_by_rule.get(rule["ruleCode"], [])
         result.append(rule)
 
     return {"data": result}
@@ -151,15 +160,24 @@ async def get_matrix(db: AsyncSession = Depends(get_db)):
     for ex in excl_rows:
         exclusions.setdefault(ex["rule_code"], []).append(ex["excluded_rule_code"])
 
+    # Fetch dependency relationships
+    dep_rows = (await db.execute(text(
+        "SELECT rule_code, required_rule_code FROM dispatch_rule_dependency"
+    ))).mappings().all()
+    dependencies: dict[str, list[str]] = {}
+    for dep in dep_rows:
+        dependencies.setdefault(dep["rule_code"], []).append(dep["required_rule_code"])
+
     return {
         "rules": [{"ruleCode": r["rule_code"], "ruleName": r["rule_name"], "description": r.get("description"), "parentRuleCode": r.get("parent_rule_code"), "isMandatory": r.get("is_mandatory", False)} for r in rules],
         "domains": [{"domainCode": d["domain_code"], "domainName": d["domain_name"]} for d in domains],
         "matrix": matrix,
         "exclusions": exclusions,
+        "dependencies": dependencies,
     }
 
 
-@router.put("/matrix", dependencies=[Depends(require_role(Role.ADMIN))])
+@router.put("/matrix", dependencies=[Depends(require_permission("dispatch_rule", "write"))])
 async def save_matrix(
     body: dict,
     user: AuthUser = Depends(get_current_user),
@@ -216,7 +234,7 @@ async def save_matrix(
 
 # ── Exclusions (must be before /{code} to avoid route conflict) ──
 
-@router.put("/exclusions", dependencies=[Depends(require_role(Role.ADMIN))])
+@router.put("/exclusions", dependencies=[Depends(require_permission("dispatch_rule", "write"))])
 async def save_exclusions(
     body: dict,
     user: AuthUser = Depends(get_current_user),
@@ -294,9 +312,72 @@ async def save_exclusions(
     return {"message": f"Saved {len(pairs)} exclusion pairs"}
 
 
+# ── Dependencies (must be before /{code} to avoid route conflict) ──
+
+@router.put("/dependencies", dependencies=[Depends(require_permission("dispatch_rule", "write"))])
+async def save_dependencies(
+    body: dict,
+    user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Batch save dependency relationships (full replacement).
+
+    Body: { "dependencies": [ { "ruleCode": "A", "requiredRuleCode": "B" }, ... ] }
+    Unidirectional: A depends on B does NOT mean B depends on A.
+    Multiple entries for the same ruleCode = OR semantics (any one satisfies).
+    """
+    pairs = body.get("dependencies", [])
+
+    # Validate all rule codes exist and are active
+    all_codes = set()
+    for p in pairs:
+        rc = p.get("ruleCode", "").strip()
+        req = p.get("requiredRuleCode", "").strip()
+        if not rc or not req:
+            raise HTTPException(status_code=400, detail="Each dependency needs ruleCode and requiredRuleCode")
+        if rc == req:
+            raise HTTPException(status_code=400, detail=f"A rule cannot depend on itself: {rc}")
+        all_codes.add(rc)
+        all_codes.add(req)
+
+    if all_codes:
+        existing = (await db.execute(text(
+            "SELECT rule_code FROM dispatch_rule WHERE rule_code = ANY(:codes) AND is_active = TRUE"
+        ), {"codes": list(all_codes)})).scalars().all()
+        found = set(existing)
+        missing = all_codes - found
+        if missing:
+            raise HTTPException(status_code=400, detail=f"Rules not found or inactive: {', '.join(missing)}")
+
+    # Full replacement: delete all, re-insert
+    await db.execute(text("DELETE FROM dispatch_rule_dependency"))
+
+    for p in pairs:
+        rc, req = p["ruleCode"].strip(), p["requiredRuleCode"].strip()
+        await db.execute(text("""
+            INSERT INTO dispatch_rule_dependency (rule_code, required_rule_code, create_by)
+            VALUES (:rc, :req, :user)
+            ON CONFLICT (rule_code, required_rule_code) DO NOTHING
+        """), {"rc": rc, "req": req, "user": user.id})
+
+    await db.commit()
+
+    # Audit log
+    await db.execute(text("""
+        INSERT INTO audit_log (entity_type, action, new_value, performed_by)
+        VALUES ('dispatch_rule_dependency', 'save_dependencies', CAST(:val AS jsonb), :user)
+    """), {
+        "val": json.dumps({"pairCount": len(pairs)}),
+        "user": user.id,
+    })
+    await db.commit()
+
+    return {"message": f"Saved {len(pairs)} dependency pairs"}
+
+
 # ── Reorder (must be before /{code} to avoid route conflict) ────
 
-@router.put("/reorder", dependencies=[Depends(require_role(Role.ADMIN))])
+@router.put("/reorder", dependencies=[Depends(require_permission("dispatch_rule", "write"))])
 async def reorder_rules(
     body: dict,
     user: AuthUser = Depends(get_current_user),
@@ -363,7 +444,7 @@ async def get_rule(code: str, db: AsyncSession = Depends(get_db)):
     return rule
 
 
-@router.post("/", dependencies=[Depends(require_role(Role.ADMIN))])
+@router.post("/", dependencies=[Depends(require_permission("dispatch_rule", "write"))])
 async def create_rule(
     body: dict,
     user: AuthUser = Depends(get_current_user),
@@ -427,7 +508,7 @@ async def create_rule(
     return _map_rule(dict(row))
 
 
-@router.put("/{code}", dependencies=[Depends(require_role(Role.ADMIN))])
+@router.put("/{code}", dependencies=[Depends(require_permission("dispatch_rule", "write"))])
 async def update_rule(
     code: str,
     body: dict,
@@ -505,7 +586,7 @@ async def update_rule(
     return _map_rule(dict(row))
 
 
-@router.delete("/{code}", dependencies=[Depends(require_role(Role.ADMIN))])
+@router.delete("/{code}", dependencies=[Depends(require_permission("dispatch_rule", "write"))])
 async def toggle_rule_active(
     code: str,
     user: AuthUser = Depends(get_current_user),

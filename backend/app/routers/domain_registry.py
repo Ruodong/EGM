@@ -48,7 +48,7 @@ async def get_domain(code: str, db: AsyncSession = Depends(get_db)):
     return _map(dict(row))
 
 
-@router.post("", dependencies=[Depends(require_role(Role.ADMIN))])
+@router.post("", dependencies=[Depends(require_permission("domain_registry", "write"))])
 async def create_domain(body: dict, user: AuthUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     row = (await db.execute(text("""
         INSERT INTO domain_registry (domain_code, domain_name, description, integration_type,
@@ -68,7 +68,7 @@ async def create_domain(body: dict, user: AuthUser = Depends(get_current_user), 
     return _map(dict(row))
 
 
-@router.put("/{code}", dependencies=[Depends(require_role(Role.ADMIN))])
+@router.put("/{code}", dependencies=[Depends(require_permission("domain_registry", "write"))])
 async def update_domain(code: str, body: dict, db: AsyncSession = Depends(get_db)):
     sets, params = [], {"code": code}
     for field, col in [
@@ -91,7 +91,7 @@ async def update_domain(code: str, body: dict, db: AsyncSession = Depends(get_db
     return _map(dict(row))
 
 
-@router.delete("/{code}", dependencies=[Depends(require_role(Role.ADMIN))])
+@router.delete("/{code}", dependencies=[Depends(require_permission("domain_registry", "write"))])
 async def toggle_domain_active(
     code: str,
     user: AuthUser = Depends(get_current_user),

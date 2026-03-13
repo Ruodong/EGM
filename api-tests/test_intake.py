@@ -1,5 +1,6 @@
 """Test intake endpoints — templates + responses + evaluate."""
 import httpx
+from conftest import _dev_delete
 
 
 def test_list_templates(client: httpx.Client):
@@ -40,6 +41,7 @@ def test_create_template(client: httpx.Client):
     assert data["sectionType"] == "common"
     assert data["questionText"] == "Is this an API test question?"
     assert data["isRequired"] is True
+    _dev_delete({"intakeTemplates": [data["id"]]})
 
 
 def test_update_template(client: httpx.Client, create_template):

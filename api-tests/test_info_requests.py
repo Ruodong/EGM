@@ -25,8 +25,8 @@ def test_create_isr(client: httpx.Client, dispatched_request):
     assert data["description"] == "Missing project timeline info"
 
 
-def test_isr_changes_request_status(client: httpx.Client, dispatched_request):
-    """Creating an ISR should change governance request status to Info Requested."""
+def test_isr_does_not_change_request_status(client: httpx.Client, dispatched_request):
+    """Creating an ISR should NOT change governance request status (stays In Progress)."""
     rid = dispatched_request["request"]["requestId"]
     review_id = dispatched_request["reviewId"]
 
@@ -36,10 +36,10 @@ def test_isr_changes_request_status(client: httpx.Client, dispatched_request):
         "description": "Need more data info",
     })
 
-    # Check governance request status
+    # Check governance request status remains In Progress
     resp = client.get(f"/governance-requests/{rid}")
     assert resp.status_code == 200
-    assert resp.json()["status"] == "Info Requested"
+    assert resp.json()["status"] == "In Progress"
 
 
 def test_acknowledge_isr(client: httpx.Client, dispatched_request):

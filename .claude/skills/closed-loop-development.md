@@ -2,7 +2,7 @@
 
 ## Description
 
-A unified workflow that combines **Impact Assessment** and **Closed-Loop Implementation** into a single end-to-end process. When a user requests a new feature or significant change, this skill guides Claude through risk evaluation, implementation, testing, and verification — ensuring nothing is missed and existing functionality is protected.
+A unified workflow that combines **Impact Assessment** and **Closed-Loop Implementation** into a single end-to-end process. When a user requests a any code change, this skill should be execute to guides Claude through risk evaluation, implementation, testing, and verification — ensuring nothing is missed and existing functionality is protected.
 
 ## When to Use
 

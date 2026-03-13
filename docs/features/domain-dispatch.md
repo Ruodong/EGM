@@ -177,6 +177,14 @@ When `POST /api/dispatch/execute/{request_id}` is called:
 - [x] AC-14: A domain review can be waived (status transitions to "Waived")
 - [x] AC-15: Dispatch rules DELETE endpoint performs soft-delete (sets `is_active = false`)
 - [x] AC-16: All endpoints enforce RBAC -- admin-only for write operations on rules and domains
+- [ ] AC-17: Admins can configure dependency relationships between dispatch rules via PUT `/dispatch-rules/dependencies`
+- [ ] AC-18: GET `/dispatch-rules/` and GET `/dispatch-rules/matrix` include `dependencies` field in response
+- [ ] AC-19: Dependencies use OR semantics — a rule with multiple required rules is satisfied if any one is selected
+- [ ] AC-20: Dependencies are unidirectional — A depends on B does NOT mean B depends on A
+- [ ] AC-21: Creating a governance request with unsatisfied dependencies returns HTTP 400
+- [ ] AC-22: Settings UI shows a "Rule Dependencies" section with checkbox toggles for configuring dependencies
+- [ ] AC-23: Create form disables rules whose dependencies are not satisfied, showing "Requires X or Y" message
+- [ ] AC-24: Deselecting a rule in the create form cascades to remove rules whose dependencies are no longer satisfied
 
 ## Test Coverage
 

@@ -8,9 +8,40 @@ from sqlalchemy import text
 from app.database import get_db
 from app.utils.pagination import PaginationParams, paginated_response
 from app.utils.audit import write_audit
-from app.auth import require_permission, get_current_user, AuthUser
+from app.auth import require_permission, get_current_user, AuthUser, Role
 
 router = APIRouter()
+
+
+async def _check_domain_write_access(user: AuthUser, review_row: dict, allow_governance_lead: bool = True):
+    """Check that the user has write access to this domain review.
+
+    - Admin: always allowed
+    - Governance Leader: allowed only if allow_governance_lead=True (e.g. assign/waive but NOT complete)
+    - Domain Reviewer: allowed only if review's domain_code is in user.domain_codes
+    - Requestor: never allowed (caught by require_permission already)
+    """
+    if Role.ADMIN in user.roles:
+        return  # Admin has full access
+
+    if Role.GOVERNANCE_LEAD in user.roles:
+        if allow_governance_lead:
+            return  # Gov lead can assign/waive
+        raise HTTPException(
+            status_code=403,
+            detail="Governance leaders cannot modify review outcomes"
+        )
+
+    if Role.DOMAIN_REVIEWER in user.roles:
+        if review_row["domain_code"] in user.domain_codes:
+            return  # Reviewer has this domain assigned
+        raise HTTPException(
+            status_code=403,
+            detail=f"Access denied: you are not assigned to domain '{review_row['domain_code']}'"
+        )
+
+    # Shouldn't reach here if require_permission is set, but just in case
+    raise HTTPException(status_code=403, detail="Insufficient permissions")
 
 
 def _map(r: dict) -> dict:
@@ -92,8 +123,16 @@ async def get_review(review_id: str, db: AsyncSession = Depends(get_db)):
     return _map(dict(row))
 
 
-@router.put("/{review_id}/assign", dependencies=[Depends(require_permission("domain_review", "write"))])
+@router.put("/{review_id}/assign", dependencies=[Depends(require_permission("domain_review", "assign"))])
 async def assign_reviewer(review_id: str, body: dict = {}, user: AuthUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    # Fetch review first for domain-scoped access check
+    existing = (await db.execute(text(
+        "SELECT * FROM domain_review WHERE id = :id"
+    ), {"id": review_id})).mappings().first()
+    if not existing:
+        raise HTTPException(status_code=404, detail="Not found")
+    await _check_domain_write_access(user, dict(existing), allow_governance_lead=True)
+
     reviewer = body.get("reviewer", user.id)
     reviewer_name = body.get("reviewerName", user.name)
     row = (await db.execute(text(
@@ -106,20 +145,24 @@ async def assign_reviewer(review_id: str, body: dict = {}, user: AuthUser = Depe
         "name": reviewer_name,
         "user": user.id,
     })).mappings().first()
-    if not row:
-        raise HTTPException(status_code=404, detail="Not found")
     await db.commit()
     return _map(dict(row))
 
 
 @router.put("/{review_id}/start", dependencies=[Depends(require_permission("domain_review", "write"))])
 async def start_review(review_id: str, user: AuthUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    # Fetch review first for domain-scoped access check
+    existing = (await db.execute(text(
+        "SELECT * FROM domain_review WHERE id = :id"
+    ), {"id": review_id})).mappings().first()
+    if not existing:
+        raise HTTPException(status_code=404, detail="Not found")
+    await _check_domain_write_access(user, dict(existing), allow_governance_lead=False)
+
     row = (await db.execute(text(
         "UPDATE domain_review SET status = 'In Progress', started_at = NOW(), "
         "update_by = :user, update_at = NOW() WHERE id = :id RETURNING *"
     ), {"id": review_id, "user": user.id})).mappings().first()
-    if not row:
-        raise HTTPException(status_code=404, detail="Not found")
     await db.commit()
     return _map(dict(row))
 
@@ -130,6 +173,15 @@ async def complete_review(review_id: str, body: dict, user: AuthUser = Depends(g
     if outcome not in ("Approved", "Approved with Conditions", "Rejected", "Deferred"):
         raise HTTPException(status_code=400, detail="Invalid outcome")
 
+    # Fetch review first for domain-scoped access check
+    # Governance Leader CANNOT complete reviews (allow_governance_lead=False)
+    existing = (await db.execute(text(
+        "SELECT * FROM domain_review WHERE id = :id"
+    ), {"id": review_id})).mappings().first()
+    if not existing:
+        raise HTTPException(status_code=404, detail="Not found")
+    await _check_domain_write_access(user, dict(existing), allow_governance_lead=False)
+
     row = (await db.execute(text(
         "UPDATE domain_review SET status = 'Review Complete', outcome = :outcome, "
         "outcome_notes = :notes, completed_at = NOW(), update_by = :user, update_at = NOW() "
@@ -138,8 +190,6 @@ async def complete_review(review_id: str, body: dict, user: AuthUser = Depends(g
         "id": review_id, "outcome": outcome,
         "notes": body.get("outcomeNotes"), "user": user.id,
     })).mappings().first()
-    if not row:
-        raise HTTPException(status_code=404, detail="Not found")
     await write_audit(db, "domain_review", review_id, "completed", user.id,
                       new_value={"outcome": outcome, "domainCode": row["domain_code"]})
     await db.commit()
@@ -148,11 +198,17 @@ async def complete_review(review_id: str, body: dict, user: AuthUser = Depends(g
 
 @router.put("/{review_id}/waive", dependencies=[Depends(require_permission("domain_review", "write"))])
 async def waive_review(review_id: str, user: AuthUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    # Fetch review first for domain-scoped access check
+    existing = (await db.execute(text(
+        "SELECT * FROM domain_review WHERE id = :id"
+    ), {"id": review_id})).mappings().first()
+    if not existing:
+        raise HTTPException(status_code=404, detail="Not found")
+    await _check_domain_write_access(user, dict(existing), allow_governance_lead=True)
+
     row = (await db.execute(text(
         "UPDATE domain_review SET status = 'Waived', update_by = :user, update_at = NOW() "
         "WHERE id = :id RETURNING *"
     ), {"id": review_id, "user": user.id})).mappings().first()
-    if not row:
-        raise HTTPException(status_code=404, detail="Not found")
     await db.commit()
     return _map(dict(row))

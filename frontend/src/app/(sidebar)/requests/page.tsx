@@ -12,7 +12,6 @@ import FilterBar, { useFilterState, type FilterBarConfig } from '@/components/sh
 interface GovRequest {
   id: string;
   requestId: string;
-  egqId: string | null;
   title: string;
   govProjectType: string | null;
   projectName: string | null;
@@ -33,7 +32,7 @@ interface PaginatedResponse {
 
 const FILTER_CONFIG: FilterBarConfig = {
   searchPlaceholder: 'Search by Request ID or Title...',
-  statusOptions: ['', 'Draft', 'Submitted', 'In Review', 'Info Requested', 'Completed'],
+  statusOptions: ['', 'Draft', 'Submitted', 'In Progress', 'Completed'],
 };
 
 export default function RequestsPage() {
@@ -81,10 +80,10 @@ export default function RequestsPage() {
     },
     {
       key: 'title',
-      label: 'EGQ ID',
+      label: 'Title',
       sortable: true,
-      render: (r) => <>{r.egqId || r.title || '-'}</>,
-      exportValue: (r) => r.egqId || r.title || '',
+      render: (r) => <>{r.title || '-'}</>,
+      exportValue: (r) => r.title || '',
     },
     {
       key: 'status',

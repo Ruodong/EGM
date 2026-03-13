@@ -1,4 +1,4 @@
-"""User Authorization router — search employees and manage role assignments."""
+"""User Authorization router — search employees and manage multi-role assignments."""
 from __future__ import annotations
 
 import json
@@ -31,23 +31,6 @@ def _map_employee(r: dict) -> dict:
     }
 
 
-def _map_role(r: dict) -> dict:
-    return {
-        "id": str(r["id"]),
-        "itcode": r["itcode"],
-        "role": r["role"],
-        "name": r.get("name"),
-        "email": r.get("email"),
-        "tier1Org": r.get("tier_1_org"),
-        "tier2Org": r.get("tier_2_org"),
-        "assignedBy": r.get("assigned_by"),
-        "assignedByName": r.get("assigned_by_name"),
-        "assignedAt": r["assigned_at"].isoformat() if r.get("assigned_at") else None,
-        "updateBy": r.get("update_by"),
-        "updateAt": r["update_at"].isoformat() if r.get("update_at") else None,
-    }
-
-
 # ── Employee search ──────────────────────────────────────────────
 
 @router.get(
@@ -74,7 +57,7 @@ async def search_employees(
     return {"data": [_map_employee(dict(r)) for r in rows]}
 
 
-# ── Role CRUD ────────────────────────────────────────────────────
+# ── Role CRUD (multi-role) ───────────────────────────────────────
 
 @router.get(
     "/roles",
@@ -86,7 +69,7 @@ async def list_roles(
     pageSize: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
 ):
-    """List all user role assignments with employee info."""
+    """List all user role assignments grouped by user, with domain codes."""
     offset = (page - 1) * pageSize
 
     where = ""
@@ -95,28 +78,84 @@ async def list_roles(
         where = "WHERE (e.itcode ILIKE :q OR e.name ILIKE :q)"
         params["q"] = f"%{search.strip()}%"
 
-    # Count
+    # Count unique users
     count_row = (await db.execute(text(f"""
-        SELECT COUNT(*) AS cnt
+        SELECT COUNT(DISTINCT ur.itcode) AS cnt
         FROM user_role ur JOIN employee_info e ON ur.itcode = e.itcode
         {where}
     """), params)).mappings().first()
     total = count_row["cnt"] if count_row else 0
 
-    # Data
-    rows = (await db.execute(text(f"""
-        SELECT ur.*, e.name, e.email, e.tier_1_org, e.tier_2_org,
-               ab.name AS assigned_by_name
+    # Get distinct users (paginated)
+    user_rows = (await db.execute(text(f"""
+        SELECT DISTINCT ur.itcode, e.name, e.email, e.tier_1_org, e.tier_2_org,
+               MIN(ur.assigned_at) AS first_assigned_at
         FROM user_role ur
         JOIN employee_info e ON ur.itcode = e.itcode
-        LEFT JOIN employee_info ab ON ur.assigned_by = ab.itcode
         {where}
-        ORDER BY ur.assigned_at DESC
+        GROUP BY ur.itcode, e.name, e.email, e.tier_1_org, e.tier_2_org
+        ORDER BY first_assigned_at DESC
         LIMIT :limit OFFSET :offset
     """), params)).mappings().all()
 
+    if not user_rows:
+        return {"data": [], "total": total, "page": page, "pageSize": pageSize}
+
+    # Get all roles for these users
+    itcodes = [r["itcode"] for r in user_rows]
+    role_rows = (await db.execute(text("""
+        SELECT ur.id, ur.itcode, ur.role, ur.assigned_by, ur.assigned_at,
+               ur.update_by, ur.update_at,
+               ab.name AS assigned_by_name
+        FROM user_role ur
+        LEFT JOIN employee_info ab ON ur.assigned_by = ab.itcode
+        WHERE ur.itcode = ANY(:itcodes)
+        ORDER BY ur.assigned_at
+    """), {"itcodes": itcodes})).mappings().all()
+
+    # Get domain codes for domain_reviewer roles
+    dr_role_ids = [str(r["id"]) for r in role_rows if r["role"] == "domain_reviewer"]
+    domain_map: dict[str, list[str]] = {}  # role_id → [domain_codes]
+    if dr_role_ids:
+        dc_rows = (await db.execute(text("""
+            SELECT user_role_id, domain_code
+            FROM user_role_domain
+            WHERE user_role_id = ANY(:ids)
+        """), {"ids": dr_role_ids})).mappings().all()
+        for dc in dc_rows:
+            rid = str(dc["user_role_id"])
+            domain_map.setdefault(rid, []).append(dc["domain_code"])
+
+    # Group roles by itcode
+    roles_by_user: dict[str, list[dict]] = {}
+    for r in role_rows:
+        rid = str(r["id"])
+        role_item = {
+            "id": rid,
+            "role": r["role"],
+            "assignedBy": r["assigned_by"],
+            "assignedByName": r.get("assigned_by_name"),
+            "assignedAt": r["assigned_at"].isoformat() if r.get("assigned_at") else None,
+            "updateBy": r.get("update_by"),
+            "updateAt": r["update_at"].isoformat() if r.get("update_at") else None,
+        }
+        if r["role"] == "domain_reviewer":
+            role_item["domainCodes"] = domain_map.get(rid, [])
+        roles_by_user.setdefault(r["itcode"], []).append(role_item)
+
+    data = []
+    for u in user_rows:
+        data.append({
+            "itcode": u["itcode"],
+            "name": u.get("name"),
+            "email": u.get("email"),
+            "tier1Org": u.get("tier_1_org"),
+            "tier2Org": u.get("tier_2_org"),
+            "roles": roles_by_user.get(u["itcode"], []),
+        })
+
     return {
-        "data": [_map_role(dict(r)) for r in rows],
+        "data": data,
         "total": total,
         "page": page,
         "pageSize": pageSize,
@@ -127,30 +166,73 @@ async def list_roles(
     "/roles/{itcode}",
     dependencies=[Depends(require_permission("user_authorization", "read"))],
 )
-async def get_role(itcode: str, db: AsyncSession = Depends(get_db)):
-    """Get a single user role assignment."""
-    row = (await db.execute(text("""
-        SELECT ur.*, e.name, e.email, e.tier_1_org, e.tier_2_org,
+async def get_user_roles(itcode: str, db: AsyncSession = Depends(get_db)):
+    """Get all role assignments for a single user."""
+    # Employee info
+    emp = (await db.execute(text("""
+        SELECT * FROM employee_info WHERE itcode = :itcode
+    """), {"itcode": itcode})).mappings().first()
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    # Roles
+    role_rows = (await db.execute(text("""
+        SELECT ur.id, ur.role, ur.assigned_by, ur.assigned_at,
+               ur.update_by, ur.update_at,
                ab.name AS assigned_by_name
         FROM user_role ur
-        JOIN employee_info e ON ur.itcode = e.itcode
         LEFT JOIN employee_info ab ON ur.assigned_by = ab.itcode
         WHERE ur.itcode = :itcode
-    """), {"itcode": itcode})).mappings().first()
-    if not row:
-        raise HTTPException(status_code=404, detail="Role assignment not found")
-    return _map_role(dict(row))
+        ORDER BY ur.assigned_at
+    """), {"itcode": itcode})).mappings().all()
+
+    # Domain codes
+    dr_ids = [str(r["id"]) for r in role_rows if r["role"] == "domain_reviewer"]
+    domain_map: dict[str, list[str]] = {}
+    if dr_ids:
+        dc_rows = (await db.execute(text("""
+            SELECT user_role_id, domain_code FROM user_role_domain
+            WHERE user_role_id = ANY(:ids)
+        """), {"ids": dr_ids})).mappings().all()
+        for dc in dc_rows:
+            domain_map.setdefault(str(dc["user_role_id"]), []).append(dc["domain_code"])
+
+    roles = []
+    for r in role_rows:
+        rid = str(r["id"])
+        item = {
+            "id": rid,
+            "role": r["role"],
+            "assignedBy": r["assigned_by"],
+            "assignedByName": r.get("assigned_by_name"),
+            "assignedAt": r["assigned_at"].isoformat() if r.get("assigned_at") else None,
+            "updateBy": r.get("update_by"),
+            "updateAt": r["update_at"].isoformat() if r.get("update_at") else None,
+        }
+        if r["role"] == "domain_reviewer":
+            item["domainCodes"] = domain_map.get(rid, [])
+        roles.append(item)
+
+    return {
+        "itcode": itcode,
+        "name": emp.get("name"),
+        "email": emp.get("email"),
+        "tier1Org": emp.get("tier_1_org"),
+        "tier2Org": emp.get("tier_2_org"),
+        "roles": roles,
+    }
 
 
-@router.post("/roles", dependencies=[Depends(require_role(Role.ADMIN))])
+@router.post("/roles", dependencies=[Depends(require_permission("user_authorization", "write"))])
 async def assign_role(
     body: dict,
     user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Assign or update a role for a user. Upsert on itcode."""
+    """Add a single role to a user. For domain_reviewer, domainCodes is required."""
     itcode = body.get("itcode", "").strip()
     role = body.get("role", "").strip()
+    domain_codes = body.get("domainCodes", [])
 
     if not itcode or not role:
         raise HTTPException(status_code=400, detail="itcode and role are required")
@@ -160,6 +242,14 @@ async def assign_role(
     if role not in valid_roles:
         raise HTTPException(status_code=400, detail=f"Invalid role. Must be one of: {', '.join(valid_roles)}")
 
+    # domain_reviewer requires domainCodes
+    if role == "domain_reviewer" and not domain_codes:
+        raise HTTPException(status_code=400, detail="domainCodes is required for domain_reviewer role")
+
+    # domainCodes only allowed for domain_reviewer
+    if role != "domain_reviewer" and domain_codes:
+        raise HTTPException(status_code=400, detail="domainCodes is only allowed for domain_reviewer role")
+
     # Verify employee exists
     emp = (await db.execute(text(
         "SELECT itcode FROM employee_info WHERE itcode = :itcode"
@@ -167,14 +257,17 @@ async def assign_role(
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found in employee_info")
 
-    # Upsert
+    # Check if this exact (itcode, role) already exists
+    existing = (await db.execute(text(
+        "SELECT id FROM user_role WHERE itcode = :itcode AND role = :role"
+    ), {"itcode": itcode, "role": role})).mappings().first()
+    if existing:
+        raise HTTPException(status_code=409, detail=f"User {itcode} already has role {role}")
+
+    # Insert role
     row = (await db.execute(text("""
         INSERT INTO user_role (itcode, role, assigned_by, assigned_at, update_by, update_at)
         VALUES (:itcode, :role, :assigned_by, NOW(), :assigned_by, NOW())
-        ON CONFLICT (itcode) DO UPDATE SET
-            role = EXCLUDED.role,
-            update_by = EXCLUDED.update_by,
-            update_at = NOW()
         RETURNING *
     """), {
         "itcode": itcode,
@@ -183,101 +276,118 @@ async def assign_role(
     })).mappings().first()
     await db.commit()
 
+    role_id = row["id"]
+
+    # Insert domain codes for domain_reviewer
+    if role == "domain_reviewer" and domain_codes:
+        for dc in domain_codes:
+            await db.execute(text("""
+                INSERT INTO user_role_domain (user_role_id, domain_code, assigned_by)
+                VALUES (:role_id, :dc, :user)
+                ON CONFLICT (user_role_id, domain_code) DO NOTHING
+            """), {"role_id": role_id, "dc": dc, "user": user.id})
+        await db.commit()
+
     # Audit log
     await db.execute(text("""
         INSERT INTO audit_log (entity_type, entity_id, action, new_value, performed_by)
         VALUES ('user_role', :id, 'assign_role', CAST(:new_val AS jsonb), :user)
     """), {
-        "id": row["id"],
-        "new_val": json.dumps({"itcode": itcode, "role": role}),
+        "id": role_id,
+        "new_val": json.dumps({"itcode": itcode, "role": role, "domainCodes": domain_codes}),
         "user": user.id,
     })
     await db.commit()
 
-    # Return with employee info
-    full_row = (await db.execute(text("""
-        SELECT ur.*, e.name, e.email, e.tier_1_org, e.tier_2_org,
-               ab.name AS assigned_by_name
-        FROM user_role ur
-        JOIN employee_info e ON ur.itcode = e.itcode
-        LEFT JOIN employee_info ab ON ur.assigned_by = ab.itcode
-        WHERE ur.itcode = :itcode
-    """), {"itcode": itcode})).mappings().first()
-
-    return _map_role(dict(full_row))
+    return {
+        "id": str(role_id),
+        "itcode": itcode,
+        "role": role,
+        "domainCodes": domain_codes if role == "domain_reviewer" else None,
+        "message": f"Role {role} assigned to {itcode}",
+    }
 
 
-@router.put("/roles/{itcode}", dependencies=[Depends(require_role(Role.ADMIN))])
-async def update_role(
+@router.put("/roles/{itcode}/{role}", dependencies=[Depends(require_permission("user_authorization", "write"))])
+async def update_role_domains(
     itcode: str,
+    role: str,
     body: dict,
     user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Update an existing role assignment."""
-    role = body.get("role", "").strip()
-    if not role:
-        raise HTTPException(status_code=400, detail="role is required")
+    """Update domain codes for a domain_reviewer role assignment."""
+    if role != "domain_reviewer":
+        raise HTTPException(status_code=400, detail="Only domain_reviewer roles can update domain codes")
 
-    valid_roles = [r.value for r in Role]
-    if role not in valid_roles:
-        raise HTTPException(status_code=400, detail=f"Invalid role. Must be one of: {', '.join(valid_roles)}")
+    domain_codes = body.get("domainCodes", [])
+    if not domain_codes:
+        raise HTTPException(status_code=400, detail="domainCodes is required")
 
-    # Get current
+    # Get current role entry
     current = (await db.execute(text(
-        "SELECT * FROM user_role WHERE itcode = :itcode"
-    ), {"itcode": itcode})).mappings().first()
+        "SELECT id FROM user_role WHERE itcode = :itcode AND role = :role"
+    ), {"itcode": itcode, "role": role})).mappings().first()
     if not current:
         raise HTTPException(status_code=404, detail="Role assignment not found")
 
-    old_role = current["role"]
+    role_id = current["id"]
 
-    row = (await db.execute(text("""
-        UPDATE user_role SET role = :role, update_by = :user, update_at = NOW()
-        WHERE itcode = :itcode RETURNING *
-    """), {"itcode": itcode, "role": role, "user": user.id})).mappings().first()
+    # Replace domain codes
+    await db.execute(text(
+        "DELETE FROM user_role_domain WHERE user_role_id = :role_id"
+    ), {"role_id": role_id})
+
+    for dc in domain_codes:
+        await db.execute(text("""
+            INSERT INTO user_role_domain (user_role_id, domain_code, assigned_by)
+            VALUES (:role_id, :dc, :user)
+            ON CONFLICT (user_role_id, domain_code) DO NOTHING
+        """), {"role_id": role_id, "dc": dc, "user": user.id})
+
+    await db.execute(text("""
+        UPDATE user_role SET update_by = :user, update_at = NOW()
+        WHERE id = :role_id
+    """), {"role_id": role_id, "user": user.id})
     await db.commit()
 
     # Audit log
     await db.execute(text("""
-        INSERT INTO audit_log (entity_type, entity_id, action, old_value, new_value, performed_by)
-        VALUES ('user_role', :id, 'update_role', CAST(:old_val AS jsonb), CAST(:new_val AS jsonb), :user)
+        INSERT INTO audit_log (entity_type, entity_id, action, new_value, performed_by)
+        VALUES ('user_role', :id, 'update_role_domains', CAST(:val AS jsonb), :user)
     """), {
-        "id": row["id"],
-        "old_val": json.dumps({"itcode": itcode, "role": old_role}),
-        "new_val": json.dumps({"itcode": itcode, "role": role}),
+        "id": role_id,
+        "val": json.dumps({"itcode": itcode, "role": role, "domainCodes": domain_codes}),
         "user": user.id,
     })
     await db.commit()
 
-    full_row = (await db.execute(text("""
-        SELECT ur.*, e.name, e.email, e.tier_1_org, e.tier_2_org,
-               ab.name AS assigned_by_name
-        FROM user_role ur
-        JOIN employee_info e ON ur.itcode = e.itcode
-        LEFT JOIN employee_info ab ON ur.assigned_by = ab.itcode
-        WHERE ur.itcode = :itcode
-    """), {"itcode": itcode})).mappings().first()
-
-    return _map_role(dict(full_row))
+    return {
+        "id": str(role_id),
+        "itcode": itcode,
+        "role": role,
+        "domainCodes": domain_codes,
+        "message": f"Domain codes updated for {itcode} domain_reviewer",
+    }
 
 
-@router.delete("/roles/{itcode}", dependencies=[Depends(require_role(Role.ADMIN))])
-async def delete_role(
+@router.delete("/roles/{itcode}/{role}", dependencies=[Depends(require_permission("user_authorization", "write"))])
+async def delete_single_role(
     itcode: str,
+    role: str,
     user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Remove a user's role assignment (reverts to default viewer)."""
+    """Remove a specific role from a user. CASCADE deletes user_role_domain."""
     current = (await db.execute(text(
-        "SELECT * FROM user_role WHERE itcode = :itcode"
-    ), {"itcode": itcode})).mappings().first()
+        "SELECT * FROM user_role WHERE itcode = :itcode AND role = :role"
+    ), {"itcode": itcode, "role": role})).mappings().first()
     if not current:
         raise HTTPException(status_code=404, detail="Role assignment not found")
 
     await db.execute(text(
-        "DELETE FROM user_role WHERE itcode = :itcode"
-    ), {"itcode": itcode})
+        "DELETE FROM user_role WHERE itcode = :itcode AND role = :role"
+    ), {"itcode": itcode, "role": role})
     await db.commit()
 
     # Audit log
@@ -286,9 +396,41 @@ async def delete_role(
         VALUES ('user_role', :id, 'delete_role', CAST(:old_val AS jsonb), :user)
     """), {
         "id": current["id"],
-        "old_val": json.dumps({"itcode": itcode, "role": current["role"]}),
+        "old_val": json.dumps({"itcode": itcode, "role": role}),
         "user": user.id,
     })
     await db.commit()
 
-    return {"message": f"Role removed for {itcode}"}
+    return {"message": f"Role {role} removed from {itcode}"}
+
+
+@router.delete("/roles/{itcode}", dependencies=[Depends(require_permission("user_authorization", "write"))])
+async def delete_all_roles(
+    itcode: str,
+    user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Remove ALL role assignments for a user (reverts to default requestor)."""
+    rows = (await db.execute(text(
+        "SELECT * FROM user_role WHERE itcode = :itcode"
+    ), {"itcode": itcode})).mappings().all()
+    if not rows:
+        raise HTTPException(status_code=404, detail="No role assignments found for user")
+
+    await db.execute(text(
+        "DELETE FROM user_role WHERE itcode = :itcode"
+    ), {"itcode": itcode})
+    await db.commit()
+
+    # Audit log
+    old_roles = [r["role"] for r in rows]
+    await db.execute(text("""
+        INSERT INTO audit_log (entity_type, action, old_value, performed_by)
+        VALUES ('user_role', 'delete_all_roles', CAST(:old_val AS jsonb), :user)
+    """), {
+        "old_val": json.dumps({"itcode": itcode, "roles": old_roles}),
+        "user": user.id,
+    })
+    await db.commit()
+
+    return {"message": f"All roles removed for {itcode}"}

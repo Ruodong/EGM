@@ -17,7 +17,9 @@ async def auth_me(user: AuthUser = Depends(get_current_user)):
         "id": user.id,
         "name": user.name,
         "email": user.email,
-        "role": user.role.value,
+        "role": user.role.value,  # backward compat — highest priority role
+        "roles": [r.value for r in user.roles],
+        "domainCodes": user.domain_codes,
         "permissions": user.permissions,
     }
 
@@ -25,7 +27,9 @@ async def auth_me(user: AuthUser = Depends(get_current_user)):
 @router.get("/permissions")
 async def auth_permissions(user: AuthUser = Depends(get_current_user)):
     return {
-        "role": user.role.value,
+        "role": user.role.value,  # backward compat
+        "roles": [r.value for r in user.roles],
+        "domainCodes": user.domain_codes,
         "permissions": user.permissions,
     }
 

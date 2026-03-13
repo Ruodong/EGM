@@ -62,9 +62,110 @@ async def list_dev_users(db: AsyncSession = Depends(get_db)):
     return {"data": [dict(r) for r in rows]}
 
 
+@router.post("/delete")
+async def delete_specific_resources(body: dict, db: AsyncSession = Depends(get_db)):
+    """Delete specific test-created resources by ID. FK-safe cascading deletes.
+
+    Body fields (all optional arrays):
+      governanceRequests: list of request_id strings (e.g. "GR-000001")
+      dispatchRules: list of rule_code strings
+      domains: list of domain_code strings
+      intakeTemplates: list of template UUID strings
+      userRoles: list of itcode strings
+    """
+    deleted = {}
+
+    # 1. Governance requests (cascade handles most children)
+    gr_ids = body.get("governanceRequests") or []
+    if gr_ids:
+        # Look up UUIDs from request_id strings
+        rows = (await db.execute(text(
+            "SELECT id FROM governance_request WHERE request_id = ANY(:ids)"
+        ), {"ids": gr_ids})).scalars().all()
+        uuids = list(rows)  # UUID objects
+        if uuids:
+            uuid_strs = [str(u) for u in uuids]
+            # Delete audit_log entries (entity_id is VARCHAR, no FK cascade)
+            r = await db.execute(text(
+                "DELETE FROM audit_log WHERE entity_id = ANY(:ids)"
+            ), {"ids": uuid_strs})
+            deleted["audit_log"] = r.rowcount
+            # Delete governance_request_rule (rule_code FK has no CASCADE)
+            r = await db.execute(text(
+                "DELETE FROM governance_request_rule WHERE request_id IN "
+                "(SELECT id FROM governance_request WHERE request_id = ANY(:ids))"
+            ), {"ids": gr_ids})
+            deleted["governance_request_rule"] = r.rowcount
+            # Delete governance_request (cascades to attachments, domain_review, intake_response, etc.)
+            r = await db.execute(text(
+                "DELETE FROM governance_request WHERE request_id = ANY(:ids)"
+            ), {"ids": gr_ids})
+            deleted["governance_request"] = r.rowcount
+
+    # 2. Intake templates
+    tmpl_ids = body.get("intakeTemplates") or []
+    if tmpl_ids:
+        # Clean up intake_response / intake_change_log referencing these templates (no CASCADE)
+        await db.execute(text(
+            "DELETE FROM intake_response WHERE template_id IN "
+            "(SELECT id FROM intake_template WHERE id::text = ANY(:ids))"
+        ), {"ids": tmpl_ids})
+        await db.execute(text(
+            "DELETE FROM intake_change_log WHERE template_id IN "
+            "(SELECT id FROM intake_template WHERE id::text = ANY(:ids))"
+        ), {"ids": tmpl_ids})
+        r = await db.execute(text(
+            "DELETE FROM intake_template WHERE id::text = ANY(:ids)"
+        ), {"ids": tmpl_ids})
+        deleted["intake_template"] = r.rowcount
+
+    # 3. Dispatch rules (cascade handles domain, exclusion, dependency rows)
+    rule_codes = body.get("dispatchRules") or []
+    if rule_codes:
+        # Clean up governance_request_rule references (no CASCADE on rule_code FK)
+        await db.execute(text(
+            "DELETE FROM governance_request_rule WHERE rule_code = ANY(:codes)"
+        ), {"codes": rule_codes})
+        # Delete children first (rules whose parent_rule_code is in the list)
+        await db.execute(text(
+            "DELETE FROM dispatch_rule WHERE parent_rule_code = ANY(:codes)"
+        ), {"codes": rule_codes})
+        # Delete the rules themselves
+        r = await db.execute(text(
+            "DELETE FROM dispatch_rule WHERE rule_code = ANY(:codes)"
+        ), {"codes": rule_codes})
+        deleted["dispatch_rule"] = r.rowcount
+
+    # 4. Domains
+    domain_codes = body.get("domains") or []
+    if domain_codes:
+        # Clean up dispatch_rule_domain references (domain_code is VARCHAR, not FK)
+        await db.execute(text(
+            "DELETE FROM dispatch_rule_domain WHERE domain_code = ANY(:codes)"
+        ), {"codes": domain_codes})
+        r = await db.execute(text(
+            "DELETE FROM domain_registry WHERE domain_code = ANY(:codes)"
+        ), {"codes": domain_codes})
+        deleted["domain_registry"] = r.rowcount
+
+    # 5. User roles
+    itcodes = body.get("userRoles") or []
+    if itcodes:
+        r = await db.execute(text(
+            "DELETE FROM user_role WHERE itcode = ANY(:codes)"
+        ), {"codes": itcodes})
+        deleted["user_role"] = r.rowcount
+
+    await db.commit()
+    return {"deleted": deleted}
+
+
 @router.post("/cleanup")
 async def cleanup_test_data(db: AsyncSession = Depends(get_db)):
     """Delete all transactional test data and test-generated config rows.
+
+    NOTE: Deprecated for automated tests — use POST /dev/delete with specific IDs instead.
+    Kept for manual developer cleanup during local development.
 
     Preserves seed data (domains EA/BIA/RAI/DATA_PRIVACY, rules INTERNAL/EXTERNAL/AI/PII/OPEN_SOURCE,
     seed intake templates, etc.). Safe to call repeatedly — idempotent.
@@ -86,9 +187,6 @@ async def cleanup_test_data(db: AsyncSession = Depends(get_db)):
         f"UPDATE dispatch_rule SET parent_rule_code = NULL "
         f"WHERE rule_code IN {_SEED_LEVEL1_RULES} AND parent_rule_code IS NOT NULL"
     ))
-
-    # 4. Reset the GR sequence so test IDs start fresh
-    await db.execute(text("SELECT setval('gr_seq', 1, false)"))
 
     await db.commit()
     return {"cleaned": True, "deleted": deleted}

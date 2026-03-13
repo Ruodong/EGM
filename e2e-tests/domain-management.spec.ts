@@ -1,6 +1,18 @@
 import { test, expect } from '@playwright/test';
 
+const createdDomainCodes: string[] = [];
+
 test.describe('Domain Management', () => {
+  test.afterAll(async () => {
+    if (createdDomainCodes.length > 0) {
+      await fetch('http://localhost:4001/api/dev/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domains: createdDomainCodes }),
+      });
+    }
+  });
+
   test('settings page shows Domain Management card', async ({ page }) => {
     await page.goto('/settings');
     await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
@@ -52,6 +64,9 @@ test.describe('Domain Management', () => {
       page.getByTestId('save-domain-btn').click(),
     ]);
     expect(response.status()).toBe(200);
+
+    // Track for cleanup
+    createdDomainCodes.push(code);
 
     // Domain should appear in the table
     await expect(page.locator(`text=${code}`)).toBeVisible({ timeout: 5000 });

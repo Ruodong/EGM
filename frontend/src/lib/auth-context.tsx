@@ -8,7 +8,9 @@ export interface AuthUser {
   id: string;
   name: string;
   email: string;
-  role: string;
+  role: string;           // backward compat — highest priority role
+  roles: string[];        // all assigned roles
+  domainCodes: string[];  // domain codes for domain_reviewer
   permissions: string[];
 }
 
@@ -66,8 +68,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       const res = await fetch(`${API_BASE}/auth/me`, { headers });
       if (!res.ok) throw new Error(`Auth failed: ${res.status}`);
-      const data: AuthUser = await res.json();
-      setUser(data);
+      const data = await res.json();
+      // Normalize: ensure roles/domainCodes always present
+      setUser({
+        ...data,
+        roles: data.roles || [data.role],
+        domainCodes: data.domainCodes || [],
+      } as AuthUser);
     } catch (err) {
       console.error('Failed to fetch auth user:', err);
       setError(err instanceof Error ? err.message : 'Auth error');
@@ -170,7 +177,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const hasRole = useCallback(
     (...roles: string[]): boolean => {
       if (!user) return false;
-      return roles.includes(user.role);
+      // Check against all user roles (multi-role)
+      const userRoles = user.roles || [user.role];
+      return userRoles.some(r => roles.includes(r));
     },
     [user]
   );

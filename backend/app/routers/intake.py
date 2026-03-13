@@ -172,11 +172,9 @@ async def evaluate_scoping(request_id: str, db: AsyncSession = Depends(get_db)):
             elif isinstance(triggers, str):
                 triggered_domains.update(t.strip() for t in triggers.split(","))
 
-    # Update governance request status
-    await db.execute(text(
-        "UPDATE governance_request SET status = 'Scoping', update_at = NOW() "
-        "WHERE id = :rid"
-    ), {"rid": rid})
+    # NOTE: Status is no longer changed here. The 4-status lifecycle
+    # (Draft → Submitted → In Progress → Completed) is managed by
+    # governance_requests.py and dispatcher.py only.
 
     await db.commit()
     return {"triggeredDomains": sorted(triggered_domains)}
@@ -233,7 +231,7 @@ async def list_templates_admin(
     return {"data": [_map_template(dict(r)) for r in rows]}
 
 
-@router.post("/templates", dependencies=[Depends(require_role(Role.ADMIN))])
+@router.post("/templates", dependencies=[Depends(require_permission("intake_template", "write"))])
 async def create_template(body: dict, user: AuthUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     import json
     row = (await db.execute(text("""
@@ -258,7 +256,7 @@ async def create_template(body: dict, user: AuthUser = Depends(get_current_user)
     return _map_template(dict(row))
 
 
-@router.put("/templates/{template_id}", dependencies=[Depends(require_role(Role.ADMIN))])
+@router.put("/templates/{template_id}", dependencies=[Depends(require_permission("intake_template", "write"))])
 async def update_template(template_id: str, body: dict, db: AsyncSession = Depends(get_db)):
     import json
     sets, params = [], {"id": template_id}
@@ -292,7 +290,7 @@ async def update_template(template_id: str, body: dict, db: AsyncSession = Depen
     return _map_template(dict(row))
 
 
-@router.delete("/templates/{template_id}", dependencies=[Depends(require_role(Role.ADMIN))])
+@router.delete("/templates/{template_id}", dependencies=[Depends(require_permission("intake_template", "write"))])
 async def delete_template(template_id: str, db: AsyncSession = Depends(get_db)):
     """Soft-delete: set is_active = false."""
     row = (await db.execute(text(

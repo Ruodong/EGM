@@ -52,7 +52,7 @@ export default function HomePage() {
 
         <div className="grid grid-cols-4 gap-4 mb-8">
           <StatsCard label="Total Requests" value={stats?.totalRequests ?? 0} icon={FileCheck} color="bg-primary-blue" />
-          <StatsCard label="In Review" value={stats?.inReview ?? 0} icon={ClipboardCheck} color="bg-status-in-progress" />
+          <StatsCard label="In Progress" value={stats?.inReview ?? 0} icon={ClipboardCheck} color="bg-status-in-progress" />
           <StatsCard label="Completed" value={stats?.completed ?? 0} icon={CheckCircle} color="bg-status-completed" />
           <StatsCard label="Open Info Requests" value={stats?.openInfoRequests ?? 0} icon={AlertCircle} color="bg-status-info-requested" />
         </div>

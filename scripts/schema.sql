@@ -2,9 +2,7 @@
 CREATE SCHEMA IF NOT EXISTS egm;
 SET search_path TO egm;
 
--- Sequence for governance request IDs (GR-000001, GR-000002, ...)
-CREATE SEQUENCE IF NOT EXISTS gr_seq START 1;
--- To sync with existing data: SELECT setval('egm.gr_seq', (SELECT COALESCE(MAX(CAST(SPLIT_PART(request_id, '-', 2) AS INT)), 0) FROM egm.governance_request));
+-- (gr_seq sequence removed — EGQ-format request_id uses daily counter instead)
 
 -- ═══════════════════════════════════════════════════════
 -- Projects (synced from EAM)
@@ -39,7 +37,6 @@ CREATE TABLE IF NOT EXISTS project (
 CREATE TABLE IF NOT EXISTS governance_request (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     request_id      VARCHAR NOT NULL UNIQUE,
-    egq_id          VARCHAR UNIQUE,
     title           VARCHAR,
     description     TEXT,
     gov_project_type VARCHAR,
@@ -276,6 +273,20 @@ CREATE TABLE IF NOT EXISTS intake_change_log (
 );
 
 -- ═══════════════════════════════════════════════════════
+-- E2: Governance Request Change Log (field-level edits in Submitted/In Progress)
+-- ═══════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS governance_request_change_log (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    request_id      UUID NOT NULL REFERENCES governance_request(id) ON DELETE CASCADE,
+    field_name      VARCHAR NOT NULL,
+    old_value       JSONB,
+    new_value       JSONB,
+    changed_by      VARCHAR,
+    changed_at      TIMESTAMP DEFAULT NOW()
+);
+
+-- ═══════════════════════════════════════════════════════
 -- F: Audit Log
 -- ═══════════════════════════════════════════════════════
 
@@ -354,6 +365,20 @@ CREATE TABLE IF NOT EXISTS dispatch_rule_exclusion (
 );
 
 -- ═══════════════════════════════════════════════════════
+-- H.1a-3: Dispatch Rule Dependencies (prerequisite constraints)
+-- ═══════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS dispatch_rule_dependency (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    rule_code           VARCHAR NOT NULL REFERENCES dispatch_rule(rule_code) ON DELETE CASCADE,
+    required_rule_code  VARCHAR NOT NULL REFERENCES dispatch_rule(rule_code) ON DELETE CASCADE,
+    create_by           VARCHAR,
+    create_at           TIMESTAMP DEFAULT NOW(),
+    UNIQUE(rule_code, required_rule_code),
+    CHECK (rule_code <> required_rule_code)
+);
+
+-- ═══════════════════════════════════════════════════════
 -- H.1b: Governance Request ↔ Dispatch Rule Junction
 -- ═══════════════════════════════════════════════════════
 
@@ -373,10 +398,21 @@ CREATE TABLE IF NOT EXISTS governance_request_rule (
 
 CREATE TABLE IF NOT EXISTS user_role (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    itcode          VARCHAR(255) NOT NULL UNIQUE REFERENCES employee_info(itcode),
-    role            VARCHAR NOT NULL DEFAULT 'viewer',
+    itcode          VARCHAR(255) NOT NULL REFERENCES employee_info(itcode),
+    role            VARCHAR NOT NULL DEFAULT 'requestor',
     assigned_by     VARCHAR,
     assigned_at     TIMESTAMP DEFAULT NOW(),
     update_by       VARCHAR,
-    update_at       TIMESTAMP DEFAULT NOW()
+    update_at       TIMESTAMP DEFAULT NOW(),
+    UNIQUE(itcode, role)
+);
+
+-- Domain assignments for domain_reviewer role entries
+CREATE TABLE IF NOT EXISTS user_role_domain (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_role_id    UUID NOT NULL REFERENCES user_role(id) ON DELETE CASCADE,
+    domain_code     VARCHAR NOT NULL,
+    assigned_by     VARCHAR,
+    assigned_at     TIMESTAMP DEFAULT NOW(),
+    UNIQUE(user_role_id, domain_code)
 );

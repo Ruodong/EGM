@@ -54,8 +54,8 @@ export default function GovernanceDashboardPage() {
           <p className="text-sm text-text-secondary mt-1">Total Requests</p>
         </div>
         <div className="bg-white rounded-lg border border-border-light p-5">
-          <p className="text-3xl font-bold text-status-in-progress">{getStatusCount(stats, 'In Review')}</p>
-          <p className="text-sm text-text-secondary mt-1">In Review</p>
+          <p className="text-3xl font-bold text-status-in-progress">{getStatusCount(stats, 'In Progress')}</p>
+          <p className="text-sm text-text-secondary mt-1">In Progress</p>
         </div>
         <div className="bg-white rounded-lg border border-border-light p-5">
           <p className="text-3xl font-bold text-status-completed">{getStatusCount(stats, 'Completed')}</p>
