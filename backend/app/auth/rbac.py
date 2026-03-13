@@ -52,6 +52,7 @@ ROLE_PERMISSIONS: dict[Role, dict[str, list[str]]] = {
     Role.REQUESTOR: {
         "governance_request": ["read", "write"],
         "intake": ["read", "write"],
+        "dispatch_rule": ["read"],
         "domain_review": ["read"],
         "review_action": ["read"],
         "shared_artifact": ["read"],

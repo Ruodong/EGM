@@ -16,14 +16,30 @@
 - Frontend: `npm run dev:frontend` (port 3001)
 - Use `.claude/launch.json` preview servers when possible
 
-## Feature Development Workflow (MANDATORY)
+## Feature Development Workflow (MANDATORY — ALL CODE CHANGES)
 
-Follow the **Closed-Loop Feature Development** skill for all new features and significant changes.
+**Every request that involves code changes, feature additions, bug fixes, or refactors MUST follow the Closed-Loop Feature Development workflow.** This is not optional — it applies to all changes, not just "new features" or "significant changes".
 
 - **Skill definition**: `.claude/skills/closed-loop-development.md` (5 phases: Assess → Doc → Code → Test → Verify)
 - **Full documentation**: `docs/development-workflow.md` (for human reference and onboarding)
 
-Quick reference for the 5 phases:
+### When to trigger the workflow
+
+The workflow MUST be triggered for:
+- New feature implementation
+- Bug fixes that touch backend or frontend code
+- Refactors that modify existing behavior
+- Schema changes (ALTER TABLE, new tables, new columns)
+- API contract changes (new endpoints, changed request/response shapes)
+- Frontend page additions or modifications
+- Configuration or infrastructure changes that affect runtime behavior
+
+The workflow may be skipped ONLY for:
+- Documentation-only changes (markdown files, comments)
+- Test-only changes (adding tests without changing source code)
+- Dependency version bumps with no code changes
+
+### Quick reference for the 5 phases
 
 1. **Assess** — Read `docs/features/_DEPENDENCIES.json`, classify Impact (L1-L4) × Risk (Low/Med/High), auto-approve or pause for user review
 2. **Doc** — Create/update `docs/features/<slug>.md` from `docs/features/_TEMPLATE.md`, update dependency graph if needed
@@ -31,7 +47,7 @@ Quick reference for the 5 phases:
 4. **Test** — Write API tests + E2E tests per AC. PostToolUse hook auto-runs affected tests on every Edit/Write.
 5. **Verify** — Check off ACs, fill test coverage, set status to "Implemented", run full test suite
 
-When modifying an existing feature that has no spec, create one retroactively.
+When modifying an existing feature, always check for and update the corresponding feature doc in `docs/features/`. Every feature now has a spec — there should be no `"doc": null` entries in `_DEPENDENCIES.json`.
 
 ## Testing Rules (MANDATORY)
 

@@ -38,6 +38,26 @@ async def resolve_role_from_db(itcode: str) -> Role | None:
     return None
 
 
+async def resolve_employee_info(itcode: str) -> tuple[str, str]:
+    """Return (name, email) from employee_info for the given itcode.
+
+    Falls back to (itcode, itcode@dev.local) if the employee is not found.
+    """
+    from app.database import AsyncSessionLocal
+
+    try:
+        async with AsyncSessionLocal() as session:
+            row = (await session.execute(
+                text("SELECT name, email FROM employee_info WHERE itcode = :itcode"),
+                {"itcode": itcode},
+            )).mappings().first()
+            if row:
+                return row["name"], row["email"]
+    except Exception as exc:
+        logger.warning("Employee info lookup failed for %s: %s", itcode, exc)
+    return itcode, f"{itcode}@dev.local"
+
+
 class AuthProvider(abc.ABC):
     @abc.abstractmethod
     async def authenticate(self, request: Request) -> AuthUser | None: ...
@@ -56,6 +76,19 @@ class DevAuthProvider(AuthProvider):
     }
 
     async def authenticate(self, request: Request) -> AuthUser | None:
+        # X-Dev-User: switch to a real user identity from employee_info + user_role
+        dev_user = request.headers.get("X-Dev-User", "").strip()
+        if dev_user:
+            role = await resolve_role_from_db(dev_user) or Role(settings.AUTH_DEV_ROLE)
+            name, email = await resolve_employee_info(dev_user)
+            return AuthUser(
+                id=dev_user,
+                name=name,
+                email=email,
+                role=role,
+                permissions=build_permission_list(role),
+            )
+
         # Allow role override via header in dev mode (highest priority)
         override = request.headers.get("X-Dev-Role", "").strip()
         if override:

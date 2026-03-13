@@ -3,12 +3,12 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, ChevronLeft } from 'lucide-react';
 import { sidebarNavItems, type NavItem } from '@/lib/constants';
 import { useAuth } from '@/lib/auth-context';
 import clsx from 'clsx';
 
-function NavLink({ item, depth = 0 }: { item: NavItem; depth?: number }) {
+function NavLink({ item, depth = 0, collapsed = false }: { item: NavItem; depth?: number; collapsed?: boolean }) {
   const pathname = usePathname();
   const { hasPermission } = useAuth();
   const [expanded, setExpanded] = useState(false);
@@ -20,6 +20,28 @@ function NavLink({ item, depth = 0 }: { item: NavItem; depth?: number }) {
   const isActive = pathname === item.href;
   const hasChildren = item.children && item.children.length > 0;
   const Icon = item.icon;
+
+  // Collapsed mode: show only icons, no children, link everything
+  if (collapsed) {
+    return (
+      <div className="relative group">
+        <Link
+          href={item.href}
+          className={clsx(
+            'flex items-center justify-center py-2.5 mx-1 rounded-md transition-colors',
+            isActive ? 'bg-primary-blue/10 text-primary-blue' : 'text-text-primary hover:bg-gray-50'
+          )}
+          title={item.label}
+        >
+          <Icon className="w-4 h-4" />
+        </Link>
+        {/* Tooltip on hover */}
+        <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 px-2 py-1 bg-gray-800 text-white text-xs rounded whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50">
+          {item.label}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -55,14 +77,35 @@ function NavLink({ item, depth = 0 }: { item: NavItem; depth?: number }) {
   );
 }
 
-export function Sidebar() {
+export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
   return (
-    <aside className="w-sidebar border-r border-border-light bg-white flex-shrink-0 overflow-y-auto py-4">
-      <nav className="flex flex-col gap-1">
-        {sidebarNavItems.map((item) => (
-          <NavLink key={item.href} item={item} />
-        ))}
-      </nav>
-    </aside>
+    <div className="relative flex-shrink-0">
+      <aside
+        className={clsx(
+          'border-r border-border-light bg-white h-full overflow-y-auto flex flex-col transition-all duration-200',
+          collapsed ? 'w-sidebar-collapsed' : 'w-sidebar'
+        )}
+      >
+        <nav className="flex flex-col gap-1 flex-1 py-4">
+          {sidebarNavItems.map((item) => (
+            <NavLink key={item.href} item={item} collapsed={collapsed} />
+          ))}
+        </nav>
+      </aside>
+
+      {/* Floating circle toggle on right edge */}
+      <button
+        onClick={onToggle}
+        className="absolute top-5 -right-3 z-20 w-6 h-6 rounded-full bg-white border border-border-light shadow-sm flex items-center justify-center text-text-secondary hover:text-primary-blue hover:border-primary-blue transition-colors"
+        title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        data-testid="sidebar-toggle-btn"
+      >
+        {collapsed ? (
+          <ChevronRight className="w-3.5 h-3.5" />
+        ) : (
+          <ChevronLeft className="w-3.5 h-3.5" />
+        )}
+      </button>
+    </div>
   );
 }

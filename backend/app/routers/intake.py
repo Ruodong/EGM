@@ -172,54 +172,6 @@ async def evaluate_scoping(request_id: str, db: AsyncSession = Depends(get_db)):
             elif isinstance(triggers, str):
                 triggered_domains.update(t.strip() for t in triggers.split(","))
 
-    # Also check dispatch_rule table
-    rules = (await db.execute(text(
-        "SELECT * FROM dispatch_rule WHERE is_active = true"
-    ))).mappings().all()
-
-    # Build lookup of scoping answers by template_id for rule evaluation
-    answer_by_template: dict[str, object] = {}
-    for r in responses:
-        answer_by_template[str(r["template_id"])] = r["answer"]
-
-    for rule in rules:
-        ct = rule["condition_type"]
-        if ct == "always":
-            triggered_domains.add(rule["domain_code"])
-        elif ct in ("scoping_answer", "field_value"):
-            field = rule.get("condition_field")
-            operator = rule.get("condition_operator", "equals")
-            expected = rule.get("condition_value")
-            if not field:
-                continue
-            actual = answer_by_template.get(field)
-            if actual is None:
-                continue
-            actual_str = str(actual).strip().lower() if actual else ""
-            expected_str = str(expected).strip().lower() if expected else ""
-            match = False
-            if operator == "equals":
-                match = actual_str == expected_str
-            elif operator == "not_equals":
-                match = actual_str != expected_str
-            elif operator == "contains":
-                match = expected_str in actual_str
-            elif operator == "in":
-                if isinstance(expected, list):
-                    match = actual_str in [str(v).strip().lower() for v in expected]
-            elif operator == "gt":
-                try:
-                    match = float(actual_str) > float(expected_str)
-                except (ValueError, TypeError):
-                    pass
-            elif operator == "lt":
-                try:
-                    match = float(actual_str) < float(expected_str)
-                except (ValueError, TypeError):
-                    pass
-            if match:
-                triggered_domains.add(rule["domain_code"])
-
     # Update governance request status
     await db.execute(text(
         "UPDATE governance_request SET status = 'Scoping', update_at = NOW() "

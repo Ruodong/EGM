@@ -6,6 +6,43 @@ import uuid
 BASE_URL = "http://localhost:4001/api"
 
 
+def _cleanup():
+    """Call the dev cleanup endpoint to remove all transactional test data."""
+    with httpx.Client(base_url=BASE_URL, timeout=30) as c:
+        resp = c.post("/dev/cleanup")
+        assert resp.status_code == 200, f"Cleanup failed: {resp.text}"
+
+
+def _reset_mandatory_rules():
+    """Reset all mandatory dispatch rule flags and return codes to restore."""
+    codes = []
+    with httpx.Client(base_url=BASE_URL, timeout=30, headers={"X-Dev-Role": "admin"}) as c:
+        resp = c.get("/dispatch-rules/")
+        rules = resp.json().get("data", resp.json()) if isinstance(resp.json(), dict) else resp.json()
+        for r in rules:
+            if r.get("isMandatory"):
+                codes.append(r["ruleCode"])
+                c.put(f"/dispatch-rules/{r['ruleCode']}", json={"isMandatory": False})
+    return codes
+
+
+def _restore_mandatory_rules(codes: list[str]):
+    """Restore mandatory flags."""
+    with httpx.Client(base_url=BASE_URL, timeout=30, headers={"X-Dev-Role": "admin"}) as c:
+        for code in codes:
+            c.put(f"/dispatch-rules/{code}", json={"isMandatory": True})
+
+
+@pytest.fixture(autouse=True, scope="session")
+def auto_cleanup():
+    """Clean test data before and after the entire test session."""
+    _cleanup()
+    mandatory_codes = _reset_mandatory_rules()
+    yield
+    _restore_mandatory_rules(mandatory_codes)
+    _cleanup()
+
+
 @pytest.fixture(scope="session")
 def base_url():
     return BASE_URL
@@ -24,7 +61,11 @@ def create_request(client: httpx.Client):
     resp = client.post("/governance-requests", json={
         "title": "Test Request",
         "description": "Created by pytest",
-        "priority": "Normal",
+        "govProjectType": "PoC",
+        "businessUnit": "IDG",
+        "productSoftwareType": "Hardware",
+        "productEndUser": ["Lenovo internal employee/contractors"],
+        "userRegion": ["PRC"],
     })
     assert resp.status_code == 200
     return resp.json()
@@ -60,6 +101,11 @@ def dispatched_request(client: httpx.Client, create_domain):
     resp = client.post("/governance-requests", json={
         "title": "Dispatch Test",
         "description": "For dispatch testing",
+        "govProjectType": "PoC",
+        "businessUnit": "IDG",
+        "productSoftwareType": "Hardware",
+        "productEndUser": ["Lenovo internal employee/contractors"],
+        "userRegion": ["PRC"],
     })
     assert resp.status_code == 200
     gr = resp.json()

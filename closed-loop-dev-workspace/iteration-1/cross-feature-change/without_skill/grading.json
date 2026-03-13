@@ -1,0 +1,66 @@
+{
+  "expectations": [
+    {
+      "text": "Produces a structured impact assessment with affected features table",
+      "passed": true,
+      "evidence": "Section 2 'Impact Analysis' contains 'Features Affected' table with 5 entries (governance-requests HIGH, domain-dispatch MEDIUM x2, dashboard LOW, intake-scoping NONE). Also includes detailed 'Files Affected' breakdown."
+    },
+    {
+      "text": "Correctly classifies as L3/Medium (cross-feature, modifies existing behavior)",
+      "passed": true,
+      "evidence": "Section 1 identifies 'cross-feature change touching three feature boundaries'. Section 2.1 correctly identifies governance-requests and domain-dispatch as the primary affected features. Though it doesn't use L3/Medium terminology exactly, the classification is functionally correct."
+    },
+    {
+      "text": "Correctly pauses for user review before proceeding",
+      "passed": false,
+      "evidence": "The plan does NOT include any explicit pause or user review gate. It proceeds directly from assessment to implementation planning without mentioning user approval. This is a key difference vs the with-skill version."
+    },
+    {
+      "text": "Identifies all affected features (governance-requests, domain-dispatch, at minimum)",
+      "passed": true,
+      "evidence": "Section 2.1 lists governance-requests (HIGH), domain-dispatch dispatcher (MEDIUM), domain-dispatch reviews UI (MEDIUM), and even dashboard (LOW) and intake-scoping (NONE)."
+    },
+    {
+      "text": "Plans a database migration (ALTER TABLE or new column)",
+      "passed": true,
+      "evidence": "Section 3 'Database Changes' provides full migration script: ALTER TABLE ADD COLUMN, CHECK constraint, schema.sql update, and design decision about not adding column to domain_review."
+    },
+    {
+      "text": "Lists specific affected acceptance criteria from existing feature docs",
+      "passed": false,
+      "evidence": "Section 9 mentions 'Add new ACs (e.g., AC-24 through AC-29)' but does NOT list any specific existing ACs from governance-requests.md or domain-dispatch.md that would be affected. No existing ACs are quoted or analyzed."
+    },
+    {
+      "text": "Documents API contract changes (request/response shape changes)",
+      "passed": true,
+      "evidence": "Section 4 provides detailed per-router changes with exact Python code: _map() adds urgency, create_request accepts urgency, list_requests adds filter, filter_options adds urgencies. Sections 4.2-4.3 detail domain_reviews changes."
+    },
+    {
+      "text": "Plans both API tests and E2E tests across affected features",
+      "passed": true,
+      "evidence": "Section 6 includes 10+ API tests across test_governance_requests.py, test_dispatch.py, test_domain_reviews.py, plus 4 E2E tests. Section 6.6 shows full test execution order."
+    },
+    {
+      "text": "Plans to update feature docs with new ACs and test coverage",
+      "passed": true,
+      "evidence": "Section 9 'Feature Doc Update' plans to update both governance-requests.md (add urgency to table, API params, new ACs, test coverage) and domain-dispatch.md (urgency on reviewer UI, dispatch response)."
+    }
+  ],
+  "summary": {
+    "passed": 7,
+    "failed": 2,
+    "total": 9,
+    "pass_rate": 0.78
+  },
+  "eval_feedback": {
+    "suggestions": [
+      {
+        "reason": "The without-skill version includes excellent risk analysis (Section 8 with 7 subsections covering urgency vs priority confusion, case sensitivity, backward compatibility, audit logging) that no assertion captures. This is higher quality risk analysis than the with-skill version."
+      },
+      {
+        "reason": "The without-skill version includes time estimates per phase (total ~80 min) which is practical and useful. No assertion checks for this."
+      }
+    ],
+    "overall": "Good output with 7/9 pass. Key failures: (1) no explicit pause for user review before proceeding, (2) doesn't analyze existing ACs from feature docs. However, the plan excels in risk analysis, backward compatibility discussion, and practical considerations (urgency vs priority confusion, case sensitivity) that the with-skill version lacks."
+  }
+}

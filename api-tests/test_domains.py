@@ -18,13 +18,13 @@ def test_create_domain(client: httpx.Client):
         "domainName": f"Test Domain {code}",
         "description": "Integration test domain",
         "integrationType": "internal",
-        "sortOrder": 99,
     })
     assert resp.status_code == 200
     data = resp.json()
     assert data["domainCode"] == code
     assert data["integrationType"] == "internal"
     assert data["isActive"] is True
+    assert "sortOrder" not in data
 
 
 def test_get_domain(client: httpx.Client, create_domain):
@@ -49,16 +49,22 @@ def test_get_nonexistent_domain(client: httpx.Client):
     assert resp.status_code == 404
 
 
-def test_deactivate_domain(client: httpx.Client, create_domain):
+def test_toggle_domain_active(client: httpx.Client, create_domain):
     code = create_domain["domainCode"]
+    # Toggle: active → inactive
     resp = client.delete(f"/domains/{code}")
     assert resp.status_code == 200
-    assert "deactivated" in resp.json()["message"]
+    assert resp.json()["isActive"] is False
 
     # Should still exist but inactive
     resp = client.get(f"/domains/{code}")
     assert resp.status_code == 200
     assert resp.json()["isActive"] is False
+
+    # Toggle again: inactive → active
+    resp = client.delete(f"/domains/{code}")
+    assert resp.status_code == 200
+    assert resp.json()["isActive"] is True
 
 
 def test_deactivate_nonexistent_domain(client: httpx.Client):

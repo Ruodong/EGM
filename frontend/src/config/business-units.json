@@ -1,0 +1,14 @@
+[
+  { "value": "IDG", "label": "IDG" },
+  { "value": "Moto", "label": "Moto" },
+  { "value": "SSG", "label": "SSG" },
+  { "value": "ISG", "label": "ISG" },
+  { "value": "ISO", "label": "ISO" },
+  { "value": "PRC", "label": "PRC" },
+  { "value": "DT&IT", "label": "DT&IT" },
+  { "value": "HR", "label": "HR" },
+  { "value": "Finance", "label": "Finance" },
+  { "value": "Legal", "label": "Legal" },
+  { "value": "Security", "label": "Security" },
+  { "value": "Other", "label": "Other" }
+]

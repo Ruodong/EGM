@@ -1,0 +1,14 @@
+{
+  "eval_id": 1,
+  "eval_name": "simple-ui-change",
+  "prompt": "在 audit log 列表页面，支持按时间戳排序（点击列头升序/降序切换），默认降序",
+  "assertions": [
+    {"id": "impact-assessment", "text": "Produces a structured impact assessment (identifies impact level and risk level)", "type": "qualitative"},
+    {"id": "correct-classification", "text": "Correctly classifies as L1/Low (UI-only, pure addition)", "type": "qualitative"},
+    {"id": "auto-approve", "text": "Decides to auto-approve (not pause for review)", "type": "qualitative"},
+    {"id": "feature-doc", "text": "Plans to create or update a feature doc with acceptance criteria", "type": "qualitative"},
+    {"id": "test-plan", "text": "Includes a test plan (at minimum E2E tests)", "type": "qualitative"},
+    {"id": "test-map", "text": "Plans to update test-map.json for new/changed files", "type": "qualitative"},
+    {"id": "final-verification", "text": "Includes a final verification step (full test suite run)", "type": "qualitative"}
+  ]
+}

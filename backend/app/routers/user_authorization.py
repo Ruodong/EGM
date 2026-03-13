@@ -41,6 +41,7 @@ def _map_role(r: dict) -> dict:
         "tier1Org": r.get("tier_1_org"),
         "tier2Org": r.get("tier_2_org"),
         "assignedBy": r.get("assigned_by"),
+        "assignedByName": r.get("assigned_by_name"),
         "assignedAt": r["assigned_at"].isoformat() if r.get("assigned_at") else None,
         "updateBy": r.get("update_by"),
         "updateAt": r["update_at"].isoformat() if r.get("update_at") else None,
@@ -104,9 +105,11 @@ async def list_roles(
 
     # Data
     rows = (await db.execute(text(f"""
-        SELECT ur.*, e.name, e.email, e.tier_1_org, e.tier_2_org
+        SELECT ur.*, e.name, e.email, e.tier_1_org, e.tier_2_org,
+               ab.name AS assigned_by_name
         FROM user_role ur
         JOIN employee_info e ON ur.itcode = e.itcode
+        LEFT JOIN employee_info ab ON ur.assigned_by = ab.itcode
         {where}
         ORDER BY ur.assigned_at DESC
         LIMIT :limit OFFSET :offset
@@ -127,9 +130,11 @@ async def list_roles(
 async def get_role(itcode: str, db: AsyncSession = Depends(get_db)):
     """Get a single user role assignment."""
     row = (await db.execute(text("""
-        SELECT ur.*, e.name, e.email, e.tier_1_org, e.tier_2_org
+        SELECT ur.*, e.name, e.email, e.tier_1_org, e.tier_2_org,
+               ab.name AS assigned_by_name
         FROM user_role ur
         JOIN employee_info e ON ur.itcode = e.itcode
+        LEFT JOIN employee_info ab ON ur.assigned_by = ab.itcode
         WHERE ur.itcode = :itcode
     """), {"itcode": itcode})).mappings().first()
     if not row:
@@ -191,9 +196,11 @@ async def assign_role(
 
     # Return with employee info
     full_row = (await db.execute(text("""
-        SELECT ur.*, e.name, e.email, e.tier_1_org, e.tier_2_org
+        SELECT ur.*, e.name, e.email, e.tier_1_org, e.tier_2_org,
+               ab.name AS assigned_by_name
         FROM user_role ur
         JOIN employee_info e ON ur.itcode = e.itcode
+        LEFT JOIN employee_info ab ON ur.assigned_by = ab.itcode
         WHERE ur.itcode = :itcode
     """), {"itcode": itcode})).mappings().first()
 
@@ -244,9 +251,11 @@ async def update_role(
     await db.commit()
 
     full_row = (await db.execute(text("""
-        SELECT ur.*, e.name, e.email, e.tier_1_org, e.tier_2_org
+        SELECT ur.*, e.name, e.email, e.tier_1_org, e.tier_2_org,
+               ab.name AS assigned_by_name
         FROM user_role ur
         JOIN employee_info e ON ur.itcode = e.itcode
+        LEFT JOIN employee_info ab ON ur.assigned_by = ab.itcode
         WHERE ur.itcode = :itcode
     """), {"itcode": itcode})).mappings().first()
 

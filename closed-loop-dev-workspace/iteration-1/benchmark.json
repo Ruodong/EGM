@@ -1,0 +1,195 @@
+{
+  "metadata": {
+    "skill_name": "closed-loop-development",
+    "skill_path": "/Users/ruodongyang/Workplace/EGM/.claude/skills/closed-loop-development.md",
+    "timestamp": "2026-03-11T18:30:00Z",
+    "evals_run": [1, 2, 3],
+    "runs_per_configuration": 1
+  },
+  "runs": [
+    {
+      "eval_id": 1,
+      "eval_name": "simple-ui-change",
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 7,
+        "failed": 0,
+        "total": 7,
+        "time_seconds": 0,
+        "tokens": 0,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {"text": "Produces a structured impact assessment (identifies impact level and risk level)", "passed": true, "evidence": "Phase 1 contains Impact Level: L1 and Risk Level: Low with rationale"},
+        {"text": "Correctly classifies as L1/Low (UI-only, pure addition)", "passed": true, "evidence": "L1/Low classification correct"},
+        {"text": "Decides to auto-approve (not pause for review)", "passed": true, "evidence": "Auto-approve decision in Step 1.4"},
+        {"text": "Plans to create or update a feature doc with acceptance criteria", "passed": true, "evidence": "Creates audit-log.md with 6 ACs"},
+        {"text": "Includes a test plan (at minimum E2E tests)", "passed": true, "evidence": "4 E2E tests planned"},
+        {"text": "Plans to update test-map.json for new/changed files", "passed": true, "evidence": "Discusses test-map.json update"},
+        {"text": "Includes a final verification step (full test suite run)", "passed": true, "evidence": "Full test suite commands listed in Phase 5"}
+      ]
+    },
+    {
+      "eval_id": 1,
+      "eval_name": "simple-ui-change",
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 7,
+        "failed": 0,
+        "total": 7,
+        "time_seconds": 0,
+        "tokens": 0,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {"text": "Produces a structured impact assessment (identifies impact level and risk level)", "passed": true, "evidence": "Assessment section with L1/Low classification"},
+        {"text": "Correctly classifies as L1/Low (UI-only, pure addition)", "passed": true, "evidence": "L1/Low correct"},
+        {"text": "Decides to auto-approve (not pause for review)", "passed": true, "evidence": "Auto-approve stated"},
+        {"text": "Plans to create or update a feature doc with acceptance criteria", "passed": true, "evidence": "Creates audit-log-sort.md with 7 ACs"},
+        {"text": "Includes a test plan (at minimum E2E tests)", "passed": true, "evidence": "3 E2E tests planned"},
+        {"text": "Plans to update test-map.json for new/changed files", "passed": true, "evidence": "Discusses test-map.json"},
+        {"text": "Includes a final verification step (full test suite run)", "passed": true, "evidence": "Full test suite commands listed"}
+      ]
+    },
+    {
+      "eval_id": 2,
+      "eval_name": "cross-feature-change",
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 9,
+        "failed": 0,
+        "total": 9,
+        "time_seconds": 0,
+        "tokens": 0,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {"text": "Produces a structured impact assessment with affected features table", "passed": true, "evidence": "Full assessment with 4-feature affected table"},
+        {"text": "Correctly classifies as L3/Medium (cross-feature, modifies existing behavior)", "passed": true, "evidence": "L3/Medium classification correct"},
+        {"text": "Correctly pauses for user review before proceeding", "passed": true, "evidence": "Pause for review decision"},
+        {"text": "Identifies all affected features (governance-requests, domain-dispatch, at minimum)", "passed": true, "evidence": "Both features identified with specific impacts"},
+        {"text": "Plans a database migration (ALTER TABLE or new column)", "passed": true, "evidence": "Detailed ALTER TABLE SQL"},
+        {"text": "Lists specific affected acceptance criteria from existing feature docs", "passed": true, "evidence": "5 ACs listed from governance-requests.md and domain-dispatch.md"},
+        {"text": "Documents API contract changes (request/response shape changes)", "passed": true, "evidence": "7 endpoint changes documented"},
+        {"text": "Plans both API tests and E2E tests across affected features", "passed": true, "evidence": "11+ API tests + E2E tests"},
+        {"text": "Plans to update feature docs with new ACs and test coverage", "passed": true, "evidence": "Updates both feature docs with 10 new ACs"}
+      ]
+    },
+    {
+      "eval_id": 2,
+      "eval_name": "cross-feature-change",
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.78,
+        "passed": 7,
+        "failed": 2,
+        "total": 9,
+        "time_seconds": 0,
+        "tokens": 0,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {"text": "Produces a structured impact assessment with affected features table", "passed": true, "evidence": "Features Affected table with 5 entries"},
+        {"text": "Correctly classifies as L3/Medium (cross-feature, modifies existing behavior)", "passed": true, "evidence": "Cross-feature identified correctly"},
+        {"text": "Correctly pauses for user review before proceeding", "passed": false, "evidence": "No explicit pause or user review gate"},
+        {"text": "Identifies all affected features (governance-requests, domain-dispatch, at minimum)", "passed": true, "evidence": "Both features + dashboard identified"},
+        {"text": "Plans a database migration (ALTER TABLE or new column)", "passed": true, "evidence": "Full migration script with CHECK constraint"},
+        {"text": "Lists specific affected acceptance criteria from existing feature docs", "passed": false, "evidence": "Does not list existing ACs from feature docs"},
+        {"text": "Documents API contract changes (request/response shape changes)", "passed": true, "evidence": "Detailed per-router API changes"},
+        {"text": "Plans both API tests and E2E tests across affected features", "passed": true, "evidence": "10+ API tests + 4 E2E tests"},
+        {"text": "Plans to update feature docs with new ACs and test coverage", "passed": true, "evidence": "Plans to update both feature docs"}
+      ]
+    },
+    {
+      "eval_id": 3,
+      "eval_name": "global-infra-change",
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 10,
+        "failed": 0,
+        "total": 10,
+        "time_seconds": 0,
+        "tokens": 0,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {"text": "Produces a full impact assessment with dependency chain", "passed": true, "evidence": "Full assessment with 8-feature table and dependency chain tree"},
+        {"text": "Correctly classifies as L4/High (global infrastructure, structural change)", "passed": true, "evidence": "L4/High classification correct"},
+        {"text": "Includes full dependency chain showing all transitively affected features", "passed": true, "evidence": "Tree showing auth -> all downstream features"},
+        {"text": "Pauses for full chain review before proceeding", "passed": true, "evidence": "Pause for full chain review decision"},
+        {"text": "Plans detailed database migration (new tables for permissions)", "passed": true, "evidence": "Complete SQL for role_permission table"},
+        {"text": "Proposes phased/incremental implementation (not big-bang)", "passed": true, "evidence": "6 phases (3A-3F) + 9-step implementation order"},
+        {"text": "Includes a rollback or fallback strategy", "passed": true, "evidence": "4-layer rollback strategy"},
+        {"text": "Addresses backward compatibility during migration", "passed": true, "evidence": "Fallback dict, seed data, existing tests must pass"},
+        {"text": "Plans comprehensive tests including regression tests for all RBAC-dependent features", "passed": true, "evidence": "11+ new tests + all 18 existing auth/RBAC tests"},
+        {"text": "Lists affected ACs from multiple existing feature docs", "passed": true, "evidence": "Lists AC-16 from domain-dispatch.md"}
+      ]
+    },
+    {
+      "eval_id": 3,
+      "eval_name": "global-infra-change",
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.9,
+        "passed": 9,
+        "failed": 1,
+        "total": 10,
+        "time_seconds": 0,
+        "tokens": 0,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {"text": "Produces a full impact assessment with dependency chain", "passed": true, "evidence": "Detailed assessment with upstream/downstream analysis"},
+        {"text": "Correctly classifies as L4/High (global infrastructure, structural change)", "passed": true, "evidence": "L4 Global Infrastructure, Risk HIGH"},
+        {"text": "Includes full dependency chain showing all transitively affected features", "passed": true, "evidence": "Dependency analysis with all routers and endpoint counts"},
+        {"text": "Pauses for full chain review before proceeding", "passed": true, "evidence": "States would present for explicit approval"},
+        {"text": "Plans detailed database migration (new tables for permissions)", "passed": true, "evidence": "Complete SQL with seed data for all 5 roles"},
+        {"text": "Proposes phased/incremental implementation (not big-bang)", "passed": true, "evidence": "Phase 3A-3F + deployment order"},
+        {"text": "Includes a rollback or fallback strategy", "passed": true, "evidence": "3-level rollback strategy"},
+        {"text": "Addresses backward compatibility during migration", "passed": true, "evidence": "Fallback dict, seed data matches, existing tests"},
+        {"text": "Plans comprehensive tests including regression tests for all RBAC-dependent features", "passed": true, "evidence": "21+ API tests + 6 E2E tests + 86+ existing must pass"},
+        {"text": "Lists affected ACs from multiple existing feature docs", "passed": false, "evidence": "Creates new ACs but does not analyze existing ACs from feature docs"}
+      ]
+    }
+  ],
+  "run_summary": {
+    "with_skill": {
+      "pass_rate": {"mean": 1.0, "stddev": 0.0, "min": 1.0, "max": 1.0},
+      "time_seconds": {"mean": 0, "stddev": 0, "min": 0, "max": 0},
+      "tokens": {"mean": 0, "stddev": 0, "min": 0, "max": 0}
+    },
+    "without_skill": {
+      "pass_rate": {"mean": 0.89, "stddev": 0.09, "min": 0.78, "max": 1.0},
+      "time_seconds": {"mean": 0, "stddev": 0, "min": 0, "max": 0},
+      "tokens": {"mean": 0, "stddev": 0, "min": 0, "max": 0}
+    },
+    "delta": {
+      "pass_rate": "+0.11",
+      "time_seconds": "0",
+      "tokens": "0"
+    }
+  },
+  "notes": [
+    "simple-ui-change (L1/Low): Both versions score 100%. The skill adds procedural consistency but the without-skill version provides deeper code exploration (DataTable, PaginationParams). Assertions don't differentiate quality here.",
+    "cross-feature-change (L3/Medium): Skill version scores 100% vs 78% without. Key differentiators: (1) skill ensures explicit pause for user review, (2) skill prompts analysis of existing ACs from feature docs. However, without-skill version provides better risk analysis (urgency vs priority confusion, case sensitivity, audit logging).",
+    "global-infra-change (L4/High): Skill version scores 100% vs 90% without. Only difference: existing AC listing. Both produce excellent rollback strategies, phased implementation, and comprehensive testing. Without-skill version has MORE detailed risk mitigation and MORE tests (21 vs 11).",
+    "Overall: Skill adds most value for L3+ changes where it enforces review gates and AC analysis. For L1 changes, skill value is minimal. The biggest gap is in ensuring the agent pauses for user review at the right complexity level.",
+    "Both versions struggle with the same weakness when without skill: not pausing for review and not analyzing existing ACs. These are the unique contributions of the skill."
+  ]
+}

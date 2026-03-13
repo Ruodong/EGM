@@ -6,19 +6,24 @@
 
 ## Summary
 
-Governance requests can optionally be linked to a project sourced from the Enterprise Architecture Management (EAM) system. The `project` table in EGM is a read-only replica kept in sync via a batch script. A searchable dropdown in the create-request form lets requestors find and attach a project, while the backend validates the foreign key on create and update.
+Governance requests can optionally be linked to a project via two modes:
+
+- **MSPO Project**: Select from the `project` table (read-only replica synced from EAM). Project data is snapshotted into 16 `project_*` columns on `governance_request` at creation time. The FK to `project(project_id)` is retained for future sync updates.
+- **Non-MSPO Project**: Manually enter project details (code, name, description, PM, dates). No FK — data lives only on `governance_request`.
+
+A `project_type` column (`'mspo'`, `'non_mspo'`, or `NULL` for legacy data) distinguishes the modes.
 
 ## Affected Files
 
 ### Backend
 - `backend/app/routers/projects.py` — Read-only project API (list with search, get by ID)
-- `backend/app/routers/governance_requests.py` — project_id validation on create and update; LEFT JOIN to resolve project_name
+- `backend/app/routers/governance_requests.py` — project_type-aware create/update; MSPO snapshots project data, Non-MSPO stores manual fields; no LEFT JOIN (project_name is now a column on governance_request)
 
 ### Frontend
 - `frontend/src/app/governance/create/page.tsx` — Searchable project dropdown with debounced typeahead
 
 ### Database
-- `scripts/schema.sql` — `project` table definition; `governance_request.project_id` FK to `project(project_id)` with `ON DELETE SET NULL`
+- `scripts/schema.sql` — `project` table definition; `governance_request.project_id` FK with `ON DELETE SET NULL`; 16 `project_*` snapshot columns on `governance_request`
 
 ### Scripts
 - `scripts/sync_projects.py` — Batch upsert from EAM (port 5432) to EGM (port 5433) using asyncpg
@@ -74,15 +79,12 @@ An empty string for `projectId` is normalized to `NULL` and skips validation.
 
 ## UI Behavior
 
-1. On the create-request form, a **Project** field is displayed as a text input with placeholder "Search by project ID or name...".
-2. As the user types, a debounced search (300 ms) calls `GET /projects?search=<query>&pageSize=10`.
-3. A dropdown appears below the input showing matching projects. Each row displays the project ID on the first line and the project name plus PM on the second line.
-4. Clicking a result selects it: the input is replaced with a read-only chip showing `"<projectId> - <projectName>"` and a **Clear** button.
-5. Clicking **Clear** resets the selection and restores the search input.
-6. Clicking outside the dropdown closes it.
-7. The project field is optional; submitting the form without a project is valid.
-8. If no results match the search, the dropdown shows "No projects found".
-9. While the API call is in flight, the dropdown shows "Searching...".
+1. A **Project** toggle with two buttons: **MSPO Project** (default) and **Non-MSPO Project**.
+2. **MSPO mode**: Search input with debounced typeahead (300 ms) against `GET /projects?search=<query>&pageSize=10`. Selecting a project shows a read-only display of all project fields (Code, Name, Type, Status, PM, DT Lead, IT Lead, Dates, AI Related) with a "Clear" button.
+3. **Non-MSPO mode**: Manual form with editable fields: Project Code, Project Name, Description, Project Manager, Start Date, Go Live Date, End Date.
+4. Switching modes clears the other mode's data.
+5. The project section is optional; submitting without selecting/filling a project is valid (no `projectType` sent).
+6. On submit, MSPO sends `projectType: 'mspo'` + `projectId`; Non-MSPO sends `projectType: 'non_mspo'` + manual field values.
 
 ## Database Schema
 
@@ -124,13 +126,16 @@ If a project is deleted from the replica, any linked governance requests retain 
 - [x] AC-2: `GET /projects?search=<term>` filters by project_id or project_name (ILIKE)
 - [x] AC-3: `GET /projects?pageSize=N` limits results to N rows (max 100)
 - [x] AC-4: `GET /projects/{project_id}` returns a single project or 404
-- [x] AC-5: `POST /governance-requests` with a valid `projectId` creates the request and returns `projectId` and `projectName` in the response
+- [x] AC-5: `POST /governance-requests` with `projectType: 'mspo'` + valid `projectId` creates the request and returns all `project_*` snapshot fields
+- [x] AC-5b: `POST /governance-requests` with `projectId` but no `projectType` (backward compat) snapshots project data and returns `projectName`
 - [x] AC-6: `POST /governance-requests` with a non-existent `projectId` returns 400 with "not found" in the detail message
-- [x] AC-7: `POST /governance-requests` with an empty `projectId` (or without it) succeeds with `projectId: null`
-- [x] AC-8: `PUT /governance-requests/{id}` validates `projectId` when the field is present in the body
-- [x] AC-9: Governance request list and detail queries JOIN project to include `projectName`
-- [x] AC-10: Frontend project dropdown performs debounced search and displays results
+- [x] AC-7: `POST /governance-requests` with `projectType: 'non_mspo'` stores manual `projectCode`, `projectName`, etc.; `projectId` (FK) is `null`
+- [x] AC-7b: `POST /governance-requests` without any project fields succeeds with all project fields `null`
+- [x] AC-8: `PUT /governance-requests/{id}` supports `projectType`-aware updates
+- [x] AC-9: Governance request responses include all `project_*` fields (no LEFT JOIN; data is on `governance_request` table)
+- [x] AC-10: Frontend MSPO/Non-MSPO toggle with search dropdown (MSPO) and manual form (Non-MSPO)
 - [x] AC-11: Selected project can be cleared, resetting the field to empty
+- [x] AC-12: Detail page shows Project Information card with snapshot fields when project data exists
 
 ## Test Coverage
 
@@ -142,12 +147,16 @@ If a project is deleted from the replica, any linked governance requests retain 
 - `api-tests/test_projects.py::test_get_project_by_id` — covers AC-4
 
 ### API Tests — Governance Request + Project Linking
-- `api-tests/test_governance_requests.py::test_create_request_with_project` — covers AC-5, AC-9
+- `api-tests/test_governance_requests.py::test_create_request_with_project` — covers AC-5b (backward compat)
+- `api-tests/test_governance_requests.py::test_create_mspo_project` — covers AC-5 (MSPO snapshot)
+- `api-tests/test_governance_requests.py::test_create_non_mspo_project` — covers AC-7 (Non-MSPO manual fields)
+- `api-tests/test_governance_requests.py::test_create_mspo_without_project_id_fails` — covers AC-6
 - `api-tests/test_governance_requests.py::test_create_request_invalid_project` — covers AC-6
-- `api-tests/test_governance_requests.py::test_create_request_with_empty_optional_fields` — covers AC-7
+- `api-tests/test_governance_requests.py::test_get_request_returns_project_fields` — covers AC-9, AC-12
+- `api-tests/test_governance_requests.py::test_create_request_with_empty_optional_fields` — covers AC-7b
 
 ### E2E Tests
-- `e2e-tests/governance-requests.spec.ts` — covers AC-10, AC-11 (project dropdown interaction in create form)
+- `e2e-tests/governance-requests.spec.ts` — covers AC-10, AC-11 (MSPO/Non-MSPO toggle and project interaction in create form)
 
 ## Test Map Entries
 

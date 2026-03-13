@@ -20,6 +20,7 @@ interface AuthContextValue {
   hasRole: (...roles: string[]) => boolean;
   refresh: () => Promise<void>;
   switchRole: (role: string) => Promise<void>;
+  switchUser: (itcode: string) => Promise<void>;
   login: () => void;
   logout: () => void;
 }
@@ -47,14 +48,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchUser = useCallback(async (roleOverride?: string) => {
+  const fetchUser = useCallback(async (roleOverride?: string, userOverride?: string) => {
     try {
       setLoading(true);
       setError(null);
       const headers: Record<string, string> = { 'Content-Type': 'application/json', ...authHeaders() };
-      const devRole = roleOverride ?? (typeof window !== 'undefined' ? localStorage.getItem('egm_dev_role') : null);
-      if (devRole) {
-        headers['X-Dev-Role'] = devRole;
+      // X-Dev-User takes priority: use real user identity from employee_info + user_role
+      const devUser = userOverride ?? (typeof window !== 'undefined' ? localStorage.getItem('egm_dev_user') : null);
+      if (devUser) {
+        headers['X-Dev-User'] = devUser;
+      } else {
+        // Fall back to role-only override
+        const devRole = roleOverride ?? (typeof window !== 'undefined' ? localStorage.getItem('egm_dev_role') : null);
+        if (devRole) {
+          headers['X-Dev-Role'] = devRole;
+        }
       }
       const res = await fetch(`${API_BASE}/auth/me`, { headers });
       if (!res.ok) throw new Error(`Auth failed: ${res.status}`);
@@ -70,8 +78,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const switchRole = useCallback(async (role: string) => {
+    // Clear any real-user override so role-only mode takes effect
+    localStorage.removeItem('egm_dev_user');
     localStorage.setItem('egm_dev_role', role);
     await fetchUser(role);
+  }, [fetchUser]);
+
+  const switchUser = useCallback(async (itcode: string) => {
+    // Switch to a real user identity — clears role-only override
+    localStorage.setItem('egm_dev_user', itcode);
+    localStorage.removeItem('egm_dev_role');
+    await fetchUser(undefined, itcode);
   }, [fetchUser]);
 
   // Handle OIDC callback — exchange authorization code for token
@@ -159,7 +176,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   return (
-    <AuthContext.Provider value={{ user, loading, error, hasPermission, hasRole, refresh: fetchUser, switchRole, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, error, hasPermission, hasRole, refresh: fetchUser, switchRole, switchUser, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

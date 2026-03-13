@@ -1,0 +1,69 @@
+{
+  "expectations": [
+    {
+      "text": "Produces a full impact assessment with dependency chain",
+      "passed": true,
+      "evidence": "Phase 1 Step 1.5 contains full assessment with 'Affected Features' table (8 features listed) and 'Full Dependency Chain' tree showing auth -> all downstream features with relationship types."
+    },
+    {
+      "text": "Correctly classifies as L4/High (global infrastructure, structural change)",
+      "passed": true,
+      "evidence": "Step 1.2: 'Impact Level: L4 (Global)' citing auth/ in globalFiles and all 12 routers depending on check_permission(). Step 1.3: 'Risk Level: High' citing RBAC permissions as explicit High risk signal."
+    },
+    {
+      "text": "Includes full dependency chain showing all transitively affected features",
+      "passed": true,
+      "evidence": "Full dependency chain shows auth -> governance-requests (with sub-chains to intake-scoping, domain-dispatch, project-linking), plus direct connections to dashboard, audit-log, progress."
+    },
+    {
+      "text": "Pauses for full chain review before proceeding",
+      "passed": true,
+      "evidence": "Step 1.4: Decision Matrix shows 'Pause: full chain'. Step 1.6: 'Action: PAUSE. Present the full dependency chain, ACs, schema changes, and API contract changes to the user. Wait for explicit approval.'"
+    },
+    {
+      "text": "Plans detailed database migration (new tables for permissions)",
+      "passed": true,
+      "evidence": "Step 3.1.1 provides complete SQL for role_permission table creation with UUID PK, role/resource/scope columns, UNIQUE constraint, and detailed seed data for all 5 roles matching current hardcoded permissions."
+    },
+    {
+      "text": "Proposes phased/incremental implementation (not big-bang)",
+      "passed": true,
+      "evidence": "Implementation is structured as Phase 3A-3F (Migration -> Cache Module -> rbac.py -> Admin CRUD Router -> Resources Registry -> Frontend Page). 'Implementation Order' section lists 9 sequential steps."
+    },
+    {
+      "text": "Includes a rollback or fallback strategy",
+      "passed": true,
+      "evidence": "Comprehensive 4-layer rollback: Layer 1 (code-level fallback with _FALLBACK_PERMISSIONS), Layer 2 (migration rollback with DROP TABLE), Layer 3 (code rollback with git revert), Layer 4 (emergency lockout recovery SQL). Risk mitigation summary table also included."
+    },
+    {
+      "text": "Addresses backward compatibility during migration",
+      "passed": true,
+      "evidence": "Multiple references: 'ROLE_PERMISSIONS dict preserved as _FALLBACK_PERMISSIONS', seed data matches exact current permissions, 'If migration not run: System works exactly as before', AC-13/14 require all existing tests to pass unchanged."
+    },
+    {
+      "text": "Plans comprehensive tests including regression tests for all RBAC-dependent features",
+      "passed": true,
+      "evidence": "Phase 4 plans 11+ new API tests + 4+ E2E tests. Explicitly requires all 13 test_rbac.py + 5 test_auth.py existing tests to pass unmodified. Full suite of 97+ API + 28+ E2E tests required."
+    },
+    {
+      "text": "Lists affected ACs from multiple existing feature docs",
+      "passed": true,
+      "evidence": "Lists domain-dispatch.md AC-16: 'All endpoints enforce RBAC -- admin-only for write operations on rules and domains'. Notes that governance-requests.md and intake-scoping.md have no RBAC-specific ACs. Creates 16 new ACs for the new feature doc."
+    }
+  ],
+  "summary": {
+    "passed": 10,
+    "failed": 0,
+    "total": 10,
+    "pass_rate": 1.0
+  },
+  "eval_feedback": {
+    "suggestions": [
+      {
+        "assertion": "Lists affected ACs from multiple existing feature docs",
+        "reason": "The plan only found one explicit AC (domain-dispatch AC-16) referencing RBAC. This is technically correct since other features don't have RBAC-specific ACs, but the assertion may be too lenient — it passes even with minimal AC identification."
+      }
+    ],
+    "overall": "Outstanding output. 10/10 assertions pass. The plan includes 4-layer rollback, phased implementation, backward compatibility, and comprehensive testing. This demonstrates the skill at its best for L4/High scenarios."
+  }
+}

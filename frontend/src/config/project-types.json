@@ -1,0 +1,5 @@
+[
+  { "value": "poc", "label": "PoC" },
+  { "value": "new_solution", "label": "New Solution" },
+  { "value": "existing_enhancement", "label": "Existing Solution enhancement (non new system/product introduced)" }
+]

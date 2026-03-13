@@ -1,0 +1,141 @@
+{
+  "expectations": [
+    {
+      "text": "Produces a full impact assessment with dependency chain",
+      "passed": true,
+      "evidence": "Phase 1 (lines 8–243) contains a complete impact assessment: explores existing patterns (rbac.py, dependencies.py, providers.py, middleware.py), enumerates all 11 affected routers in a table, classifies impact and risk, and produces a formatted assessment section with Affected Features, Schema Changes, Affected ACs, and a full dependency chain tree (lines 207–222). The chain covers auth/ directly, plus 9 downstream features (governance-requests, intake-scoping, domain-dispatch, project-linking, user-authorization, audit-log, dashboard, progress)."
+    },
+    {
+      "text": "Correctly classifies as L4/High (global infrastructure, structural change)",
+      "passed": true,
+      "evidence": "Step 1.2 explicitly states 'Impact: L4 — Global' with justification that backend/app/auth/ is listed in _DEPENDENCIES.json globalFiles and check_permission() is called on every authenticated API request. Step 1.3 states 'Risk: High' citing RBAC changes, data migration, backward-compatibility risk, and potential system-wide 403s. The assessment header also confirms: 'Impact Level: L4 — Global infrastructure change' and 'Risk Level: High'."
+    },
+    {
+      "text": "Includes full dependency chain showing all transitively affected features",
+      "passed": true,
+      "evidence": "Lines 207–222 contain an explicit ASCII dependency tree showing auth/ at root, with governance-requests, intake-scoping, domain-dispatch (both directly and transitively via governance-requests), project-linking, user-authorization, audit-log, dashboard, and progress as dependents. The Affected Features table (lines 122–135) also enumerates each feature with specific require_permission calls that will be affected."
+    },
+    {
+      "text": "Pauses for full chain review before proceeding",
+      "passed": true,
+      "evidence": "Step 1.4 states 'Impact L4 × Risk High → Pause: full chain'. Step 1.6 (lines 233–243) explicitly states 'Decision: Pause for user review (High Risk × L4 Global)' and lists 4 specific questions for the user to answer before implementation begins. Phase 3 is labeled 'Implementation (Plan Only — No Code Written)' confirming implementation is deferred pending review."
+    },
+    {
+      "text": "Plans detailed database migration (new tables for permissions)",
+      "passed": true,
+      "evidence": "Phase 3-A (lines 450–481) provides the full SQL DDL for the role_permission table with all columns (id UUID PK, role, resource, scope, is_active, create_by/at, update_by/at, UNIQUE constraint). A seed script with INSERT ... ON CONFLICT DO NOTHING is shown. The Schema Changes section (lines 138–143) also documents the migration requirement. The feature doc draft includes scripts/migrate_rbac_seed.sql as a new file."
+    },
+    {
+      "text": "Proposes phased/incremental implementation (not big-bang)",
+      "passed": true,
+      "evidence": "Phase 3 is explicitly organized into 5 sub-phases (3-A through 3-E), each labeled with a goal and the statement 'Leaves system in: Working state'. The phases are: DB migration + seeding (3-A), backend cache loader (3-B), providers.py update (3-C), new RBAC router (3-D), and frontend page (3-E). The summary (line 838) also states 'The implementation is planned in 5 additive phases, each leaving the system in a working state'."
+    },
+    {
+      "text": "Includes a rollback or fallback strategy",
+      "passed": true,
+      "evidence": "Each of the 5 implementation phases documents a rollback. Phase 3-A: 'Rollback: DROP TABLE role_permission;'. Phase 3-B: 'Rollback: Revert rbac.py to use ROLE_PERMISSIONS dict directly.' Phase 3-C: 'Rollback: Remove the ensure_permission_cache_loaded call'. The feature doc notes under Notes: 'Backward compatibility: Keep the ROLE_PERMISSIONS dict in rbac.py as _DEFAULT_PERMISSIONS. The DB-loader falls back to it if the role_permission table is empty (AC-10). This ensures zero-downtime migration.' AC-10 and the cold-cache-fallback test further cover this."
+    },
+    {
+      "text": "Addresses backward compatibility during migration",
+      "passed": true,
+      "evidence": "Multiple places address backward compatibility: Phase 3-A leaves system working (code still uses dict during migration). Phase 3-B describes the fallback: 'If role_permission table is empty, cache is empty, falls back to _DEFAULT_PERMISSIONS. Zero behavior change during rollout.' AC-10 states 'On application startup or cold cache, the permission matrix is loaded from DB; if DB table is empty, falls back to hardcoded defaults.' AC-11 states 'The migration script seeds the role_permission table from the current hardcoded dict; existing permission behavior is unchanged after migration.' The seed script uses INSERT ... ON CONFLICT DO NOTHING for idempotency."
+    },
+    {
+      "text": "Plans comprehensive tests including regression tests for all RBAC-dependent features",
+      "passed": true,
+      "evidence": "The test plan (Phase 4) includes 12 new API tests in test_rbac_admin.py covering all 17 ACs, 5 new E2E tests in settings-permissions.spec.ts, and explicitly specifies regression testing: 'Confirm all 16 tests in api-tests/test_rbac.py still pass after migration (AC-16). No test modifications expected.' The Test Impact section (lines 183–203) also states 'All 86+ other API tests: Any test that hits a guarded endpoint implicitly tests RBAC. These should pass without change if seeding is correct.' The test_revoke_permission_takes_effect and test_grant_permission_takes_effect tests verify RBAC enforcement changes propagate correctly at the endpoint level."
+    },
+    {
+      "text": "Lists affected ACs from multiple existing feature docs",
+      "passed": true,
+      "evidence": "The 'Affected Acceptance Criteria (from existing feature docs)' section (lines 146–166) explicitly cites ACs from multiple feature docs: governance-requests.md AC-6 ('verdict can only be recorded...'), governance-requests.md AC-9 ('Only Draft requests can be deleted...'), domain-dispatch.md AC-16 ('All endpoints enforce RBAC'), intake-scoping.md AC-14 ('All endpoints enforce RBAC via require_permission or require_role'), and domain-dispatch.md AC-1 ('Admins can create, list, update, and soft-delete dispatch rules'). This covers at least 3 distinct feature docs."
+    }
+  ],
+  "summary": {
+    "passed": 10,
+    "failed": 0,
+    "total": 10,
+    "pass_rate": 1.0
+  },
+  "execution_metrics": {
+    "tool_calls": null,
+    "total_tool_calls": null,
+    "total_steps": null,
+    "errors_encountered": 0,
+    "output_chars": 36000,
+    "transcript_chars": 36000
+  },
+  "timing": {
+    "executor_duration_seconds": null,
+    "grader_duration_seconds": null,
+    "total_duration_seconds": null,
+    "note": "Timing data unavailable — timing.json contains null values; agent ran in previous context window"
+  },
+  "claims": [
+    {
+      "claim": "The task involves 11 routers all using require_permission",
+      "type": "factual",
+      "verified": true,
+      "evidence": "The router table (lines 62–76) lists 11 routers: governance_requests.py, intake.py, dispatch_rules.py, dispatcher.py, domain_registry.py, domain_reviews.py, info_requests.py, dashboard.py, progress.py, audit_log.py, user_authorization.py — each with representative require_permission calls."
+    },
+    {
+      "claim": "api-tests/test_rbac.py has 16 existing tests",
+      "type": "factual",
+      "verified": false,
+      "evidence": "The transcript states '16 existing tests' for test_rbac.py in multiple places, but the actual test file was not read in the transcript — this is an observed count from the executor's codebase exploration. Cannot independently verify the count from what's in the output.md alone."
+    },
+    {
+      "claim": "Option C (process-level permission matrix cache) is the selected approach",
+      "type": "process",
+      "verified": true,
+      "evidence": "Lines 38–46 explicitly list Options A, B, C and state 'Selected approach: Option C (process-level permission matrix cache, invalidated via admin API)' with justification."
+    },
+    {
+      "claim": "The implementation is planning-only; no code was actually written",
+      "type": "process",
+      "verified": true,
+      "evidence": "Phase 3 header says '(Plan Only — No Code Written)'; Phase 4 header says '(Plan Only — No Tests Written)'; Phase 5 note says '(To be completed after implementation — not applicable in planning-only mode)'. The Phase 5.3 checklist items are all unchecked."
+    },
+    {
+      "claim": "The feature doc draft covers 17 acceptance criteria",
+      "type": "factual",
+      "verified": true,
+      "evidence": "The feature doc draft in Phase 2 lists ACs numbered AC-1 through AC-17, all present and distinct in content (lines 343–360)."
+    },
+    {
+      "claim": "require_role(ADMIN) calls are NOT migrated to the permission table — this is a conscious design decision",
+      "type": "quality",
+      "verified": true,
+      "evidence": "The summary (line 835) explicitly addresses this: 'Endpoints using require_role(ADMIN)... are NOT affected by the permission table. This is a conscious design choice: admin-only operations remain hardcoded, while resource-level permissions are configurable.' This is also raised as a question for the user in Step 1.6 and noted in the domain-dispatch.md AC discussion."
+    }
+  ],
+  "user_notes_summary": {
+    "uncertainties": [],
+    "needs_review": [
+      "Split enforcement model (require_role vs require_permission): explicitly raised as a question for user before implementation",
+      "Cache TTL vs explicit invalidation strategy: raised as question 2 in Step 1.6",
+      "Admin self-lockout protection: raised as question 3",
+      "Wildcard admin handling (admin role uses * in hardcoded dict): raised as question 4"
+    ],
+    "workarounds": []
+  },
+  "eval_feedback": {
+    "suggestions": [
+      {
+        "assertion": "Plans detailed database migration (new tables for permissions)",
+        "reason": "This assertion passes for any output that mentions a CREATE TABLE statement. A stronger version would require that the migration is idempotent (uses ON CONFLICT or IF NOT EXISTS), includes the seed data logic, and explicitly preserves existing permissions on first deploy — all of which are present here but not what the assertion checks."
+      },
+      {
+        "assertion": "Proposes phased/incremental implementation (not big-bang)",
+        "reason": "The assertion passes if the output contains any mention of phases. A more discriminating check would require that each phase leaves the system in a deployable, working state — specifically that Phase 3-A (DB migration) is decoupled from the code change so the table can be created before any code deploys. The output does satisfy this, but the assertion doesn't require it."
+      },
+      {
+        "reason": "No assertion checks whether the output correctly identifies the performance risk of the naive per-request DB lookup approach (Option A) and explicitly rejects it in favor of a cached approach. This is a meaningful signal of architectural quality for a global infrastructure change."
+      },
+      {
+        "reason": "No assertion checks that the output surfaces the 'split enforcement model' design issue (some endpoints use require_role, others use require_permission) and flags it as a decision point. This is a meaningful correctness concern that a good plan must identify — and the output does identify it, but no assertion rewards this."
+      }
+    ],
+    "overall": "All 10 assertions pass with strong evidence. The eval is well-constructed for this scenario. The main gap is that several assertions check for presence of a concept (phases, migration, rollback) rather than quality of the plan for that concept. Adding discriminating sub-criteria (e.g., 'each phase is independently deployable', 'migration is idempotent', 'identifies the split-enforcement design issue') would make the eval harder to satisfy with a superficial plan."
+  }
+}

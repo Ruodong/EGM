@@ -17,7 +17,7 @@ def _client_as(role: str) -> httpx.Client:
 
 def test_requestor_can_create_request():
     with _client_as("requestor") as c:
-        resp = c.post("/governance-requests", json={"title": "Requestor Test"})
+        resp = c.post("/governance-requests", json={"title": "Requestor Test", "govProjectType": "PoC", "businessUnit": "IDG", "productSoftwareType": "Hardware", "productEndUser": ["Lenovo internal employee/contractors"], "userRegion": ["PRC"]})
         assert resp.status_code == 200
         assert resp.json()["requestId"].startswith("GR-")
 
@@ -41,10 +41,9 @@ def test_requestor_cannot_create_domain():
 
 def test_requestor_cannot_create_dispatch_rule():
     with _client_as("requestor") as c:
-        resp = c.post("/dispatch-rules", json={
+        resp = c.post("/dispatch-rules/", json={
+            "ruleCode": "SHOULD_FAIL",
             "ruleName": "Should Fail",
-            "domainCode": "TEST",
-            "conditionType": "always",
         })
         assert resp.status_code == 403
 
@@ -94,7 +93,7 @@ def test_reviewer_cannot_create_domain():
 
 def test_reviewer_cannot_delete_dispatch_rule():
     with _client_as("domain_reviewer") as c:
-        resp = c.delete("/dispatch-rules/00000000-0000-0000-0000-000000000000")
+        resp = c.delete("/dispatch-rules/NONEXISTENT")
         assert resp.status_code == 403
 
 

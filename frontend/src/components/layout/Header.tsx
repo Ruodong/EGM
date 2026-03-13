@@ -1,18 +1,29 @@
 'use client';
 
-import { Shield, ChevronDown } from 'lucide-react';
+import { ChevronDown, Loader2 } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/lib/auth-context';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, useQuery } from '@tanstack/react-query';
+import { api } from '@/lib/api';
 
-const DEV_ROLES = [
-  { value: 'admin', label: 'Admin', color: 'bg-red-500' },
-  { value: 'requestor', label: 'Requestor', color: 'bg-blue-500' },
-  { value: 'domain_reviewer', label: 'Reviewer', color: 'bg-amber-500' },
-] as const;
+const ROLE_COLORS: Record<string, string> = {
+  admin: 'bg-red-500',
+  governance_lead: 'bg-purple-500',
+  domain_reviewer: 'bg-amber-500',
+  requestor: 'bg-blue-500',
+  viewer: 'bg-gray-400',
+};
+
+const ROLE_LABELS: Record<string, string> = {
+  admin: 'Admin',
+  governance_lead: 'Gov Lead',
+  domain_reviewer: 'Reviewer',
+  requestor: 'Requestor',
+  viewer: 'Viewer',
+};
 
 export function Header() {
-  const { user, switchRole } = useAuth();
+  const { user, switchUser } = useAuth();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -25,18 +36,43 @@ export function Header() {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const currentRole = DEV_ROLES.find((r) => r.value === user?.role) || DEV_ROLES[0];
+  // Fetch real users from user_role table
+  const { data: usersData, isLoading: usersLoading } = useQuery<{ data: { itcode: string; name: string; role: string }[] }>({
+    queryKey: ['dev-user-list'],
+    queryFn: () => api.get('/dev/users'),
+    staleTime: 30_000,
+    enabled: open, // only fetch when dropdown is opened
+  });
 
-  const handleSwitch = async (role: string) => {
+  const roleUsers = usersData?.data ?? [];
+
+  const currentRoleColor = ROLE_COLORS[user?.role ?? ''] ?? 'bg-gray-400';
+  const currentRoleLabel = ROLE_LABELS[user?.role ?? ''] ?? user?.role ?? '';
+
+  const handleSwitch = async (itcode: string) => {
     setOpen(false);
-    await switchRole(role);
+    await switchUser(itcode);
     queryClient.invalidateQueries();
   };
 
   return (
     <header className="h-14 border-b border-border-light bg-white flex items-center justify-between px-6">
       <div className="flex items-center gap-3">
-        <Shield className="w-6 h-6 text-egm-teal" />
+        <svg viewBox="0 0 200 200" className="w-7 h-7" aria-label="Lenovo">
+          <rect width="200" height="200" rx="40" fill="#E1002A" />
+          <text
+            x="100"
+            y="138"
+            textAnchor="middle"
+            fontFamily="Arial, Helvetica, sans-serif"
+            fontWeight="bold"
+            fontSize="110"
+            fill="#FFFFFF"
+            letterSpacing="-4"
+          >
+            Le
+          </text>
+        </svg>
         <span className="text-lg font-semibold text-text-primary">
           Enterprise Governance Management
         </span>
@@ -48,31 +84,50 @@ export function Header() {
               onClick={() => setOpen(!open)}
               className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border-light hover:bg-gray-50 transition-colors"
             >
-              <span className={`w-2 h-2 rounded-full ${currentRole.color}`} />
+              <span className={`w-2 h-2 rounded-full ${currentRoleColor}`} />
               <span className="text-text-primary font-medium">{user.name}</span>
-              <span className="text-text-secondary">({currentRole.label})</span>
+              <span className="text-text-secondary">({currentRoleLabel})</span>
               <ChevronDown className={`w-4 h-4 text-text-secondary transition-transform ${open ? 'rotate-180' : ''}`} />
             </button>
             {open && (
-              <div className="absolute right-0 top-full mt-1 w-52 bg-white rounded-lg border border-border-light shadow-lg py-1 z-50">
+              <div className="absolute right-0 top-full mt-1 w-64 bg-white rounded-lg border border-border-light shadow-lg py-1 z-50">
                 <div className="px-3 py-2 text-xs text-text-secondary border-b border-border-light">
-                  Switch Role
+                  Switch User
                 </div>
-                {DEV_ROLES.map((role) => (
-                  <button
-                    key={role.value}
-                    onClick={() => handleSwitch(role.value)}
-                    className={`w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-gray-50 transition-colors ${
-                      user.role === role.value ? 'bg-gray-50 font-medium' : ''
-                    }`}
-                  >
-                    <span className={`w-2 h-2 rounded-full ${role.color}`} />
-                    <span className="text-sm">{role.label}</span>
-                    {user.role === role.value && (
-                      <span className="ml-auto text-xs text-egm-teal">Active</span>
-                    )}
-                  </button>
-                ))}
+                {usersLoading ? (
+                  <div className="flex items-center justify-center py-4 text-text-secondary">
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                    <span className="text-xs">Loading users…</span>
+                  </div>
+                ) : roleUsers.length === 0 ? (
+                  <div className="px-3 py-3 text-xs text-text-secondary text-center">
+                    No users found in User Authorization
+                  </div>
+                ) : (
+                  roleUsers.map((u) => {
+                    const color = ROLE_COLORS[u.role] ?? 'bg-gray-400';
+                    const label = ROLE_LABELS[u.role] ?? u.role;
+                    const isActive = user.id === u.itcode;
+                    return (
+                      <button
+                        key={u.itcode}
+                        onClick={() => handleSwitch(u.itcode)}
+                        className={`w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-gray-50 transition-colors ${
+                          isActive ? 'bg-gray-50' : ''
+                        }`}
+                      >
+                        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${color}`} />
+                        <span className={`text-sm flex-1 ${isActive ? 'font-medium' : ''}`}>
+                          {u.name}
+                        </span>
+                        <span className="text-xs text-text-secondary">{label}</span>
+                        {isActive && (
+                          <span className="text-xs text-egm-teal ml-1">Active</span>
+                        )}
+                      </button>
+                    );
+                  })
+                )}
               </div>
             )}
           </div>

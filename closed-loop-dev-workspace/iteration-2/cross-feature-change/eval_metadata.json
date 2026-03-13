@@ -1,0 +1,52 @@
+{
+  "eval_id": 2,
+  "eval_name": "cross-feature-change",
+  "prompt": "给 governance request 加一个 'Urgency' 字段（urgent/normal），在创建和编辑时可以设置。如果设为 urgent，dispatch 的时候优先级要调高，domain reviewer 的界面上也要显示 urgency badge。需要加数据库字段。",
+  "assertions": [
+    {
+      "id": "impact-assessment",
+      "text": "Produces a structured impact assessment with affected features table",
+      "type": "qualitative"
+    },
+    {
+      "id": "correct-classification",
+      "text": "Correctly classifies as L3/Medium (cross-feature, modifies existing behavior)",
+      "type": "qualitative"
+    },
+    {
+      "id": "pause-for-review",
+      "text": "Correctly pauses for user review before proceeding",
+      "type": "qualitative"
+    },
+    {
+      "id": "identifies-affected-features",
+      "text": "Identifies all affected features (governance-requests, domain-dispatch, at minimum)",
+      "type": "qualitative"
+    },
+    {
+      "id": "migration-plan",
+      "text": "Plans a database migration (ALTER TABLE or new column)",
+      "type": "qualitative"
+    },
+    {
+      "id": "affected-acs",
+      "text": "Lists specific affected acceptance criteria from existing feature docs",
+      "type": "qualitative"
+    },
+    {
+      "id": "api-contract-changes",
+      "text": "Documents API contract changes (request/response shape changes)",
+      "type": "qualitative"
+    },
+    {
+      "id": "comprehensive-test-plan",
+      "text": "Plans both API tests and E2E tests across affected features",
+      "type": "qualitative"
+    },
+    {
+      "id": "feature-doc-update",
+      "text": "Plans to update feature docs with new ACs and test coverage",
+      "type": "qualitative"
+    }
+  ]
+}

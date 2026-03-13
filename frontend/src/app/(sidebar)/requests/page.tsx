@@ -12,12 +12,13 @@ import FilterBar, { useFilterState, type FilterBarConfig } from '@/components/sh
 interface GovRequest {
   id: string;
   requestId: string;
+  egqId: string | null;
   title: string;
+  govProjectType: string | null;
+  projectName: string | null;
   status: string;
-  priority: string;
   requestor: string;
   requestorName: string;
-  organization: string;
   overallVerdict: string | null;
   createAt: string;
 }
@@ -80,10 +81,10 @@ export default function RequestsPage() {
     },
     {
       key: 'title',
-      label: 'Title',
+      label: 'EGQ ID',
       sortable: true,
-      render: (r) => <>{r.title}</>,
-      exportValue: (r) => r.title,
+      render: (r) => <>{r.egqId || r.title || '-'}</>,
+      exportValue: (r) => r.egqId || r.title || '',
     },
     {
       key: 'status',
@@ -95,13 +96,6 @@ export default function RequestsPage() {
         </span>
       ),
       exportValue: (r) => r.status,
-    },
-    {
-      key: 'priority',
-      label: 'Priority',
-      sortable: true,
-      render: (r) => <>{r.priority}</>,
-      exportValue: (r) => r.priority,
     },
     {
       key: 'requestor',

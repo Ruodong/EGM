@@ -48,3 +48,57 @@ INSERT INTO intake_template (section_type, section, question_no, question_text, 
 ('common', 'Tech Overview', 14, 'Hosting Environment', 'select', '["On-Premise", "Public Cloud", "Private Cloud", "Hybrid"]', false, 41),
 ('common', 'Tech Overview', 15, 'Third-Party Services / APIs Used', 'textarea', null, false, 42)
 ON CONFLICT DO NOTHING;
+
+-- ═══════════════════════════════════════════════════════
+-- Dispatch Rules (Level-1 seed rules, children added via UI)
+-- ═══════════════════════════════════════════════════════
+
+INSERT INTO dispatch_rule (rule_code, rule_name, description, sort_order, create_by) VALUES
+('INTERNAL', '内部项目', '仅面向企业内部使用的项目', 1, 'system'),
+('EXTERNAL', '外部项目', '面向客户或合作伙伴的外部产品/服务', 2, 'system'),
+('AI', 'AI项目', '涉及 AI/ML 模型或生成式 AI', 3, 'system'),
+('PII', 'PII数据', '处理个人可识别信息或敏感数据', 4, 'system'),
+('OPEN_SOURCE', '开源方案', '使用或发布开源软件/组件', 5, 'system')
+ON CONFLICT (rule_code) DO UPDATE SET parent_rule_code = NULL, sort_order = EXCLUDED.sort_order;
+
+-- Level-2 child rules under INTERNAL
+INSERT INTO dispatch_rule (rule_code, rule_name, parent_rule_code, sort_order, create_by) VALUES
+('INTERNAL_ONLY', 'Internal employee using', 'INTERNAL', 1, 'system'),
+('EXTERNAL_USING', 'Have external user (customer, partner)', 'INTERNAL', 2, 'system')
+ON CONFLICT (rule_code) DO UPDATE SET parent_rule_code = EXCLUDED.parent_rule_code, sort_order = EXCLUDED.sort_order;
+
+-- ═══════════════════════════════════════════════════════
+-- Dispatch Rule-Domain Matrix (in/out relationships)
+-- ═══════════════════════════════════════════════════════
+
+INSERT INTO dispatch_rule_domain (rule_id, domain_code, relationship, create_by)
+SELECT cr.id, d.domain_code,
+  CASE
+    WHEN cr.rule_code = 'INTERNAL'    AND d.domain_code = 'EA' THEN 'in'
+    WHEN cr.rule_code = 'EXTERNAL'    AND d.domain_code = 'EA' THEN 'in'
+    WHEN cr.rule_code = 'AI'          AND d.domain_code = 'RAI' THEN 'in'
+    WHEN cr.rule_code = 'PII'         AND d.domain_code = 'DP' THEN 'in'
+    WHEN cr.rule_code = 'OPEN_SOURCE' AND d.domain_code = 'OSC' THEN 'in'
+    ELSE 'out'
+  END,
+  'system'
+FROM dispatch_rule cr
+CROSS JOIN domain_registry d
+WHERE d.is_active = TRUE
+ON CONFLICT (rule_id, domain_code) DO NOTHING;
+
+-- EXTERNAL_USING -> DD domain (in) — only if DD domain exists
+INSERT INTO dispatch_rule_domain (rule_id, domain_code, relationship, create_by)
+SELECT dr.id, 'DD', 'in', 'system'
+FROM dispatch_rule dr WHERE dr.rule_code = 'EXTERNAL_USING'
+  AND EXISTS (SELECT 1 FROM domain_registry WHERE domain_code = 'DD')
+ON CONFLICT (rule_id, domain_code) DO NOTHING;
+
+-- ═══════════════════════════════════════════════════════
+-- Dispatch Rule Exclusions (mutual exclusion relationships)
+-- ═══════════════════════════════════════════════════════
+
+INSERT INTO dispatch_rule_exclusion (rule_code, excluded_rule_code, create_by) VALUES
+('INTERNAL_ONLY', 'EXTERNAL_USING', 'system'),
+('EXTERNAL_USING', 'INTERNAL_ONLY', 'system')
+ON CONFLICT (rule_code, excluded_rule_code) DO NOTHING;

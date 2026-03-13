@@ -4,7 +4,8 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import clsx from 'clsx';
-import { PlusCircle, Pencil, Trash2, RotateCcw } from 'lucide-react';
+import { PlusCircle, Pencil, ToggleLeft, ToggleRight } from 'lucide-react';
+import { getDomainIcon } from '@/lib/domain-icons';
 
 interface Domain {
   id: string;
@@ -14,7 +15,6 @@ interface Domain {
   integrationType: string;
   externalBaseUrl: string | null;
   icon: string | null;
-  sortOrder: number;
   isActive: boolean;
   config: unknown;
 }
@@ -25,8 +25,6 @@ const emptyForm = {
   description: '',
   integrationType: 'internal',
   externalBaseUrl: '',
-  icon: '',
-  sortOrder: 0,
 };
 
 export default function DomainManagementPage() {
@@ -52,13 +50,8 @@ export default function DomainManagementPage() {
     },
   });
 
-  const deactivateMutation = useMutation({
+  const toggleActiveMutation = useMutation({
     mutationFn: (code: string) => api.delete(`/domains/${code}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['domains-management'] }),
-  });
-
-  const reactivateMutation = useMutation({
-    mutationFn: (code: string) => api.put(`/domains/${code}`, { isActive: true }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['domains-management'] }),
   });
 
@@ -76,8 +69,6 @@ export default function DomainManagementPage() {
       description: d.description || '',
       integrationType: d.integrationType,
       externalBaseUrl: d.externalBaseUrl || '',
-      icon: d.icon || '',
-      sortOrder: d.sortOrder,
     });
     setShowForm(true);
   }
@@ -89,8 +80,6 @@ export default function DomainManagementPage() {
       description: form.description || null,
       integrationType: form.integrationType,
       externalBaseUrl: form.externalBaseUrl || null,
-      icon: form.icon || null,
-      sortOrder: Number(form.sortOrder),
     };
     if (!editing) {
       payload.domainCode = form.domainCode;
@@ -159,18 +148,17 @@ export default function DomainManagementPage() {
               </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium mb-1">Description</label>
-              <textarea
-                className="input-field w-full"
-                value={form.description}
-                onChange={(e) => setForm({ ...form, description: e.target.value })}
-                rows={2}
-                placeholder="Brief description of this governance domain..."
-              />
-            </div>
-
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Description</label>
+                <textarea
+                  className="input-field w-full"
+                  value={form.description}
+                  onChange={(e) => setForm({ ...form, description: e.target.value })}
+                  rows={2}
+                  placeholder="Brief description of this governance domain..."
+                />
+              </div>
               {form.integrationType === 'external' && (
                 <div>
                   <label className="block text-sm font-medium mb-1">External Base URL</label>
@@ -182,24 +170,6 @@ export default function DomainManagementPage() {
                   />
                 </div>
               )}
-              <div>
-                <label className="block text-sm font-medium mb-1">Icon</label>
-                <input
-                  className="input-field w-full"
-                  value={form.icon}
-                  onChange={(e) => setForm({ ...form, icon: e.target.value })}
-                  placeholder="Icon name"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Sort Order</label>
-                <input
-                  type="number"
-                  className="input-field w-full"
-                  value={form.sortOrder}
-                  onChange={(e) => setForm({ ...form, sortOrder: Number(e.target.value) })}
-                />
-              </div>
             </div>
 
             <div className="flex gap-2">
@@ -240,74 +210,71 @@ export default function DomainManagementPage() {
                 <th className="text-left px-4 py-2 font-medium">Name</th>
                 <th className="text-left px-4 py-2 font-medium">Type</th>
                 <th className="text-left px-4 py-2 font-medium">Status</th>
-                <th className="text-left px-4 py-2 font-medium">Sort</th>
                 <th className="text-left px-4 py-2 font-medium">Operation</th>
               </tr>
             </thead>
             <tbody>
               {domains.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-text-secondary">
+                  <td colSpan={5} className="px-4 py-8 text-center text-text-secondary">
                     No domains found. Click &quot;+ Add Domain&quot; to create one.
                   </td>
                 </tr>
               ) : (
-                domains.map((d) => (
-                  <tr
-                    key={d.id}
-                    className={clsx('border-b border-border-light last:border-0', !d.isActive && 'opacity-50')}
-                  >
-                    <td className="px-4 py-2">
-                      <span className="px-2 py-0.5 rounded text-xs bg-purple-50 text-purple-700 font-medium">
-                        {d.domainCode}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2 font-medium">{d.domainName}</td>
-                    <td className="px-4 py-2">
-                      <span className={clsx(
-                        'px-2 py-0.5 rounded text-xs',
-                        d.integrationType === 'external' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'
-                      )}>
-                        {d.integrationType}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2">
-                      <span className={clsx(
-                        'px-2 py-0.5 rounded text-xs',
-                        d.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
-                      )}>
-                        {d.isActive ? 'Active' : 'Inactive'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2 text-text-secondary">{d.sortOrder}</td>
-                    <td className="px-4 py-2">
-                      <div className="flex items-center gap-1">
-                        <button onClick={() => openEdit(d)} title="Edit" className="text-primary-blue hover:text-blue-700 p-1">
-                          <Pencil size={16} />
-                        </button>
-                        {d.isActive ? (
-                          <button
-                            onClick={() => deactivateMutation.mutate(d.domainCode)}
-                            title="Deactivate"
-                            className="text-blue-400 hover:text-red-600 p-1"
-                            data-testid={`deactivate-${d.domainCode}`}
-                          >
-                            <Trash2 size={16} />
+                domains.map((d) => {
+                  const { Icon, colors } = getDomainIcon(d.domainCode);
+                  return (
+                    <tr
+                      key={d.id}
+                      className={clsx('border-b border-border-light last:border-0', !d.isActive && 'opacity-50')}
+                    >
+                      <td className="px-4 py-2">
+                        <span className="px-2 py-0.5 rounded text-xs bg-purple-50 text-purple-700 font-medium font-mono">
+                          {d.domainCode}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2">
+                        <div className="flex items-center gap-2">
+                          <span className={clsx('inline-flex items-center justify-center w-7 h-7 rounded-lg flex-shrink-0', colors)}>
+                            <Icon size={15} />
+                          </span>
+                          <span className="font-medium">{d.domainName}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-2">
+                        <span className={clsx(
+                          'px-2 py-0.5 rounded text-xs',
+                          d.integrationType === 'external' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'
+                        )}>
+                          {d.integrationType}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2">
+                        <span className={clsx(
+                          'px-2 py-0.5 rounded text-xs',
+                          d.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                        )}>
+                          {d.isActive ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2">
+                        <div className="flex items-center gap-1">
+                          <button onClick={() => openEdit(d)} title="Edit" className="text-primary-blue hover:text-blue-700 p-1">
+                            <Pencil size={16} />
                           </button>
-                        ) : (
                           <button
-                            onClick={() => reactivateMutation.mutate(d.domainCode)}
-                            title="Reactivate"
-                            className="text-green-500 hover:text-green-700 p-1"
-                            data-testid={`reactivate-${d.domainCode}`}
+                            onClick={() => toggleActiveMutation.mutate(d.domainCode)}
+                            title={d.isActive ? 'Deactivate' : 'Activate'}
+                            className={clsx('p-1', d.isActive ? 'text-green-500 hover:text-red-500' : 'text-gray-400 hover:text-green-600')}
+                            data-testid={d.isActive ? `deactivate-${d.domainCode}` : `reactivate-${d.domainCode}`}
                           >
-                            <RotateCcw size={16} />
+                            {d.isActive ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
                           </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

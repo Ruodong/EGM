@@ -7,6 +7,8 @@ export default defineConfig({
   fullyParallel: false,
   retries: 0,
   reporter: 'list',
+  globalSetup: './e2e-tests/global-setup.ts',
+  globalTeardown: './e2e-tests/global-teardown.ts',
   use: {
     baseURL: 'http://localhost:3001',
     screenshot: 'only-on-failure',

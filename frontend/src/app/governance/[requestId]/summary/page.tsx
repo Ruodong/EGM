@@ -14,10 +14,8 @@ interface GovRequest {
   title: string;
   description: string;
   status: string;
-  priority: string;
   requestor: string;
   requestorName: string;
-  organization: string;
   overallVerdict: string | null;
   projectName: string;
   createAt: string;
@@ -97,9 +95,7 @@ export default function SummaryPage() {
                 {request.status}
               </span>
             </dd></div>
-            <div className="flex"><dt className="w-36 text-text-secondary">Priority</dt><dd>{request.priority}</dd></div>
             <div className="flex"><dt className="w-36 text-text-secondary">Requestor</dt><dd>{request.requestorName || request.requestor}</dd></div>
-            <div className="flex"><dt className="w-36 text-text-secondary">Organization</dt><dd>{request.organization || '-'}</dd></div>
             <div className="flex"><dt className="w-36 text-text-secondary">Overall Verdict</dt><dd>
               {request.overallVerdict ? (
                 <span className={clsx('px-2 py-0.5 rounded text-xs text-white', statusColors[request.overallVerdict] || 'bg-gray-400')}>

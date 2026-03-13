@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" fill="none">
+  <path d="M16 2L4 7v9c0 7.73 5.12 14.96 12 17 6.88-2.04 12-9.27 12-17V7L16 2z" fill="#13C2C2"/>
+  <path d="M16 4.5L6 8.75v7.25c0 6.52 4.32 12.63 10 14.4 5.68-1.77 10-7.88 10-14.4V8.75L16 4.5z" fill="white"/>
+  <path d="M16 7L8 10.5v5.5c0 5.3 3.52 10.28 8 11.7 4.48-1.42 8-6.4 8-11.7V10.5L16 7z" fill="#13C2C2"/>
+  <text x="16" y="22" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-weight="bold" font-size="14" fill="white">G</text>
+</svg>

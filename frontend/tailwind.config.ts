@@ -29,6 +29,7 @@ const config: Config = {
       },
       width: {
         sidebar: '240px',
+        'sidebar-collapsed': '56px',
       },
     },
   },

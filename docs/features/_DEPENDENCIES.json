@@ -4,8 +4,8 @@
   "features": {
     "governance-requests": {
       "doc": "docs/features/governance-requests.md",
-      "tables": ["governance_request", "audit_log"],
-      "routers": ["governance_requests.py"],
+      "tables": ["governance_request", "governance_request_rule", "governance_request_attachment", "audit_log"],
+      "routers": ["governance_requests.py", "employees.py"],
       "frontendPaths": [
         "frontend/src/app/(sidebar)/requests/",
         "frontend/src/app/governance/"
@@ -23,7 +23,7 @@
     "domain-dispatch": {
       "doc": "docs/features/domain-dispatch.md",
       "tables": [
-        "domain_registry", "dispatch_rule", "domain_review",
+        "domain_registry", "dispatch_rule", "dispatch_rule_domain", "domain_review",
         "domain_questionnaire_response", "domain_questionnaire_template",
         "info_supplement_request", "review_action", "review_comment"
       ],
@@ -47,13 +47,16 @@
       ]
     },
     "auth": {
-      "doc": null,
-      "tables": [],
+      "doc": "docs/features/auth.md",
+      "tables": ["user_role", "employee_info"],
       "routers": ["auth.py"],
-      "frontendPaths": []
+      "frontendPaths": [
+        "frontend/src/lib/auth-context.tsx",
+        "frontend/src/components/layout/Header.tsx"
+      ]
     },
     "dashboard": {
-      "doc": null,
+      "doc": "docs/features/dashboard.md",
       "tables": [],
       "routers": ["dashboard.py"],
       "frontendPaths": [
@@ -61,17 +64,25 @@
       ]
     },
     "progress": {
-      "doc": null,
+      "doc": "docs/features/progress.md",
       "tables": [],
       "routers": ["progress.py"],
       "frontendPaths": []
     },
     "audit-log": {
-      "doc": null,
+      "doc": "docs/features/audit-log.md",
       "tables": ["audit_log"],
       "routers": ["audit_log.py"],
       "frontendPaths": [
         "frontend/src/app/(sidebar)/settings/audit-log/"
+      ]
+    },
+    "user-authorization": {
+      "doc": "docs/features/user-authorization.md",
+      "tables": ["user_role", "employee_info"],
+      "routers": ["user_authorization.py"],
+      "frontendPaths": [
+        "frontend/src/app/(sidebar)/settings/user-authorization/"
       ]
     }
   },
@@ -111,6 +122,12 @@
       "to": "governance-requests",
       "type": "FK",
       "detail": "governance_request.project_id -> project.project_id ON DELETE SET NULL"
+    },
+    {
+      "from": "governance-requests",
+      "to": "domain-dispatch",
+      "type": "FK",
+      "detail": "governance_request_rule.rule_code FK -> dispatch_rule.rule_code; create/update request saves rule associations"
     }
   ],
   "sharedTables": {

@@ -1,18 +1,29 @@
 """Test governance request CRUD + lifecycle."""
 import httpx
 
+# Required fields for all governance request creation calls
+_BASE = {
+    "govProjectType": "PoC",
+    "businessUnit": "IDG",
+    "productSoftwareType": "Hardware",
+    "productEndUser": ["Lenovo internal employee/contractors"],
+    "userRegion": ["PRC"],
+}
+
 
 def test_create_request(client: httpx.Client):
     resp = client.post("/governance-requests", json={
+        **_BASE,
         "title": "API Test Request",
         "description": "Created by pytest",
-        "priority": "High",
     })
     assert resp.status_code == 200
     data = resp.json()
     assert data["requestId"].startswith("GR-")
     assert data["status"] == "Draft"
-    assert data["priority"] == "High"
+    assert data["productSoftwareType"] == "Hardware"
+    assert data["productEndUser"] == ["Lenovo internal employee/contractors"]
+    assert data["userRegion"] == ["PRC"]
     assert data["requestor"] == "dev_admin"
 
 
@@ -43,11 +54,11 @@ def test_update_request(client: httpx.Client, create_request):
     rid = create_request["requestId"]
     resp = client.put(f"/governance-requests/{rid}", json={
         "title": "Updated Title",
-        "priority": "Critical",
+        "productSoftwareType": "Software-Web Based",
     })
     assert resp.status_code == 200
     assert resp.json()["title"] == "Updated Title"
-    assert resp.json()["priority"] == "Critical"
+    assert resp.json()["productSoftwareType"] == "Software-Web Based"
 
 
 def test_submit_request(client: httpx.Client, create_request):
@@ -83,7 +94,7 @@ def test_verdict_invalid_value(client: httpx.Client, create_request):
 
 def test_delete_draft_request(client: httpx.Client):
     # Create a fresh one to delete
-    resp = client.post("/governance-requests", json={"title": "To Delete"})
+    resp = client.post("/governance-requests", json={**_BASE, "title": "To Delete"})
     rid = resp.json()["requestId"]
 
     resp = client.delete(f"/governance-requests/{rid}")
@@ -103,13 +114,12 @@ def test_filter_options(client: httpx.Client):
     assert resp.status_code == 200
     data = resp.json()
     assert "statuses" in data
-    assert "priorities" in data
 
 
 def test_sequence_generates_unique_ids(client: httpx.Client):
     """Fix 6: verify sequence generates unique request IDs."""
-    r1 = client.post("/governance-requests", json={"title": "Seq Test 1"}).json()
-    r2 = client.post("/governance-requests", json={"title": "Seq Test 2"}).json()
+    r1 = client.post("/governance-requests", json={**_BASE, "title": "Seq Test 1"}).json()
+    r2 = client.post("/governance-requests", json={**_BASE, "title": "Seq Test 2"}).json()
     assert r1["requestId"] != r2["requestId"]
     # Both should be GR-XXXXXX format
     assert r1["requestId"].startswith("GR-")
@@ -140,10 +150,9 @@ def test_verdict_approved(client: httpx.Client, dispatched_request):
 def test_create_request_with_empty_optional_fields(client: httpx.Client):
     """Empty optional fields should be handled gracefully (not cause 500)."""
     resp = client.post("/governance-requests", json={
+        **_BASE,
         "title": "Empty Fields Test",
-        "targetDate": "",
         "projectId": "",
-        "organization": "",
     })
     assert resp.status_code == 200
     data = resp.json()
@@ -170,6 +179,7 @@ def test_create_request_with_project(client: httpx.Client):
     pname = projects["data"][0]["projectName"]
 
     resp = client.post("/governance-requests", json={
+        **_BASE,
         "title": "Request with Project",
         "projectId": pid,
     })
@@ -182,6 +192,7 @@ def test_create_request_with_project(client: httpx.Client):
 def test_create_request_invalid_project(client: httpx.Client):
     """Creating with non-existent projectId should fail."""
     resp = client.post("/governance-requests", json={
+        **_BASE,
         "title": "Bad Project",
         "projectId": "NONEXISTENT-999",
     })
@@ -192,11 +203,11 @@ def test_create_request_invalid_project(client: httpx.Client):
 def test_filter_by_date_range(client: httpx.Client):
     """dateFrom and dateTo query params filter by create_at."""
     # Create a request so we have at least one
-    client.post("/governance-requests", json={"title": "Date Range Test"})
+    client.post("/governance-requests", json={**_BASE, "title": "Date Range Test"})
 
-    # Use today's date range — should include the request we just created
-    from datetime import date
-    today = date.today().isoformat()
+    # Use UTC date (DB stores timestamps in UTC via Docker PostgreSQL)
+    from datetime import datetime, timezone
+    today = datetime.now(timezone.utc).date().isoformat()
 
     resp = client.get("/governance-requests", params={"dateFrom": today, "dateTo": today})
     assert resp.status_code == 200
@@ -216,7 +227,7 @@ def test_filter_by_date_range(client: httpx.Client):
 
 def test_search_by_keyword(client: httpx.Client):
     """search query param filters by request_id or title."""
-    resp = client.post("/governance-requests", json={"title": "UniqueSearchKeyword123"})
+    resp = client.post("/governance-requests", json={**_BASE, "title": "UniqueSearchKeyword123"})
     assert resp.status_code == 200
 
     # Search by title keyword
@@ -235,8 +246,8 @@ def test_search_by_keyword(client: httpx.Client):
 def test_sort_by_title_asc(client: httpx.Client):
     """sortField=title&sortOrder=ASC returns alphabetically sorted data."""
     # Create two requests with known titles
-    client.post("/governance-requests", json={"title": "AAA Sort First"})
-    client.post("/governance-requests", json={"title": "ZZZ Sort Last"})
+    client.post("/governance-requests", json={**_BASE, "title": "AAA Sort First"})
+    client.post("/governance-requests", json={**_BASE, "title": "ZZZ Sort Last"})
 
     resp = client.get("/governance-requests", params={
         "sortField": "title",
@@ -262,7 +273,7 @@ def test_sort_by_create_at_desc(client: httpx.Client):
 def test_filter_by_status(client: httpx.Client):
     """status query param filters results correctly (no ambiguous column with JOIN)."""
     # Create a Draft request
-    client.post("/governance-requests", json={"title": "Status Filter Test"})
+    client.post("/governance-requests", json={**_BASE, "title": "Status Filter Test"})
 
     # Filter by Draft — should return at least one result, all with Draft status
     resp = client.get("/governance-requests", params={"status": "Draft", "pageSize": 100})
@@ -276,12 +287,466 @@ def test_filter_by_status(client: httpx.Client):
     assert resp.status_code == 200
 
 
-def test_filter_by_priority(client: httpx.Client):
-    """priority query param filters results correctly."""
-    client.post("/governance-requests", json={"title": "Priority Filter Test", "priority": "High"})
+def test_create_request_product_fields(client: httpx.Client):
+    """New product/business fields are stored and returned correctly."""
+    resp = client.post("/governance-requests", json={
+        **_BASE,
+        "productSoftwareType": "Other",
+        "productSoftwareTypeOther": "Custom Device",
+        "productEndUser": ["Lenovo internal employee/contractors", "External customer-facing"],
+        "userRegion": ["PRC", "EMEA", "NA"],
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["productSoftwareType"] == "Other"
+    assert data["productSoftwareTypeOther"] == "Custom Device"
+    assert set(data["productEndUser"]) == {"Lenovo internal employee/contractors", "External customer-facing"}
+    assert set(data["userRegion"]) == {"PRC", "EMEA", "NA"}
 
-    resp = client.get("/governance-requests", params={"priority": "High", "pageSize": 100})
+
+# ── Compliance Rule association tests ─────────────────────────
+
+
+def test_create_request_with_rule_codes(client: httpx.Client):
+    """Create request with rule associations."""
+    resp = client.post("/governance-requests", json={
+        **_BASE,
+        "title": "Request with Rules",
+        "description": "Testing ruleCodes",
+        "ruleCodes": ["AI", "PII"],
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    # AI and PII are both level-1 seed rules — no auto-aggregation
+    assert sorted(data["ruleCodes"]) == ["AI", "PII"]
+    assert data["autoRuleCodes"] == []
+
+
+def test_create_request_without_rule_codes(client: httpx.Client):
+    """Create request without ruleCodes still works (backward compat)."""
+    resp = client.post("/governance-requests", json={
+        **_BASE,
+        "title": "Request No Rules",
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["ruleCodes"] == []
+
+
+def test_get_request_returns_rule_codes(client: httpx.Client):
+    """GET single request returns associated ruleCodes."""
+    resp = client.post("/governance-requests", json={
+        **_BASE,
+        "title": "Get Rules Test",
+        "ruleCodes": ["INTERNAL", "AI"],
+    })
+    assert resp.status_code == 200
+    rid = resp.json()["requestId"]
+
+    resp = client.get(f"/governance-requests/{rid}")
+    assert resp.status_code == 200
+    # INTERNAL and AI are both level-1, not mutually exclusive — no auto-aggregation
+    assert sorted(resp.json()["ruleCodes"]) == ["AI", "INTERNAL"]
+    assert resp.json()["autoRuleCodes"] == []
+
+
+def test_get_request_no_rules_returns_empty_array(client: httpx.Client):
+    """GET request with no rules returns empty ruleCodes array."""
+    resp = client.post("/governance-requests", json={**_BASE, "title": "No Rules Get"})
+    rid = resp.json()["requestId"]
+
+    resp = client.get(f"/governance-requests/{rid}")
+    assert resp.status_code == 200
+    assert resp.json()["ruleCodes"] == []
+
+
+def test_update_request_rule_codes(client: httpx.Client):
+    """PUT request can update ruleCodes."""
+    # Create with initial rules
+    resp = client.post("/governance-requests", json={
+        **_BASE,
+        "title": "Update Rules Test",
+        "ruleCodes": ["AI"],
+    })
+    rid = resp.json()["requestId"]
+
+    # Update to different rules
+    resp = client.put(f"/governance-requests/{rid}", json={
+        "ruleCodes": ["PII", "INTERNAL"],
+    })
+    assert resp.status_code == 200
+    # PII and INTERNAL are both level-1 — no auto-aggregation
+    assert sorted(resp.json()["ruleCodes"]) == ["INTERNAL", "PII"]
+    assert resp.json()["autoRuleCodes"] == []
+
+    # Verify via GET
+    resp = client.get(f"/governance-requests/{rid}")
+    assert sorted(resp.json()["ruleCodes"]) == ["INTERNAL", "PII"]
+
+
+def test_update_request_clear_rule_codes(client: httpx.Client):
+    """PUT with empty ruleCodes clears all associations."""
+    resp = client.post("/governance-requests", json={
+        **_BASE,
+        "title": "Clear Rules Test",
+        "ruleCodes": ["AI", "PII"],
+    })
+    rid = resp.json()["requestId"]
+
+    resp = client.put(f"/governance-requests/{rid}", json={
+        "ruleCodes": [],
+    })
+    assert resp.status_code == 200
+    assert resp.json()["ruleCodes"] == []
+
+
+def test_create_request_ignores_invalid_rule_codes(client: httpx.Client):
+    """Invalid or inactive rule codes are silently ignored."""
+    resp = client.post("/governance-requests", json={
+        **_BASE,
+        "title": "Invalid Rules Test",
+        "ruleCodes": ["AI", "NONEXISTENT_RULE"],
+    })
+    assert resp.status_code == 200
+    # AI is valid, no parent to auto-aggregate
+    assert resp.json()["ruleCodes"] == ["AI"]
+
+
+# ── MSPO / Non-MSPO project type tests ──────────────────────
+
+
+def test_create_mspo_project(client: httpx.Client):
+    """Create request with projectType=mspo snapshots project data."""
+    projects = client.get("/projects", params={"pageSize": 1}).json()
+    if projects["total"] == 0:
+        return
+    proj = projects["data"][0]
+    pid = proj["projectId"]
+
+    resp = client.post("/governance-requests", json={
+        **_BASE,
+        "title": "MSPO Test",
+        "projectType": "mspo",
+        "projectId": pid,
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["projectType"] == "mspo"
+    assert data["projectId"] == pid
+    assert data["projectCode"] == pid
+    assert data["projectName"] == proj["projectName"]
+    assert data["projectPm"] == proj["pm"]
+    assert data["projectProjType"] == proj["type"]
+    assert data["projectStatus"] == proj["status"]
+
+
+def test_create_non_mspo_project(client: httpx.Client):
+    """Create request with projectType=non_mspo stores manual fields."""
+    resp = client.post("/governance-requests", json={
+        **_BASE,
+        "title": "Non-MSPO Test",
+        "projectType": "non_mspo",
+        "projectCode": "NMP-001",
+        "projectName": "Manual Project",
+        "projectDescription": "A manual project",
+        "projectPm": "John Doe",
+        "projectStartDate": "2026-01-01",
+        "projectGoLiveDate": "2026-06-01",
+        "projectEndDate": "2026-12-31",
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["projectType"] == "non_mspo"
+    assert data["projectId"] is None
+    assert data["projectCode"] == "NMP-001"
+    assert data["projectName"] == "Manual Project"
+    assert data["projectDescription"] == "A manual project"
+    assert data["projectPm"] == "John Doe"
+    assert data["projectStartDate"] == "2026-01-01"
+    assert data["projectGoLiveDate"] == "2026-06-01"
+    assert data["projectEndDate"] == "2026-12-31"
+
+
+def test_create_mspo_without_project_id_fails(client: httpx.Client):
+    """MSPO without projectId should fail."""
+    resp = client.post("/governance-requests", json={
+        **_BASE,
+        "title": "MSPO No PID",
+        "projectType": "mspo",
+    })
+    assert resp.status_code == 400
+    assert "projectId" in resp.json()["detail"]
+
+
+def test_get_request_returns_project_fields(client: httpx.Client):
+    """GET single request returns all project snapshot fields."""
+    resp = client.post("/governance-requests", json={
+        **_BASE,
+        "title": "Project Fields Get Test",
+        "projectType": "non_mspo",
+        "projectCode": "PFG-001",
+        "projectName": "Fields Test Project",
+        "projectPm": "Test PM",
+    })
+    rid = resp.json()["requestId"]
+
+    resp = client.get(f"/governance-requests/{rid}")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["projectType"] == "non_mspo"
+    assert data["projectCode"] == "PFG-001"
+    assert data["projectName"] == "Fields Test Project"
+
+
+# ── EGQ ID + govProjectType tests ─────────────────────────────
+
+
+def test_egq_id_format(client: httpx.Client):
+    """EGQ ID should be auto-generated in EGQyymmdd#### format."""
+    resp = client.post("/governance-requests", json={**_BASE})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["egqId"] is not None
+    # Format: EGQ + 6 digits (yymmdd) + 4 digits (seq)
+    import re
+    assert re.match(r"^EGQ\d{10}$", data["egqId"]), f"EGQ ID format invalid: {data['egqId']}"
+
+
+def test_egq_id_daily_sequence(client: httpx.Client):
+    """Two consecutive requests should have sequential EGQ IDs."""
+    r1 = client.post("/governance-requests", json={**_BASE}).json()
+    r2 = client.post("/governance-requests", json={**_BASE}).json()
+    assert r1["egqId"] is not None
+    assert r2["egqId"] is not None
+    # Same date prefix, sequential suffix
+    assert r1["egqId"][:9] == r2["egqId"][:9]  # EGQyymmdd
+    seq1 = int(r1["egqId"][9:])
+    seq2 = int(r2["egqId"][9:])
+    assert seq2 == seq1 + 1
+
+
+def test_create_without_title(client: httpx.Client):
+    """Title is no longer required — auto-set to EGQ ID."""
+    resp = client.post("/governance-requests", json={**_BASE})
+    assert resp.status_code == 200
+    data = resp.json()
+    # title should be auto-set to the EGQ ID
+    assert data["title"] == data["egqId"]
+
+
+def test_gov_project_type(client: httpx.Client):
+    """govProjectType is saved and returned."""
+    resp = client.post("/governance-requests", json={
+        **_BASE,
+        "govProjectType": "poc",
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["govProjectType"] == "poc"
+
+    # Verify via GET
+    rid = data["requestId"]
+    resp = client.get(f"/governance-requests/{rid}")
+    assert resp.json()["govProjectType"] == "poc"
+
+
+def test_update_gov_project_type(client: httpx.Client, create_request):
+    """govProjectType can be updated via PUT."""
+    rid = create_request["requestId"]
+    resp = client.put(f"/governance-requests/{rid}", json={
+        "govProjectType": "new_solution",
+    })
+    assert resp.status_code == 200
+    assert resp.json()["govProjectType"] == "new_solution"
+
+
+def test_search_by_egq_id(client: httpx.Client):
+    """Search param should also match egq_id."""
+    resp = client.post("/governance-requests", json={**_BASE})
+    egq_id = resp.json()["egqId"]
+
+    resp = client.get("/governance-requests", params={"search": egq_id})
     assert resp.status_code == 200
     data = resp.json()
     assert data["total"] >= 1
-    assert all(r["priority"] == "High" for r in data["data"])
+    assert any(r["egqId"] == egq_id for r in data["data"])
+
+
+# ── Business Unit tests ──────────────────────────────────────
+
+
+def test_create_request_with_business_unit(client: httpx.Client):
+    """businessUnit is saved and returned on create."""
+    resp = client.post("/governance-requests", json={
+        **_BASE,
+        "businessUnit": "IDG",
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["businessUnit"] == "IDG"
+
+    # Verify via GET
+    rid = data["requestId"]
+    resp = client.get(f"/governance-requests/{rid}")
+    assert resp.json()["businessUnit"] == "IDG"
+
+
+def test_update_request_business_unit(client: httpx.Client, create_request):
+    """businessUnit can be updated via PUT."""
+    rid = create_request["requestId"]
+    resp = client.put(f"/governance-requests/{rid}", json={
+        "businessUnit": "Moto",
+    })
+    assert resp.status_code == 200
+    assert resp.json()["businessUnit"] == "Moto"
+
+
+def test_create_request_without_business_unit(client: httpx.Client):
+    """businessUnit is required — missing returns 400."""
+    resp = client.post("/governance-requests", json={"govProjectType": "PoC"})
+    assert resp.status_code == 400
+    assert "businessUnit" in resp.json()["detail"]
+
+
+# ── Attachment tests ─────────────────────────────────────────
+
+
+def test_upload_attachment(client: httpx.Client, create_request):
+    """Upload a file attachment to a governance request."""
+    rid = create_request["requestId"]
+    file_content = b"Hello, this is a test file."
+    files = {"file": ("test.txt", file_content, "text/plain")}
+    resp = client.post(f"/governance-requests/{rid}/attachments", files=files)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["fileName"] == "test.txt"
+    assert data["fileSize"] == len(file_content)
+    assert data["contentType"] == "text/plain"
+    assert "id" in data
+
+
+def test_list_attachments(client: httpx.Client, create_request):
+    """List attachments returns uploaded files."""
+    rid = create_request["requestId"]
+    # Upload two files
+    client.post(f"/governance-requests/{rid}/attachments",
+                files={"file": ("a.txt", b"aaa", "text/plain")})
+    client.post(f"/governance-requests/{rid}/attachments",
+                files={"file": ("b.txt", b"bbb", "text/plain")})
+
+    resp = client.get(f"/governance-requests/{rid}/attachments")
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    assert len(data) >= 2
+    names = [a["fileName"] for a in data]
+    assert "a.txt" in names
+    assert "b.txt" in names
+
+
+def test_download_attachment(client: httpx.Client, create_request):
+    """Download attachment returns binary content with correct headers."""
+    rid = create_request["requestId"]
+    content = b"download me"
+    up = client.post(f"/governance-requests/{rid}/attachments",
+                     files={"file": ("dl.txt", content, "text/plain")})
+    att_id = up.json()["id"]
+
+    resp = client.get(f"/governance-requests/{rid}/attachments/{att_id}")
+    assert resp.status_code == 200
+    assert resp.content == content
+    assert "attachment" in resp.headers.get("content-disposition", "")
+
+
+def test_delete_attachment(client: httpx.Client, create_request):
+    """Delete attachment removes it."""
+    rid = create_request["requestId"]
+    up = client.post(f"/governance-requests/{rid}/attachments",
+                     files={"file": ("del.txt", b"delete me", "text/plain")})
+    att_id = up.json()["id"]
+
+    resp = client.delete(f"/governance-requests/{rid}/attachments/{att_id}")
+    assert resp.status_code == 200
+    assert resp.json()["deleted"] is True
+
+    # Verify it's gone
+    resp = client.get(f"/governance-requests/{rid}/attachments/{att_id}")
+    assert resp.status_code == 404
+
+
+def test_upload_attachment_invalid_request(client: httpx.Client):
+    """Upload to non-existent request returns 404."""
+    resp = client.post("/governance-requests/NONEXISTENT/attachments",
+                       files={"file": ("x.txt", b"x", "text/plain")})
+    assert resp.status_code == 404
+
+
+# ── Non-MSPO PM itcode tests ────────────────────────────────
+
+
+def test_create_nonmspo_with_pm_itcode(client: httpx.Client):
+    """Non-MSPO with projectPmItcode saves it."""
+    # Get a real employee itcode
+    emp_resp = client.get("/employees/search", params={"q": "a"})
+    assert emp_resp.status_code == 200
+    employees = emp_resp.json()["data"]
+    assert len(employees) >= 1
+    itcode = employees[0]["itcode"]
+    name = employees[0]["name"]
+
+    resp = client.post("/governance-requests", json={
+        **_BASE,
+        "projectType": "non_mspo",
+        "projectCode": "PM-IT-001",
+        "projectName": "PM itcode Test",
+        "projectPm": name,
+        "projectPmItcode": itcode,
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["projectPmItcode"] == itcode
+    assert data["projectPm"] == name
+
+    # Verify via GET
+    rid = data["requestId"]
+    resp = client.get(f"/governance-requests/{rid}")
+    assert resp.json()["projectPmItcode"] == itcode
+
+
+def test_create_nonmspo_without_pm_itcode(client: httpx.Client):
+    """Non-MSPO without projectPmItcode still works (itcode optional, pm required)."""
+    resp = client.post("/governance-requests", json={
+        **_BASE,
+        "projectType": "non_mspo",
+        "projectCode": "PM-NOIT-001",
+        "projectName": "No PM itcode",
+        "projectPm": "Manual PM Name",
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["projectPmItcode"] is None
+    assert data["projectPm"] == "Manual PM Name"
+
+
+def test_create_missing_required_fields(client: httpx.Client):
+    """Missing required fields returns 400."""
+    resp = client.post("/governance-requests", json={})
+    assert resp.status_code == 400
+    detail = resp.json()["detail"]
+    assert "govProjectType" in detail
+    assert "businessUnit" in detail
+    assert "productSoftwareType" in detail
+    assert "productEndUser" in detail
+    assert "userRegion" in detail
+
+
+def test_create_nonmspo_missing_project_fields(client: httpx.Client):
+    """Non-MSPO missing projectCode/projectName/projectPm returns 400."""
+    resp = client.post("/governance-requests", json={
+        **_BASE,
+        "projectType": "non_mspo",
+    })
+    assert resp.status_code == 400
+    detail = resp.json()["detail"]
+    assert "projectCode" in detail
+    assert "projectName" in detail
+    assert "projectPm" in detail

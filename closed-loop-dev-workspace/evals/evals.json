@@ -1,0 +1,26 @@
+{
+  "skill_name": "closed-loop-development",
+  "evals": [
+    {
+      "id": 1,
+      "name": "simple-ui-change",
+      "prompt": "给 Settings 页面的 Audit Log 表格加一个按时间排序的功能，点击 Timestamp 列头可以切换升序/降序。这是个纯前端改动，不需要改后端。",
+      "expected_output": "应该先做影响评估（L1/Low，自动批准），然后创建或更新 feature doc，实施代码改动，写 E2E 测试，最后更新 feature doc 状态和 test-map.json",
+      "files": []
+    },
+    {
+      "id": 2,
+      "name": "cross-feature-change",
+      "prompt": "给 governance request 加一个 'Urgency' 字段（urgent/normal），在创建和编辑时可以设置。如果设为 urgent，dispatch 的时候优先级要调高，domain reviewer 的界面上也要显示 urgency badge。需要加数据库字段。",
+      "expected_output": "应该识别出这是 L3/Medium（跨 governance-requests + domain-dispatch），暂停让用户确认。需要 migration，影响多个 router 和前端页面。文档应该列出所有受影响的 AC 和 API contract",
+      "files": []
+    },
+    {
+      "id": 3,
+      "name": "global-infra-change",
+      "prompt": "把现有的 RBAC 系统从硬编码的 role-permission 映射改成数据库驱动的权限系统。每个 role 的 permissions 存在 DB 表里，admin 可以在 Settings 里动态配置。这样就不用每次加新 permission 都改代码了。",
+      "expected_output": "应该识别出这是 L4/High（改全局 auth 基础设施），执行完整依赖链分析，列出所有受影响的 feature。应该有详细的 migration 计划、回滚策略、分步实施方案。必须暂停等用户确认",
+      "files": []
+    }
+  ]
+}

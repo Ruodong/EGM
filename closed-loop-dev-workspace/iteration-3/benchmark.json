@@ -1,0 +1,106 @@
+{
+  "metadata": {
+    "skill_name": "closed-loop-development",
+    "skill_path": "/Users/ruodongyang/Workplace/EGM/.claude/skills/closed-loop-development.md",
+    "timestamp": "2026-03-11T23:55:00Z",
+    "evals_run": [1, 2, 3],
+    "runs_per_configuration": 1
+  },
+  "runs": [
+    {
+      "eval_id": 1,
+      "eval_name": "simple-ui-change",
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 7,
+        "failed": 0,
+        "total": 7,
+        "time_seconds": 182,
+        "tokens": 79751,
+        "tool_calls": null,
+        "errors": 0
+      },
+      "expectations": [
+        {"text": "Produces a structured impact assessment (identifies impact level and risk level)", "passed": true, "evidence": "Phase 1 contains dedicated subsections: Step 1.2 classifies Impact Level as 'L1 — UI/interaction only.' and Step 1.3 classifies Risk Level as 'Low.' with explicit rationale for each. Compact summary confirms: '**Impact**: L1 | **Risk**: Low | **Decision**: Auto-approve'"},
+        {"text": "Correctly classifies as L1/Low (UI-only, pure addition)", "passed": true, "evidence": "Step 1.2 states 'L1 — UI/interaction only.' and Step 1.3 states 'Low.' Rationale: 'The backend change is a one-line addition to the SQL ORDER BY clause... The API response shape does not change. No new endpoint, no schema change.'"},
+        {"text": "Decides to auto-approve (not pause for review)", "passed": true, "evidence": "Step 1.4 Decision Matrix shows L1/Low maps to 'Auto-approve' and explicitly states: '**Decision: Auto-approve. Proceed to Phase 2 immediately.**'"},
+        {"text": "Plans to create or update a feature doc with acceptance criteria", "passed": true, "evidence": "Phase 2 Step 2.1 plans to create 'docs/features/audit-log.md' and includes a complete feature doc draft with 10 explicitly listed acceptance criteria (AC-1 through AC-10)."},
+        {"text": "Includes a test plan (at minimum E2E tests)", "passed": true, "evidence": "Phase 4 includes both API tests (Step 4.1 — 4 test functions in test_dashboard.py) and E2E tests (Step 4.2 — 2 test cases in settings.spec.ts), with full test code provided for all tests."},
+        {"text": "Plans to update test-map.json for new/changed files", "passed": true, "evidence": "Step 3.2 explicitly addresses test-map.json: 'No new source files are created. Both existing mappings already cover the modified files' — the plan explicitly considers and resolves the test-map question."},
+        {"text": "Includes a final verification step (full test suite run)", "passed": true, "evidence": "Phase 5 Step 5.2 'Run Full Test Suite' includes: 'python3 -m pytest api-tests/ -v --tb=short' and 'npx playwright test --reporter=list'"}
+      ]
+    },
+    {
+      "eval_id": 2,
+      "eval_name": "cross-feature-change",
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 9,
+        "failed": 0,
+        "total": 9,
+        "time_seconds": 279,
+        "tokens": 109189,
+        "tool_calls": 23,
+        "errors": 0
+      },
+      "expectations": [
+        {"text": "Produces a structured impact assessment with affected features table", "passed": true, "evidence": "Lines 92-107: Full '## Impact Assessment' with '### Affected Features' table listing 4 features with Relationship and Specific Impact columns. Includes Schema Changes, Affected ACs, API Contracts, and Test Impact sub-sections."},
+        {"text": "Correctly classifies as L3/Medium (cross-feature, modifies existing behavior)", "passed": true, "evidence": "Line 62: '**Impact Level: L3 — Cross-feature**'. Line 76: '**Risk Level: Medium**'. Line 78 provides explicit reasoning citing migration script + API shape changes. Decision matrix shows Medium×L3 → Pause."},
+        {"text": "Correctly pauses for user review before proceeding", "passed": true, "evidence": "Decision matrix shows 'Pause: review'. Line 185: '**Decision: Pause for review.** This is a Medium-risk, L3 cross-feature change. The assessment above is presented to the user for explicit approval before proceeding to Phase 2.'"},
+        {"text": "Identifies all affected features (governance-requests, domain-dispatch, at minimum)", "passed": true, "evidence": "Affected Features table lists governance-requests (Primary), domain-dispatch (Consumer via FK+status_write), intake-scoping (Consumer via FK), project-linking (Consumer via FK)."},
+        {"text": "Plans a database migration (ALTER TABLE or new column)", "passed": true, "evidence": "Phase 3 Phase 1 (Database Migration) provides complete SQL: 'ALTER TABLE governance_request ADD COLUMN IF NOT EXISTS urgency VARCHAR NOT NULL DEFAULT \\'normal\\'', CHECK constraint, and rollback script."},
+        {"text": "Lists specific affected acceptance criteria from existing feature docs", "passed": true, "evidence": "Lines 115-143: Quotes specific ACs from governance-requests.md (AC-3, AC-10, AC-16, AC-17) and domain-dispatch.md (AC-4, AC-9) with '-->' annotations explaining how each is affected. intake-scoping.md and project-linking.md explicitly reviewed as no ACs affected."},
+        {"text": "Documents API contract changes (request/response shape changes)", "passed": true, "evidence": "Lines 147-157: 'Affected API Contracts' table with 8 endpoints: POST/GET/PUT governance-requests (request+response extended), POST dispatch/execute (behavior change), GET domain-reviews (response extended)."},
+        {"text": "Plans both API tests and E2E tests across affected features", "passed": true, "evidence": "Phase 4: API tests in test_governance_requests.py (6 new functions), test_dispatch.py (2 new), test_domain_reviews.py (2 new) + 6 existing test modifications. E2E tests in governance-requests.spec.ts (5 new) and dashboard.spec.ts (1 new). Tests span governance-requests and domain-dispatch features."},
+        {"text": "Plans to update feature docs with new ACs and test coverage", "passed": true, "evidence": "Plans to create docs/features/urgency-field.md, update governance-requests.md with AC-24 through AC-27, and update domain-dispatch.md with AC-17 through AC-19. Feature doc includes test coverage section mapping ACs to test functions."}
+      ]
+    },
+    {
+      "eval_id": 3,
+      "eval_name": "global-infra-change",
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 10,
+        "failed": 0,
+        "total": 10,
+        "time_seconds": 294,
+        "tokens": 113458,
+        "tool_calls": 30,
+        "errors": 0
+      },
+      "expectations": [
+        {"text": "Produces a full impact assessment with dependency chain", "passed": true, "evidence": "Full L4/High assessment with 9-feature affected features table and complete dependency chain analysis via _DEPENDENCIES.json globalFiles."},
+        {"text": "Correctly classifies as L4/High (global infrastructure, structural change)", "passed": true, "evidence": "'**Impact: L4 — Global**' — backend/app/auth/ is listed in globalFiles; check_permission() called on every authenticated API request across all routers. '**Risk: High**' — changes RBAC permissions (explicitly listed as High signal); requires migration + data seeding."},
+        {"text": "Includes full dependency chain showing all transitively affected features", "passed": true, "evidence": "Full enumeration of all 11 routers that call require_permission(), showing each router and its representative permission calls. Every feature in the system listed as transitively affected."},
+        {"text": "Pauses for full chain review before proceeding", "passed": true, "evidence": "Decision matrix: 'Impact L4 × Risk High → Pause: full chain'. Step 1.5 Output: 'Decision: Pause for review — Full dependency chain required'."},
+        {"text": "Plans detailed database migration (new tables for permissions)", "passed": true, "evidence": "New table schema: role_permission (id UUID PK, role, resource, scope, is_active, timestamps, UNIQUE(role, resource, scope)). Migration script required including seeding all rows from current ROLE_PERMISSIONS hardcoded dict."},
+        {"text": "Proposes phased/incremental implementation (not big-bang)", "passed": true, "evidence": "Phase 3.0 implementation strategy breaks delivery into 5 phases, each leaving system in working state: (1) DB migration+seed, (2) cache layer in rbac.py, (3) providers.py update, (4) new RBAC admin router, (5) frontend settings page."},
+        {"text": "Includes a rollback or fallback strategy", "passed": true, "evidence": "3-level rollback: code-level (keep _DEFAULT_PERMISSIONS dict as cold-cache fallback), migration-level (DROP TABLE role_permission on rollback), deployment-level (feature flag to toggle DB vs dict mode). Explicit rollback SQL provided."},
+        {"text": "Addresses backward compatibility during migration", "passed": true, "evidence": "Option C selected specifically for backward compatibility: AuthUser.permissions list unchanged, check_permission() signatures unchanged, API shapes unchanged. DB empty → falls back to hardcoded dict. Zero behavior change on first deploy."},
+        {"text": "Plans comprehensive tests including regression tests for all RBAC-dependent features", "passed": true, "evidence": "12 new API tests in test_rbac_admin.py, plus explicit note that all 16 existing test_rbac.py tests must still pass unchanged. 5 new E2E tests in settings-permissions.spec.ts. Notes all existing tests across all features serve as integration regression tests."},
+        {"text": "Lists affected ACs from multiple existing feature docs", "passed": true, "evidence": "Affected ACs section quotes from governance-requests.md, intake-scoping.md, domain-dispatch.md, user-authorization.md, and audit-log.md — covering multiple existing feature docs with specific AC numbers and text."}
+      ]
+    }
+  ],
+  "run_summary": {
+    "with_skill": {
+      "pass_rate": {"mean": 1.0, "stddev": 0.0, "min": 1.0, "max": 1.0},
+      "time_seconds": {"mean": null, "stddev": null, "min": null, "max": null},
+      "tokens": {"mean": null, "stddev": null, "min": null, "max": null}
+    }
+  },
+  "notes": [
+    "Iteration 3 — with_skill only (skill fix: Step 1.3 Risk Level table rewritten to explicitly call out migration scripts and API shape changes as Medium risk triggers, with 'Common mistake' note).",
+    "simple-ui-change (L1/Low): 7/7 (100%). Maintained. Step 1.0 exploration discovers DataTable, considers 2 options.",
+    "cross-feature-change (L3): 9/9 (100%) — REGRESSION FIXED from 6/9 in iteration-2. Step 1.3 fix correctly guides agent to classify migration+API-shape-change as Medium, triggering pause-for-review. Affected ACs section now lists 6 specific existing ACs (AC-3, AC-10, AC-16, AC-17 from governance-requests.md; AC-4, AC-9 from domain-dispatch.md).",
+    "global-infra-change (L4/High): 10/10 (100%). Maintained.",
+    "Overall iteration-3: with_skill 100% (26/26) vs iteration-2 with_skill 89% (22/26). The skill fix resolved all 3 regression failures from iteration-2.",
+    "Skill progression: iter-1 (100%) → iter-2 (89%, regression due to Step 1.0 exploration causing L3/Low misclassification) → iter-3 (100%, fixed by explicit Medium risk criteria in Step 1.3)."
+  ]
+}

@@ -23,6 +23,18 @@ Do NOT activate for:
 
 Before writing any code, evaluate the blast radius and risk of the requested change.
 
+### Step 1.0 — Understand & Explore
+
+Before reading the dependency graph, understand what the user is asking and explore the relevant code:
+
+1. **Parse the request**: What's being added/changed? Which area of the codebase?
+2. **Explore existing patterns**: Search for similar implementations, reusable components, shared utilities
+   - Read the source files that will be modified
+   - Look for components/functions that could be reused (e.g., shared DataTable, existing query param patterns, validation helpers)
+3. **Consider approaches**: For L2+ changes, briefly note 2-3 implementation options and their tradeoffs before committing to one
+
+This exploration prevents reinventing the wheel and produces better-informed implementation plans. Don't skip this step even for seemingly simple changes — understanding what already exists often reveals a simpler path.
+
 ### Step 1.1 — Gather Context
 
 1. Read `docs/features/_DEPENDENCIES.json` for the cross-feature dependency graph
@@ -43,9 +55,11 @@ Before writing any code, evaluate the blast radius and risk of the requested cha
 
 | Level | Definition | Signals |
 |-------|-----------|---------|
-| **Low** | Pure additions | New columns with defaults, new endpoints, new pages. No existing test assertions would break. |
-| **Medium** | Modifies existing behavior | Renames/removes fields, changes API response shape, alters status transition rules, requires migration script. |
+| **Low** | Pure additions, no migration | New endpoints, new pages, new frontend-only components. No schema changes, no migration scripts needed, no existing API response shapes change. |
+| **Medium** | Requires migration or changes API shape | Any change that needs a migration script (even adding a column with a default), adds/changes fields in existing API responses consumed by other features, or alters query behavior. The key test: would a downstream consumer of this API or table notice the change? If yes → Medium. |
 | **High** | Structural changes | Changes FK relationships, status lifecycle, dispatch/evaluation logic, RBAC permissions, requires historical data backfill. |
+
+> **Common mistake**: classifying "new column with default + new API response field" as Low because changes are additive. If a migration script is required OR existing API response shapes change, it's Medium — even when nothing is removed.
 
 ### Step 1.4 — Decision Matrix
 
@@ -81,8 +95,11 @@ Before writing any code, evaluate the blast radius and risk of the requested cha
 - [ ] Migration script required: Yes / No
 
 ### Affected Acceptance Criteria
-> <feature>.md AC-<n>: "<quoted AC>"
-> --> How this change affects the AC
+For each affected feature doc, read it and list every AC that this change touches:
+> <feature>.md AC-<n>: "<quoted AC text>"
+> --> How this change affects it (modifies, extends, or invalidates)
+
+This is critical for cross-feature changes — skipping this step means you might break existing behavior without realizing it. Even if a feature doc has no directly affected ACs, note that explicitly (e.g., "intake-scoping.md: no RBAC-specific ACs found").
 
 ### Affected API Contracts
 - Endpoint changes, response shape changes
@@ -136,6 +153,19 @@ If the change introduces new tables, routers, frontend paths, or cross-feature r
 ---
 
 ## Phase 3: Implementation
+
+### Step 3.0 — Implementation Strategy (L3+ only)
+
+For cross-feature or global changes, plan the implementation order before writing code:
+
+1. **Phased delivery**: Break into independently testable steps (e.g., migration first, then backend, then frontend). Each phase should leave the system in a working state.
+2. **Backward compatibility**: New columns need defaults. New API fields should be additive (don't remove/rename existing fields). Migrations should be reversible.
+3. **Rollback plan**: For High risk changes, document how to undo each phase:
+   - Code-level: fallback logic (e.g., keep old dict as fallback alongside new DB-driven approach)
+   - Migration-level: DROP TABLE / ALTER TABLE DROP COLUMN scripts
+   - Deployment-level: feature flags or gradual rollout if applicable
+
+Skip this step for L1/L2 changes where the blast radius is contained to a single feature.
 
 ### Step 3.1 — Write Code
 

@@ -1,0 +1,57 @@
+{
+  "eval_id": 3,
+  "eval_name": "global-infra-change",
+  "prompt": "把现有的 RBAC 系统从硬编码的 role-permission 映射改成数据库驱动的权限系统。每个 role 的 permissions 存在 DB 表里，admin 可以在 Settings 里动态配置。这样就不用每次加新 permission 都改代码了。",
+  "assertions": [
+    {
+      "id": "impact-assessment",
+      "text": "Produces a full impact assessment with dependency chain",
+      "type": "qualitative"
+    },
+    {
+      "id": "correct-classification",
+      "text": "Correctly classifies as L4/High (global infrastructure, structural change)",
+      "type": "qualitative"
+    },
+    {
+      "id": "full-chain-analysis",
+      "text": "Includes full dependency chain showing all transitively affected features",
+      "type": "qualitative"
+    },
+    {
+      "id": "pause-full-chain",
+      "text": "Pauses for full chain review before proceeding",
+      "type": "qualitative"
+    },
+    {
+      "id": "migration-strategy",
+      "text": "Plans detailed database migration (new tables for permissions)",
+      "type": "qualitative"
+    },
+    {
+      "id": "phased-implementation",
+      "text": "Proposes phased/incremental implementation (not big-bang)",
+      "type": "qualitative"
+    },
+    {
+      "id": "rollback-strategy",
+      "text": "Includes a rollback or fallback strategy",
+      "type": "qualitative"
+    },
+    {
+      "id": "backward-compatibility",
+      "text": "Addresses backward compatibility during migration",
+      "type": "qualitative"
+    },
+    {
+      "id": "comprehensive-testing",
+      "text": "Plans comprehensive tests including regression tests for all RBAC-dependent features",
+      "type": "qualitative"
+    },
+    {
+      "id": "affected-acs",
+      "text": "Lists affected ACs from multiple existing feature docs",
+      "type": "qualitative"
+    }
+  ]
+}

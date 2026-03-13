@@ -39,21 +39,57 @@ CREATE TABLE IF NOT EXISTS project (
 CREATE TABLE IF NOT EXISTS governance_request (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     request_id      VARCHAR NOT NULL UNIQUE,
-    title           VARCHAR NOT NULL,
+    egq_id          VARCHAR UNIQUE,
+    title           VARCHAR,
     description     TEXT,
+    gov_project_type VARCHAR,
+    business_unit   VARCHAR,
     project_id      VARCHAR REFERENCES project(project_id) ON DELETE SET NULL,
+    project_type           VARCHAR,
+    project_code           VARCHAR,
+    project_name           VARCHAR,
+    project_proj_type      VARCHAR,
+    project_status         VARCHAR,
+    project_description    TEXT,
+    project_pm             VARCHAR,
+    project_pm_itcode      VARCHAR,
+    project_dt_lead        VARCHAR,
+    project_dt_lead_itcode VARCHAR,
+    project_it_lead        VARCHAR,
+    project_it_lead_itcode VARCHAR,
+    project_start_date     VARCHAR,
+    project_go_live_date   VARCHAR,
+    project_end_date       VARCHAR,
+    project_ai_related     VARCHAR,
+    product_software_type       VARCHAR,
+    product_software_type_other VARCHAR,
+    product_end_user            VARCHAR[],
+    user_region                 VARCHAR[],
+    third_party_vendor          VARCHAR,
     requestor       VARCHAR NOT NULL,
     requestor_name  VARCHAR,
-    organization    VARCHAR,
     status          VARCHAR NOT NULL DEFAULT 'Draft',
     overall_verdict VARCHAR,
-    priority        VARCHAR DEFAULT 'Normal',
-    target_date     TIMESTAMP,
     completed_at    TIMESTAMP,
     create_by       VARCHAR,
     create_at       TIMESTAMP DEFAULT NOW(),
     update_by       VARCHAR,
     update_at       TIMESTAMP DEFAULT NOW()
+);
+
+-- ═══════════════════════════════════════════════════════
+-- A.1: Governance Request Attachments (binary file storage)
+-- ═══════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS governance_request_attachment (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    request_id      UUID NOT NULL REFERENCES governance_request(id) ON DELETE CASCADE,
+    file_name       VARCHAR NOT NULL,
+    file_size       INT NOT NULL,
+    content_type    VARCHAR NOT NULL DEFAULT 'application/octet-stream',
+    file_data       BYTEA NOT NULL,
+    create_by       VARCHAR,
+    create_at       TIMESTAMP DEFAULT NOW()
 );
 
 -- ═══════════════════════════════════════════════════════
@@ -99,26 +135,13 @@ CREATE TABLE IF NOT EXISTS domain_registry (
     integration_type VARCHAR NOT NULL DEFAULT 'internal',
     external_base_url VARCHAR,
     icon            VARCHAR,
-    sort_order      INT DEFAULT 0,
     is_active       BOOLEAN DEFAULT TRUE,
     config          JSONB
 );
 
 -- ═══════════════════════════════════════════════════════
--- D: Dispatch Rules
+-- D: (Reserved — old condition-based dispatch_rule removed)
 -- ═══════════════════════════════════════════════════════
-
-CREATE TABLE IF NOT EXISTS dispatch_rule (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    rule_name       VARCHAR NOT NULL,
-    domain_code     VARCHAR NOT NULL,
-    condition_type  VARCHAR NOT NULL DEFAULT 'scoping_answer',
-    condition_field VARCHAR,
-    condition_operator VARCHAR DEFAULT 'equals',
-    condition_value JSONB,
-    priority        INT DEFAULT 0,
-    is_active       BOOLEAN DEFAULT TRUE
-);
 
 -- ═══════════════════════════════════════════════════════
 -- E: Domain Reviews
@@ -288,7 +311,64 @@ CREATE TABLE IF NOT EXISTS employee_info (
 );
 
 -- ═══════════════════════════════════════════════════════
--- H: User Role Assignments
+-- H.1: Dispatch Rules & Rule-Domain Matrix
+-- ═══════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS dispatch_rule (
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    rule_code        VARCHAR NOT NULL UNIQUE,
+    rule_name        VARCHAR NOT NULL,
+    description      TEXT,
+    parent_rule_code VARCHAR REFERENCES dispatch_rule(rule_code) ON DELETE SET NULL,
+    sort_order       INT DEFAULT 0,
+    is_active        BOOLEAN DEFAULT TRUE,
+    is_mandatory     BOOLEAN DEFAULT FALSE,
+    create_by        VARCHAR,
+    create_at        TIMESTAMP DEFAULT NOW(),
+    update_by        VARCHAR,
+    update_at        TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS dispatch_rule_domain (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    rule_id      UUID NOT NULL REFERENCES dispatch_rule(id) ON DELETE CASCADE,
+    domain_code  VARCHAR NOT NULL,
+    relationship VARCHAR NOT NULL DEFAULT 'out',
+    create_by    VARCHAR,
+    create_at    TIMESTAMP DEFAULT NOW(),
+    UNIQUE(rule_id, domain_code)
+);
+
+-- ═══════════════════════════════════════════════════════
+-- H.1a-2: Dispatch Rule Exclusions (mutual exclusion)
+-- ═══════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS dispatch_rule_exclusion (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    rule_code           VARCHAR NOT NULL REFERENCES dispatch_rule(rule_code) ON DELETE CASCADE,
+    excluded_rule_code  VARCHAR NOT NULL REFERENCES dispatch_rule(rule_code) ON DELETE CASCADE,
+    create_by           VARCHAR,
+    create_at           TIMESTAMP DEFAULT NOW(),
+    UNIQUE(rule_code, excluded_rule_code),
+    CHECK (rule_code <> excluded_rule_code)
+);
+
+-- ═══════════════════════════════════════════════════════
+-- H.1b: Governance Request ↔ Dispatch Rule Junction
+-- ═══════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS governance_request_rule (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    request_id      UUID NOT NULL REFERENCES governance_request(id) ON DELETE CASCADE,
+    rule_code       VARCHAR NOT NULL REFERENCES dispatch_rule(rule_code),
+    is_auto         BOOLEAN DEFAULT FALSE,
+    create_by       VARCHAR,
+    create_at       TIMESTAMP DEFAULT NOW(),
+    UNIQUE(request_id, rule_code)
+);
+
+-- ═══════════════════════════════════════════════════════
+-- H.2: User Role Assignments
 -- ═══════════════════════════════════════════════════════
 
 CREATE TABLE IF NOT EXISTS user_role (
