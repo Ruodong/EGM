@@ -1,18 +1,22 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { PageLayout } from '@/components/layout/PageLayout';
 import { useToast } from '@/components/ui/Toast';
 import { statusColors } from '@/lib/constants';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeftOutlined, CopyOutlined, InboxOutlined, CloseCircleOutlined } from '@ant-design/icons';
+import { Button } from 'antd';
+import { useAuth } from '@/lib/auth-context';
 import { SectionCard } from '../_components/SectionCard';
 import { GovernanceScopeDetermination } from '../_components/GovernanceScopeDetermination';
+import { DomainPreviewChip } from '../_components/DomainPreviewChip';
 import { FileUpload } from '../_components/FileUpload';
 import { ProcessingLogStepper } from '../_components/ProcessingLogStepper';
 import { ChangeHighlight, ChangeEntry } from '../_components/ChangeHighlight';
+import { DomainQuestionnaires, DomainQuestionnairesRef } from '../_components/DomainQuestionnaires';
 import projectTypes from '@/config/project-types.json';
 import businessUnits from '@/config/business-units.json';
 import clsx from 'clsx';
@@ -57,6 +61,7 @@ interface GovRequest {
   govProjectType: string | null;
   businessUnit: string | null;
   status: string;
+  lifecycleStatus: string;
   requestor: string;
   requestorName: string;
   productSoftwareType: string | null;
@@ -64,7 +69,6 @@ interface GovRequest {
   productEndUser: string[];
   userRegion: string[];
   thirdPartyVendor: string | null;
-  overallVerdict: string | null;
   projectId: string | null;
   projectType: string | null;
   projectCode: string | null;
@@ -100,6 +104,7 @@ export default function RequestDetailPage() {
   const requestId = params.requestId as string;
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { user, hasRole } = useAuth();
 
   // --- Data fetching ---
   const { data: request, isLoading } = useQuery<GovRequest>({
@@ -124,6 +129,15 @@ export default function RequestDetailPage() {
     queryFn: () => api.get(`/governance-requests/${requestId}/attachments`),
     enabled: !!request,
   });
+
+  // Fetch domain reviews for return reason display (Information Inquiry status)
+  const { data: domainReviewsData } = useQuery<{ data: { domainCode: string; domainName?: string; status: string; returnReason?: string; reviewerName?: string }[] }>({
+    queryKey: ['domain-reviews', requestId],
+    queryFn: () => api.get('/domain-reviews', { request_id: requestId }),
+    enabled: !!request && request.status === 'Information Inquiry',
+  });
+
+  const returnedReviews = domainReviewsData?.data?.filter(r => r.status === 'Returned' && r.returnReason) ?? [];
 
   const changelog: ChangeEntry[] = changelogData?.data ?? [];
 
@@ -224,8 +238,12 @@ export default function RequestDetailPage() {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const isReadOnly = request?.status === 'Completed';
+  const isOwner = !!user && !!request && user.id === request.requestor;
+  const isReadOnly = request?.status === 'Completed' || !isOwner;
   const isEditable = !isReadOnly;
+  const isScopeReadOnly = request?.status !== 'Draft' || !isOwner;  // Lock rules after submit or for non-owners
+  const triggeredDomainsRef = useRef<{ domainCode: string; domainName: string }[]>([]);
+  const questionnaireRef = useRef<DomainQuestionnairesRef>(null);
 
   // --- Project search ---
   const searchProjects = useCallback(async (query: string) => {
@@ -282,16 +300,59 @@ export default function RequestDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['changelog', requestId] });
       toast('Request submitted for review', 'success');
     },
-    onError: () => toast('Failed to submit request', 'error'),
+    onError: (err: unknown) => {
+      const detail = (err as { detail?: string })?.detail;
+      toast(detail || 'Failed to submit request', 'error');
+    },
+  });
+
+  // --- Copy ---
+  const copyMutation = useMutation({
+    mutationFn: () => api.post(`/governance-requests/${requestId}/copy`),
+    onSuccess: (res: { requestId: string }) => {
+      toast(`Request copied — new Draft ${res.requestId}`, 'success');
+      router.push(`/governance/${res.requestId}`);
+    },
+    onError: () => toast('Failed to copy request', 'error'),
+  });
+
+  // --- Cancel (Draft only, owner) ---
+  const cancelMutation = useMutation({
+    mutationFn: () => api.put(`/governance-requests/${requestId}/cancel`, {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['governance-request', requestId] });
+      toast('Request cancelled', 'success');
+      router.push('/requests');
+    },
+    onError: (err: unknown) => {
+      const detail = (err as { detail?: string })?.detail;
+      toast(detail || 'Failed to cancel request', 'error');
+    },
+  });
+
+  // --- Archive (Completed only, admin/governance_lead) ---
+  const archiveMutation = useMutation({
+    mutationFn: () => api.put(`/governance-requests/${requestId}/archive`, {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['governance-request', requestId] });
+      toast('Request archived', 'success');
+    },
+    onError: (err: unknown) => {
+      const detail = (err as { detail?: string })?.detail;
+      toast(detail || 'Failed to archive request', 'error');
+    },
   });
 
   // --- Save ---
-  const handleSave = async (validate = true) => {
+  const handleSave = async (validate = true): Promise<boolean> => {
     // Validate required fields only when explicitly requested (Submit / Save Changes)
     if (validate) {
       const errors: Record<string, string> = {};
       if (!govProjectType) errors.govProjectType = 'Project Type is required';
       if (!businessUnit) errors.businessUnit = 'Business Unit is required';
+      if (projectType === 'mspo' && !selectedProject) {
+        errors.projectId = 'Please select an MSPO project';
+      }
       if (projectType === 'non_mspo') {
         if (!nonMspo.projectCode) errors.projectCode = 'Project Code is required';
         if (!nonMspo.projectName) errors.projectName = 'Project Name is required';
@@ -303,14 +364,20 @@ export default function RequestDetailPage() {
       if (productSoftwareType === 'Other' && !productSoftwareTypeOther.trim()) errors.productSoftwareTypeOther = 'Please specify the type';
       if (productEndUser.length === 0) errors.productEndUser = 'At least one end user must be selected';
       if (userRegion.length === 0) errors.userRegion = 'At least one region must be selected';
-      if (Object.keys(errors).length > 0) { setValidationErrors(errors); return; }
+      if (request.status === 'Draft' && triggeredDomainsRef.current.length === 0) errors.domains = 'At least one governance domain must be triggered by the selected rules';
+      // Validate domain questionnaires completion
+      if (request.status === 'Draft' && questionnaireRef.current) {
+        const incomplete = questionnaireRef.current.getIncompleteDomains();
+        if (incomplete.length > 0) errors.questionnaires = `Incomplete domain questionnaires: ${incomplete.join(', ')}`;
+      }
+      if (Object.keys(errors).length > 0) { setValidationErrors(errors); toast('Please fill in all required fields', 'error'); return false; }
       setValidationErrors({});
     }
 
     setSaving(true);
     try {
       const payload: Record<string, unknown> = {
-        ruleCodes: selectedRules,
+        ...(request.status === 'Draft' ? { ruleCodes: selectedRules } : {}),
         govProjectType: govProjectType || undefined,
         businessUnit: businessUnit || undefined,
         productSoftwareType,
@@ -353,8 +420,10 @@ export default function RequestDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['changelog', requestId] });
       queryClient.invalidateQueries({ queryKey: ['attachments', requestId] });
       toast('Changes saved', 'success');
+      return true;
     } catch {
       toast('Failed to save changes', 'error');
+      return false;
     } finally {
       setSaving(false);
     }
@@ -375,7 +444,7 @@ export default function RequestDetailPage() {
           className="flex items-center gap-1.5 text-sm text-text-secondary hover:text-primary-blue mb-4 transition-colors"
           data-testid="back-to-list-btn"
         >
-          <ArrowLeft className="h-4 w-4" />
+          <ArrowLeftOutlined />
           Back to Requests
         </button>
 
@@ -384,16 +453,15 @@ export default function RequestDetailPage() {
           <div>
             <h1 className="text-xl font-bold">
               {request.requestId}
-              {request.govProjectType && <span className="text-text-secondary font-normal"> · {request.govProjectType}</span>}
               {request.projectName && <span className="text-text-secondary font-normal"> · {request.projectName}</span>}
             </h1>
             <div className="flex items-center gap-3 mt-2">
               <span className={clsx('px-2 py-0.5 rounded text-xs text-white', statusColors[request.status] || 'bg-gray-400')}>
                 {request.status}
               </span>
-              {request.overallVerdict && (
-                <span className={clsx('px-2 py-0.5 rounded text-xs text-white', statusColors[request.overallVerdict] || 'bg-gray-400')}>
-                  {request.overallVerdict}
+              {request.govProjectType && (
+                <span className="px-2 py-0.5 rounded text-xs text-white" style={{ backgroundColor: '#722ED1' }}>
+                  {projectTypes.find((pt) => pt.value === request.govProjectType)?.label || request.govProjectType}
                 </span>
               )}
             </div>
@@ -402,35 +470,90 @@ export default function RequestDetailPage() {
 
         {/* Processing Log Stepper */}
         <div className="bg-white rounded-lg border border-border-light p-4 mb-4">
-          <ProcessingLogStepper currentStatus={request.status} />
+          <ProcessingLogStepper
+            currentStatus={request.status}
+            infoInquiryDomain={returnedReviews.length > 0 ? returnedReviews.map(r => r.domainName || r.domainCode).join(', ') : undefined}
+          />
         </div>
+
+        {/* Information Inquiry Banner */}
+        {request.status === 'Information Inquiry' && returnedReviews.length > 0 && (
+          <div className="bg-amber-50 border border-amber-300 rounded-lg p-4 mb-4">
+            <div className="flex items-start gap-2">
+              <span className="text-amber-600 text-lg mt-0.5">⚠</span>
+              <div>
+                <h3 className="text-sm font-semibold text-amber-800">Information Inquiry — Additional information requested</h3>
+                {returnedReviews.map((r, i) => (
+                  <div key={i} className="mt-2 bg-white rounded p-3 border border-amber-200">
+                    <p className="text-xs text-text-secondary mb-1">
+                      Returned by <span className="font-medium">{r.reviewerName || 'Reviewer'}</span>
+                      {r.domainName ? ` (${r.domainName})` : r.domainCode ? ` (${r.domainCode})` : ''}
+                    </p>
+                    <p className="text-sm text-text-primary">{r.returnReason}</p>
+                  </div>
+                ))}
+                <p className="text-xs text-amber-700 mt-2">Please update the relevant information and resubmit your request.</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Applicable Domains — shown after submit */}
+        {request.status !== 'Draft' && (
+          <div className="bg-white rounded-lg border border-border-light p-4 mb-4" data-testid="applicable-domains-section">
+            <label className="block text-sm font-medium mb-2 text-text-secondary">Applicable Domains</label>
+            <ApplicableDomainsDisplay ruleCodes={request.ruleCodes} />
+          </div>
+        )}
 
         {/* Form sections */}
         <div className="space-y-4">
           {/* Section 1: Governance Scope Determination */}
           <SectionCard title="Governance Scope Determination" subtitle="Select applicable compliance rules to determine governance domains">
-            {isReadOnly ? (
+            {isScopeReadOnly ? (
               <div data-testid="rules-readonly">
-                {request.ruleCodes && request.ruleCodes.length > 0 ? (
-                  <div className="flex flex-wrap gap-1">
-                    {request.ruleCodes.map((code) => (
-                      <span key={code} className="px-2 py-0.5 rounded text-xs bg-purple-50 text-purple-700 font-medium font-mono">
-                        {code}
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  <span className="text-sm text-text-secondary">No rules selected</span>
-                )}
+                <ReadOnlyRulesDisplay ruleCodes={request.ruleCodes || []} />
               </div>
             ) : (
               <ChangeHighlight fieldName="ruleCodes" changelog={changelog}>
                 <GovernanceScopeDetermination
                   selectedRules={selectedRules}
-                  onRulesChange={setSelectedRules}
+                  onRulesChange={(rules) => { setSelectedRules(rules); setValidationErrors(prev => { const n = {...prev}; delete n.domains; return n; }); }}
+                  onTriggeredDomainsChange={(domains) => { triggeredDomainsRef.current = domains; }}
                 />
+                {validationErrors.domains && <p className="text-red-500 text-xs mt-2">{validationErrors.domains}</p>}
               </ChangeHighlight>
             )}
+          </SectionCard>
+
+          {/* Section: Requestor Information (read-only, from employee_info) */}
+          <SectionCard title="Requestor Information" defaultOpen>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-1 text-text-secondary">IT Code</label>
+                <div className="px-3 py-2 rounded-lg border border-border-light bg-gray-50 text-sm">{request.requestor || '-'}</div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1 text-text-secondary">Name</label>
+                <div className="px-3 py-2 rounded-lg border border-border-light bg-gray-50 text-sm">{request.requestorName || '-'}</div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1 text-text-secondary">Email Address</label>
+                <div className="px-3 py-2 rounded-lg border border-border-light bg-gray-50 text-sm">{request.requestorEmail || '-'}</div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1 text-text-secondary">Line Manager</label>
+                <div className="px-3 py-2 rounded-lg border border-border-light bg-gray-50 text-sm">{request.requestorManagerName || '-'}</div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1 text-text-secondary">T1 Organization</label>
+                <div className="px-3 py-2 rounded-lg border border-border-light bg-gray-50 text-sm">{request.requestorTier1Org || '-'}</div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1 text-text-secondary">T2 Organization</label>
+                <div className="px-3 py-2 rounded-lg border border-border-light bg-gray-50 text-sm">{request.requestorTier2Org || '-'}</div>
+              </div>
+            </div>
           </SectionCard>
 
           {/* Section 2: Project Information */}
@@ -520,7 +643,7 @@ export default function RequestDetailPage() {
                 </div>
               ) : (
                 <div>
-                  <label className="block text-sm font-medium mb-2">Project</label>
+                  <label className="block text-sm font-medium mb-2">Project <span className="text-red-500">*</span></label>
                   <div className="flex gap-2 mb-3" data-testid="project-type-toggle">
                     <button
                       type="button"
@@ -556,10 +679,10 @@ export default function RequestDetailPage() {
                           </div>
                         ) : (
                           <input
-                            className="input-field"
+                            className={`input-field ${validationErrors.projectId ? 'border-red-400' : ''}`}
                             placeholder="Search by project ID or name..."
                             value={projectSearch}
-                            onChange={(e) => handleProjectSearchChange(e.target.value)}
+                            onChange={(e) => { handleProjectSearchChange(e.target.value); setValidationErrors(prev => { const { projectId: _, ...rest } = prev; return rest; }); }}
                             onFocus={() => { if (projectSearch.trim()) setShowDropdown(true); }}
                             data-testid="input-project-search"
                           />
@@ -577,6 +700,7 @@ export default function RequestDetailPage() {
                           </div>
                         )}
                       </div>
+                      {validationErrors.projectId && <p className="text-xs text-red-500 mt-1">{validationErrors.projectId}</p>}
                       {selectedProject && (
                         <div className="grid grid-cols-2 gap-3 p-3 bg-gray-50 rounded-lg border border-border-light" data-testid="mspo-project-details">
                           <ReadOnlyField label="Project Code" value={selectedProject.projectId} />
@@ -828,6 +952,19 @@ export default function RequestDetailPage() {
             </div>
           </SectionCard>
 
+          {/* Domain Questionnaires */}
+          {request.status === 'Draft' && (
+            <SectionCard title="Domain Questionnaires" subtitle="Please answer the following questions for each triggered domain">
+              <DomainQuestionnaires
+                ref={questionnaireRef}
+                requestId={requestId}
+              />
+              {validationErrors.questionnaires && (
+                <p className="text-red-500 text-sm mt-2">{validationErrors.questionnaires}</p>
+              )}
+            </SectionCard>
+          )}
+
           {/* Review Progress */}
           {progress && progress.totalDomains > 0 && (
             <SectionCard title="Review Progress">
@@ -859,49 +996,86 @@ export default function RequestDetailPage() {
           )}
 
           {/* Action buttons */}
-          <div className="flex justify-end gap-3 pt-2 pb-8">
-            <button type="button" className="btn-default" onClick={() => router.push('/requests')} data-testid="back-btn">Back</button>
-            {isEditable && (
-              <>
-                <button type="button" className="btn-default" onClick={() => router.back()} data-testid="cancel-btn">Cancel</button>
-                {request.status === 'Draft' && (
-                  <>
-                    <button
-                      type="button"
-                      className="btn-default"
+          <div className="flex justify-between pt-2 pb-8">
+            {/* Left side — secondary actions */}
+            <div className="flex gap-3">
+              {isOwner && (
+                <Button
+                  type="default"
+                  icon={<CopyOutlined />}
+                  disabled={copyMutation.isPending}
+                  onClick={() => copyMutation.mutate()}
+                  data-testid="copy-request-btn"
+                >
+                  {copyMutation.isPending ? 'Copying...' : 'Copy Request'}
+                </Button>
+              )}
+              {isOwner && request.status === 'Draft' && request.lifecycleStatus === 'Active' && (
+                <Button
+                  danger
+                  icon={<CloseCircleOutlined />}
+                  disabled={cancelMutation.isPending}
+                  onClick={() => { if (confirm('Cancel this request? This cannot be undone.')) cancelMutation.mutate(); }}
+                  data-testid="cancel-request-btn"
+                >
+                  {cancelMutation.isPending ? 'Cancelling...' : 'Cancel Request'}
+                </Button>
+              )}
+              {hasRole('admin', 'governance_lead') && request.status === 'Completed' && request.lifecycleStatus === 'Active' && (
+                <Button
+                  type="default"
+                  icon={<InboxOutlined />}
+                  disabled={archiveMutation.isPending}
+                  onClick={() => { if (confirm('Archive this completed request?')) archiveMutation.mutate(); }}
+                  data-testid="archive-request-btn"
+                >
+                  {archiveMutation.isPending ? 'Archiving...' : 'Archive'}
+                </Button>
+              )}
+            </div>
+            {/* Right side — primary actions */}
+            <div className="flex gap-3">
+              <Button type="default" onClick={() => router.push('/requests')} data-testid="back-btn">Back</Button>
+              {isEditable && (
+                <>
+                  {request.status === 'Draft' && (
+                    <>
+                      <Button
+                        type="default"
+                        disabled={saving}
+                        onClick={() => handleSave(false)}
+                        data-testid="save-draft-btn"
+                      >
+                        {saving ? 'Saving...' : 'Save'}
+                      </Button>
+                      <Button
+                        type="primary"
+                        style={{ background: '#13C2C2', borderColor: '#13C2C2' }}
+                        disabled={submitMutation.isPending}
+                        onClick={async () => {
+                          const ok = await handleSave();
+                          if (ok) submitMutation.mutate();
+                        }}
+                        data-testid="submit-request-btn"
+                      >
+                        {submitMutation.isPending ? 'Submitting...' : 'Submit Request'}
+                      </Button>
+                    </>
+                  )}
+                  {(request.status === 'Submitted' || request.status === 'In Progress' || request.status === 'Information Inquiry') && (
+                    <Button
+                      type="primary"
+                      style={{ background: '#13C2C2', borderColor: '#13C2C2' }}
                       disabled={saving}
-                      onClick={() => handleSave(false)}
-                      data-testid="save-draft-btn"
+                      onClick={() => handleSave()}
+                      data-testid="save-changes-btn"
                     >
-                      {saving ? 'Saving...' : 'Save'}
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-teal"
-                      disabled={submitMutation.isPending}
-                      onClick={async () => {
-                        await handleSave();
-                        submitMutation.mutate();
-                      }}
-                      data-testid="submit-request-btn"
-                    >
-                      {submitMutation.isPending ? 'Submitting...' : 'Submit Request'}
-                    </button>
-                  </>
-                )}
-                {(request.status === 'Submitted' || request.status === 'In Progress') && (
-                  <button
-                    type="button"
-                    className="btn-teal"
-                    disabled={saving}
-                    onClick={handleSave}
-                    data-testid="save-changes-btn"
-                  >
-                    {saving ? 'Saving...' : 'Save Changes'}
-                  </button>
-                )}
-              </>
-            )}
+                      {saving ? 'Saving...' : 'Save Changes'}
+                    </Button>
+                  )}
+                </>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -914,6 +1088,137 @@ function ReadOnlyField({ label, value }: { label: string; value: string | null |
     <div>
       <div className="text-xs text-text-secondary">{label}</div>
       <div className="text-sm text-text-primary">{value || '—'}</div>
+    </div>
+  );
+}
+
+interface MatrixData {
+  rules: { ruleCode: string; ruleName: string; parentRuleCode: string | null }[];
+  domains: { domainCode: string; domainName: string }[];
+  matrix: Record<string, Record<string, string>>;
+}
+
+function ReadOnlyRulesDisplay({ ruleCodes }: { ruleCodes: string[] }) {
+  const { data: matrixData, isLoading } = useQuery<MatrixData>({
+    queryKey: ['dispatch-rules-matrix'],
+    queryFn: () => api.get('/dispatch-rules/matrix'),
+  });
+
+  if (isLoading) return <span className="text-xs text-text-secondary">Loading rules...</span>;
+  if (!ruleCodes.length) return <span className="text-sm text-text-secondary">No rules selected</span>;
+
+  // Build lookup and group by L1/L2
+  const ruleMap = new Map(matrixData?.rules.map((r) => [r.ruleCode, r]) || []);
+  const selectedSet = new Set(ruleCodes);
+
+  // Compute auto-parent codes
+  const autoParents = new Set<string>();
+  for (const code of ruleCodes) {
+    const rule = ruleMap.get(code);
+    if (rule?.parentRuleCode) autoParents.add(rule.parentRuleCode);
+  }
+
+  // Group: L1 parents with their selected L2 children
+  type Group = { parent: { ruleCode: string; ruleName: string }; children: { ruleCode: string; ruleName: string }[] };
+  const groups: Group[] = [];
+  const usedCodes = new Set<string>();
+
+  // First, gather L1 parents that have selected L2 children
+  for (const parentCode of autoParents) {
+    const parentRule = ruleMap.get(parentCode);
+    if (!parentRule) continue;
+    const children = ruleCodes
+      .filter((c) => ruleMap.get(c)?.parentRuleCode === parentCode)
+      .map((c) => ({ ruleCode: c, ruleName: ruleMap.get(c)?.ruleName || c }));
+    groups.push({ parent: { ruleCode: parentCode, ruleName: parentRule.ruleName }, children });
+    usedCodes.add(parentCode);
+    children.forEach((ch) => usedCodes.add(ch.ruleCode));
+  }
+
+  // Then, gather standalone L1 rules (selected directly, no children selected)
+  for (const code of ruleCodes) {
+    if (usedCodes.has(code)) continue;
+    const rule = ruleMap.get(code);
+    if (!rule || rule.parentRuleCode) continue; // skip L2 orphans
+    groups.push({ parent: { ruleCode: code, ruleName: rule.ruleName }, children: [] });
+    usedCodes.add(code);
+  }
+
+  return (
+    <div className="space-y-3">
+      {groups.map((group) => (
+        <div key={group.parent.ruleCode}>
+          {/* L1 parent chip */}
+          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium text-text-primary bg-gray-100">
+            {group.parent.ruleName}
+            <span className="text-xs opacity-70">({group.parent.ruleCode})</span>
+          </span>
+          {/* L2 children indented */}
+          {group.children.length > 0 && (
+            <div className="ml-6 mt-1.5 flex flex-wrap gap-1.5">
+              {group.children.map((child) => (
+                <span key={child.ruleCode} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium text-text-primary bg-gray-100">
+                  {child.ruleName}
+                  <span className="text-xs opacity-70">({child.ruleCode})</span>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ApplicableDomainsDisplay({ ruleCodes }: { ruleCodes: string[] }) {
+  const { data: matrixData, isLoading } = useQuery<MatrixData>({
+    queryKey: ['dispatch-rules-matrix'],
+    queryFn: () => api.get('/dispatch-rules/matrix'),
+  });
+
+  const triggeredDomains = useMemo(() => {
+    if (!matrixData || !ruleCodes) return [];
+    const domainSet = new Set<string>();
+
+    // Compute auto parent codes
+    const parentCodes = new Set<string>();
+    for (const rc of ruleCodes) {
+      const rule = matrixData.rules.find((r) => r.ruleCode === rc);
+      if (rule?.parentRuleCode) parentCodes.add(rule.parentRuleCode);
+    }
+
+    // Domains from selected rules
+    for (const rc of ruleCodes) {
+      const ruleMatrix = matrixData.matrix[rc];
+      if (!ruleMatrix) continue;
+      for (const [domainCode, rel] of Object.entries(ruleMatrix)) {
+        if (rel === 'in') domainSet.add(domainCode);
+      }
+    }
+
+    // Domains from auto-aggregated parents
+    for (const pc of parentCodes) {
+      const parentMatrix = matrixData.matrix[pc];
+      if (!parentMatrix) continue;
+      for (const [domainCode, rel] of Object.entries(parentMatrix)) {
+        if (rel === 'in') domainSet.add(domainCode);
+      }
+    }
+
+    return matrixData.domains.filter((d) => domainSet.has(d.domainCode));
+  }, [ruleCodes, matrixData]);
+
+  if (isLoading) return <span className="text-xs text-text-secondary">Loading domains...</span>;
+
+  if (triggeredDomains.length === 0) {
+    return <span className="text-xs text-text-secondary italic">No domains triggered</span>;
+  }
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      {triggeredDomains.map((domain) => (
+        <DomainPreviewChip key={domain.domainCode} domainCode={domain.domainCode} domainName={domain.domainName} />
+      ))}
     </div>
   );
 }

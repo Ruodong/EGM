@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { DomainPreviewChip } from './DomainPreviewChip';
@@ -30,6 +30,7 @@ interface MatrixData {
 interface GovernanceScopeDeterminationProps {
   selectedRules: string[];
   onRulesChange: (rules: string[]) => void;
+  onTriggeredDomainsChange?: (domains: { domainCode: string; domainName: string }[]) => void;
 }
 
 function RuleToggle({
@@ -121,6 +122,7 @@ function RuleToggle({
 export function GovernanceScopeDetermination({
   selectedRules,
   onRulesChange,
+  onTriggeredDomainsChange,
 }: GovernanceScopeDeterminationProps) {
   const { data: matrixData, isLoading } = useQuery<MatrixData>({
     queryKey: ['dispatch-rules-matrix'],
@@ -279,6 +281,11 @@ export function GovernanceScopeDetermination({
 
     return matrixData.domains.filter((d) => domainSet.has(d.domainCode));
   }, [selectedRules, autoParentCodes, matrixData]);
+
+  // Report triggered domains to parent for validation
+  useEffect(() => {
+    onTriggeredDomainsChange?.(triggeredDomains);
+  }, [triggeredDomains, onTriggeredDomainsChange]);
 
   if (isLoading) {
     return <div className="text-sm text-text-secondary py-2">Loading rules...</div>;

@@ -114,6 +114,11 @@ export function useFilterState(onPageReset: () => void) {
 }
 
 /* ─── Component ────────────────────────────────────────────────── */
+import { Input, Select, DatePicker, Space, Typography } from 'antd';
+import dayjs from 'dayjs';
+
+const { Text } = Typography;
+
 export default function FilterBar({
   config,
   uiState,
@@ -127,82 +132,77 @@ export default function FilterBar({
   const { searchPlaceholder = 'Search by ID or Name...', statusOptions } = config;
 
   return (
-    <div className="mb-4 flex items-center gap-4 flex-wrap">
-      {/* Search */}
-      <div className="flex-1 min-w-[200px]">
-        <input
-          type="text"
+    <div style={{ marginBottom: 16 }}>
+      <Space wrap size="middle" style={{ width: '100%' }}>
+        {/* Search */}
+        <Input.Search
           placeholder={searchPlaceholder}
           value={uiState.search}
           onChange={(e) => uiState.handleSearchChange(e.target.value)}
-          className="input-field w-full"
+          allowClear
+          style={{ width: 360 }}
           data-testid="search-input"
         />
-      </div>
 
-      {/* Status */}
-      <div className="flex items-center gap-2 text-sm">
-        <label className="text-text-secondary whitespace-nowrap">Status</label>
-        <select
-          value={uiState.status}
-          onChange={(e) => uiState.handleStatusChange(e.target.value)}
-          className="input-field"
-          data-testid="status-filter"
-        >
-          {statusOptions.map((s) => (
-            <option key={s} value={s}>{s || 'All'}</option>
-          ))}
-        </select>
-      </div>
-
-      {/* Requestor */}
-      <div className="flex items-center gap-2 text-sm">
-        <label className="text-text-secondary whitespace-nowrap">Requestor</label>
-        <input
-          type="text"
-          placeholder="Name or ID..."
-          value={uiState.requestor}
-          onChange={(e) => uiState.handleRequestorChange(e.target.value)}
-          className="input-field w-36"
-          data-testid="requestor-filter"
-        />
-      </div>
-
-      {/* Period */}
-      <div className="flex items-center gap-2 text-sm">
-        <label className="text-text-secondary whitespace-nowrap">Period</label>
-        <select
-          value={uiState.datePreset}
-          onChange={(e) => uiState.handleDatePresetChange(e.target.value)}
-          className="input-field"
-          data-testid="date-filter"
-        >
-          {DATE_PRESETS.map((p) => (
-            <option key={p.value} value={p.value}>{p.label}</option>
-          ))}
-        </select>
-        {uiState.datePreset === 'custom' && (
-          <>
-            <input
-              type="date"
-              value={uiState.customDateFrom}
-              onChange={(e) => uiState.handleCustomDateFromChange(e.target.value)}
-              className="input-field"
-              data-testid="custom-date-from"
+        {/* Status (hidden when statusOptions is empty — page manages its own filter) */}
+        {statusOptions.length > 0 && (
+          <Space size="small">
+            <Text type="secondary">Status</Text>
+            <Select
+              value={uiState.status || undefined}
+              onChange={(v) => uiState.handleStatusChange(v ?? '')}
+              placeholder="All"
+              allowClear
+              style={{ minWidth: 140 }}
+              data-testid="status-filter"
+              options={statusOptions.filter(Boolean).map((s) => ({ value: s, label: s }))}
             />
-            <span className="text-text-secondary">–</span>
-            <input
-              type="date"
-              value={uiState.customDateTo}
-              onChange={(e) => uiState.handleCustomDateToChange(e.target.value)}
-              className="input-field"
-              data-testid="custom-date-to"
-            />
-          </>
+          </Space>
         )}
-      </div>
 
-      {/* Page-specific extra filters */}
+        {/* Requestor */}
+        <Space size="small">
+          <Text type="secondary">Requestor</Text>
+          <Input
+            placeholder="Name or ID..."
+            value={uiState.requestor}
+            onChange={(e) => uiState.handleRequestorChange(e.target.value)}
+            allowClear
+            style={{ width: 150 }}
+            data-testid="requestor-filter"
+          />
+        </Space>
+
+        {/* Period */}
+        <Space size="small">
+          <Text type="secondary">Period</Text>
+          <div data-testid="date-filter">
+            <Select
+              value={uiState.datePreset || undefined}
+              onChange={(v) => uiState.handleDatePresetChange(v ?? '')}
+              placeholder="All Time"
+              allowClear
+              style={{ minWidth: 120 }}
+              options={DATE_PRESETS.map((p) => ({ value: p.value || 'all', label: p.label }))}
+            />
+          </div>
+          {uiState.datePreset === 'custom' && (
+            <DatePicker.RangePicker
+              value={[
+                uiState.customDateFrom ? dayjs(uiState.customDateFrom) : null,
+                uiState.customDateTo ? dayjs(uiState.customDateTo) : null,
+              ]}
+              onChange={(dates) => {
+                uiState.handleCustomDateFromChange(dates?.[0]?.format('YYYY-MM-DD') ?? '');
+                uiState.handleCustomDateToChange(dates?.[1]?.format('YYYY-MM-DD') ?? '');
+              }}
+              data-testid="custom-date-range"
+            />
+          )}
+        </Space>
+      </Space>
+
+      {/* Page-specific extra filters (second row) */}
       {children}
     </div>
   );

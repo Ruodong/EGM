@@ -2,10 +2,15 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { statusColors } from '@/lib/constants';
+import { statusHex } from '@/lib/constants';
 import Link from 'next/link';
-import { useState } from 'react';
-import clsx from 'clsx';
+import { useState, useCallback } from 'react';
+import { Tag, Typography } from 'antd';
+import DataTable, { type Column } from '@/components/shared/DataTable';
+import FilterBar, { useFilterState, type FilterBarConfig } from '@/components/shared/FilterBar';
+import { useAuth } from '@/lib/auth-context';
+
+const { Title, Text } = Typography;
 
 interface DomainReview {
   id: string;
@@ -19,75 +24,144 @@ interface DomainReview {
   reviewerName: string | null;
   startedAt: string | null;
   completedAt: string | null;
+  projectName: string | null;
+  requestor: string | null;
+  requestorName: string | null;
+  govStatus: string | null;
+  govCreateAt: string | null;
 }
 
-export default function AllReviewsPage() {
-  const [statusFilter, setStatusFilter] = useState('');
+interface PaginatedResponse {
+  data: DomainReview[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
 
-  const { data, isLoading } = useQuery<{ data: DomainReview[] }>({
-    queryKey: ['all-domain-reviews', statusFilter],
-    queryFn: () => api.get('/domain-reviews', { pageSize: 500, ...(statusFilter ? { status: statusFilter } : {}) }),
+const FILTER_CONFIG: FilterBarConfig = {
+  searchPlaceholder: 'Search by Request ID or Project Name...',
+  statusOptions: ['', 'Waiting for Accept', 'Accepted', 'Returned', 'Assigned', 'In Progress', 'Review Complete', 'Waived'],
+};
+
+export default function AllReviewsPage() {
+  const { hasRole } = useAuth();
+  const isAdminOrLead = hasRole('admin', 'governance_lead');
+
+  const [page, setPage] = useState(1);
+  const [sortField, setSortField] = useState('create_at');
+  const [sortOrder, setSortOrder] = useState<'ASC' | 'DESC'>('DESC');
+
+  const { filterValues, uiState } = useFilterState(() => setPage(1));
+
+  const handleSort = useCallback((field: string, order: 'ASC' | 'DESC') => {
+    setSortField(field);
+    setSortOrder(order);
+    setPage(1);
+  }, []);
+
+  const { data, isLoading } = useQuery<PaginatedResponse>({
+    queryKey: ['all-domain-reviews', page, filterValues, sortField, sortOrder],
+    queryFn: () =>
+      api.get('/domain-reviews', {
+        page,
+        pageSize: 20,
+        sortField,
+        sortOrder,
+        ...(filterValues.status && { status: filterValues.status }),
+        ...(filterValues.search && { search: filterValues.search }),
+        ...(filterValues.requestor && { requestor: filterValues.requestor }),
+        ...(filterValues.dateFrom && { dateFrom: filterValues.dateFrom }),
+        ...(filterValues.dateTo && { dateTo: filterValues.dateTo }),
+      }),
   });
+
+  const columns: Column<DomainReview>[] = [
+    {
+      key: 'gov_request_id',
+      label: 'Request ID',
+      render: (r) => (
+        <Link href={`/governance/${r.govRequestId || r.requestId}/reviews/${r.domainCode}`} className="text-primary-blue hover:underline">
+          {r.govRequestId || r.requestId}
+        </Link>
+      ),
+      exportValue: (r) => r.govRequestId || r.requestId,
+    },
+    {
+      key: 'project_name',
+      label: 'Project Name',
+      render: (r) => <span title={r.projectName || ''}>{r.projectName || '-'}</span>,
+      exportValue: (r) => r.projectName || '',
+    },
+    {
+      key: 'requestor_name',
+      label: 'Requestor',
+      render: (r) => <>{r.requestorName || r.requestor || '-'}</>,
+      exportValue: (r) => r.requestorName || r.requestor || '',
+    },
+    {
+      key: 'gov_status',
+      label: 'Request Status',
+      render: (r) => r.govStatus ? (
+        <Tag color={statusHex[r.govStatus] || '#9CA3AF'}>{r.govStatus}</Tag>
+      ) : <Text type="secondary">-</Text>,
+      exportValue: (r) => r.govStatus || '',
+    },
+    ...(isAdminOrLead ? [{
+      key: 'domain',
+      label: 'Domain',
+      render: (r: DomainReview) => <span className="font-medium">{r.domainName || r.domainCode}</span>,
+      exportValue: (r: DomainReview) => r.domainName || r.domainCode,
+    }] : []),
+    {
+      key: 'review_status',
+      label: 'Review Status',
+      render: (r) => {
+        const label = r.outcome || r.status;
+        return (
+          <Tag color={statusHex[label] || '#9CA3AF'}>{label}</Tag>
+        );
+      },
+      exportValue: (r) => r.outcome || r.status,
+    },
+    {
+      key: 'gov_create_at',
+      label: 'Created',
+      render: (r) => (
+        <Text type="secondary">
+          {r.govCreateAt ? new Date(r.govCreateAt).toLocaleDateString() : '-'}
+        </Text>
+      ),
+      exportValue: (r) => r.govCreateAt ? new Date(r.govCreateAt).toLocaleDateString() : '',
+    },
+  ];
 
   return (
     <div>
-      <h1 className="text-xl font-bold mb-6">All Domain Reviews</h1>
+      <Title level={4} style={{ margin: 0, marginBottom: 24 }}>All Domain Reviews</Title>
 
-      <div className="mb-4 flex gap-2">
-        {['', 'Pending', 'Assigned', 'In Progress', 'Review Complete', 'Waived'].map((s) => (
-          <button
-            key={s}
-            onClick={() => setStatusFilter(s)}
-            className={clsx(
-              'px-3 py-1 rounded text-sm border',
-              statusFilter === s ? 'bg-primary-blue text-white border-primary-blue' : 'border-border-light hover:border-primary-blue'
-            )}
-          >
-            {s || 'All'}
-          </button>
-        ))}
-      </div>
+      <FilterBar config={FILTER_CONFIG} uiState={uiState} />
 
-      <div className="bg-white rounded-lg border border-border-light">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border-light bg-bg-gray">
-              <th className="text-left p-3 font-medium">Request</th>
-              <th className="text-left p-3 font-medium">Domain</th>
-              <th className="text-left p-3 font-medium">Status</th>
-              <th className="text-left p-3 font-medium">Outcome</th>
-              <th className="text-left p-3 font-medium">Reviewer</th>
-              <th className="text-left p-3 font-medium">Started</th>
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading ? (
-              <tr><td colSpan={6} className="p-4 text-center text-text-secondary">Loading...</td></tr>
-            ) : !data?.data || data.data.length === 0 ? (
-              <tr><td colSpan={6} className="p-4 text-center text-text-secondary">No reviews found</td></tr>
-            ) : (
-              data.data.map((r) => (
-                <tr key={r.id} className="border-b border-border-light hover:bg-gray-50">
-                  <td className="p-3">
-                    <Link href={`/governance/${r.govRequestId || r.requestId}/reviews/${r.domainCode}`} className="text-primary-blue hover:underline">
-                      {r.requestId}
-                    </Link>
-                  </td>
-                  <td className="p-3 font-medium">{r.domainName || r.domainCode}</td>
-                  <td className="p-3">
-                    <span className={clsx('px-2 py-0.5 rounded text-xs text-white', statusColors[r.status] || 'bg-gray-400')}>
-                      {r.status}
-                    </span>
-                  </td>
-                  <td className="p-3">{r.outcome || '-'}</td>
-                  <td className="p-3">{r.reviewerName || r.reviewer || '-'}</td>
-                  <td className="p-3 text-text-secondary">{r.startedAt ? new Date(r.startedAt).toLocaleDateString() : '-'}</td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+      <DataTable<DomainReview>
+        columns={columns}
+        data={data?.data ?? []}
+        isLoading={isLoading}
+        rowKey={(r) => r.id}
+        sortField={sortField}
+        sortOrder={sortOrder}
+        onSort={handleSort}
+        exportFilename="domain-reviews"
+        pagination={
+          data && data.totalPages > 1
+            ? {
+                page,
+                totalPages: data.totalPages,
+                total: data.total,
+                onPageChange: setPage,
+              }
+            : undefined
+        }
+      />
     </div>
   );
 }

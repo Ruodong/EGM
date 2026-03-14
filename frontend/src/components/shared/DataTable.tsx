@@ -1,7 +1,9 @@
 'use client';
 
-import { useCallback } from 'react';
-import clsx from 'clsx';
+import { useCallback, useMemo } from 'react';
+import { Table, Button, Space } from 'antd';
+import { DownloadOutlined } from '@ant-design/icons';
+import type { TableProps } from 'antd';
 import { exportToCsv } from '@/lib/csv';
 
 // ── Public types (re-exported for consumers) ──────────────────────────
@@ -57,23 +59,6 @@ export default function DataTable<T extends object>({
   exportFilename,
   pagination,
 }: DataTableProps<T>) {
-  const colCount = columns.length;
-
-  // ── Sort handler ──────────────────────────────────────────────────
-
-  const handleSort = useCallback(
-    (field: string) => {
-      if (!onSort) return;
-      if (sortField === field) {
-        // Toggle direction
-        onSort(field, sortOrder === 'ASC' ? 'DESC' : 'ASC');
-      } else {
-        // New column → default ASC
-        onSort(field, 'ASC');
-      }
-    },
-    [onSort, sortField, sortOrder],
-  );
 
   // ── CSV export ────────────────────────────────────────────────────
 
@@ -95,109 +80,78 @@ export default function DataTable<T extends object>({
     );
   }, [exportFilename, columns, data]);
 
-  // ── Sort indicator ────────────────────────────────────────────────
+  // ── Map Column<T> → antd ColumnsType ────────────────────────────
 
-  const sortIndicator = (field: string) => {
-    if (sortField !== field) return <span className="ml-1 text-gray-300">⇅</span>;
-    return (
-      <span className="ml-1" data-testid={`sort-indicator-${field}`}>
-        {sortOrder === 'ASC' ? '▲' : '▼'}
-      </span>
-    );
-  };
+  const antdColumns: TableProps<T>['columns'] = useMemo(
+    () =>
+      columns.map((col) => ({
+        title: col.label,
+        dataIndex: col.key,
+        key: col.key,
+        sorter: col.sortable && onSort ? true : undefined,
+        sortOrder:
+          sortField === col.key
+            ? sortOrder === 'ASC'
+              ? ('ascend' as const)
+              : ('descend' as const)
+            : undefined,
+        render: col.render
+          ? (_: unknown, record: T) => col.render!(record)
+          : undefined,
+      })),
+    [columns, sortField, sortOrder, onSort],
+  );
+
+  // ── Sort change handler ─────────────────────────────────────────
+
+  const handleTableChange: TableProps<T>['onChange'] = useCallback(
+    (_pagination: unknown, _filters: unknown, sorter: any) => {
+      if (!onSort || !sorter?.field) return;
+      const field = sorter.field as string;
+      const order = sorter.order === 'ascend' ? 'ASC' : 'DESC';
+      onSort(field, order);
+    },
+    [onSort],
+  );
 
   // ── Render ────────────────────────────────────────────────────────
 
   return (
     <div>
-      {/* Export button */}
       {exportFilename && data.length > 0 && (
-        <div className="flex justify-end mb-2">
-          <button
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+          <Button
+            icon={<DownloadOutlined />}
             onClick={handleExport}
-            className="px-3 py-1.5 text-sm border border-border-light rounded hover:bg-gray-50 flex items-center gap-1"
             data-testid="export-csv-btn"
+            size="small"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-            </svg>
             Export CSV
-          </button>
+          </Button>
         </div>
       )}
 
-      <div className="bg-white rounded-lg border border-border-light">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border-light bg-bg-gray">
-              {columns.map((col) => (
-                <th
-                  key={col.key}
-                  className={clsx(
-                    'text-left p-3 font-medium',
-                    col.sortable && onSort && 'cursor-pointer select-none hover:bg-gray-100',
-                  )}
-                  onClick={col.sortable && onSort ? () => handleSort(col.key) : undefined}
-                >
-                  {col.label}
-                  {col.sortable && onSort && sortIndicator(col.key)}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading ? (
-              <tr>
-                <td colSpan={colCount} className="p-4 text-center text-text-secondary">
-                  Loading...
-                </td>
-              </tr>
-            ) : data.length === 0 ? (
-              <tr>
-                <td colSpan={colCount} className="p-4 text-center text-text-secondary">
-                  No data available
-                </td>
-              </tr>
-            ) : (
-              data.map((row, idx) => (
-                <tr
-                  key={rowKey ? rowKey(row) : (row as Record<string, unknown>).id as string ?? idx}
-                  className="border-b border-border-light hover:bg-gray-50"
-                >
-                  {columns.map((col) => (
-                    <td key={col.key} className="p-3">
-                      {col.render ? col.render(row) : String((row as Record<string, unknown>)[col.key] ?? '-')}
-                    </td>
-                  ))}
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-
-        {/* Pagination */}
-        {pagination && pagination.totalPages > 1 && (
-          <div className="flex items-center justify-between p-3 border-t border-border-light">
-            <span className="text-sm text-text-secondary">Total {pagination.total} items</span>
-            <div className="flex gap-1">
-              {Array.from({ length: pagination.totalPages }, (_, i) => (
-                <button
-                  key={i + 1}
-                  onClick={() => pagination.onPageChange(i + 1)}
-                  className={clsx(
-                    'px-3 py-1 rounded text-sm',
-                    pagination.page === i + 1
-                      ? 'bg-primary-blue text-white'
-                      : 'hover:bg-gray-100',
-                  )}
-                >
-                  {i + 1}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
+      <Table<T>
+        columns={antdColumns}
+        dataSource={data}
+        loading={isLoading}
+        rowKey={rowKey || ((row) => (row as Record<string, unknown>).id as string)}
+        onChange={handleTableChange}
+        pagination={
+          pagination
+            ? {
+                current: pagination.page,
+                total: pagination.total,
+                pageSize: Math.ceil(pagination.total / pagination.totalPages) || 20,
+                onChange: pagination.onPageChange,
+                showTotal: (total) => `Total ${total} items`,
+                size: 'small',
+              }
+            : false
+        }
+        size="middle"
+        showSorterTooltip={false}
+      />
     </div>
   );
 }

@@ -6,7 +6,7 @@
 
 | 层级 | 技术 |
 |------|------|
-| 前端 | Next.js 15 · React 19 · TypeScript · Tailwind CSS · TanStack Query |
+| 前端 | Next.js 15 · React 19 · TypeScript · Ant Design 5 · @ant-design/icons · Tailwind CSS · TanStack Query |
 | 后端 | Python · FastAPI · SQLAlchemy Async · Pydantic |
 | 数据库 | PostgreSQL (asyncpg) |
 | 认证 | Keycloak OIDC (生产) / DevAuth (开发) |
@@ -79,8 +79,8 @@ EGM/
 │       ├── components/    UI 组件
 │       ├── lib/           API 客户端、认证
 │       └── types/         TypeScript 类型
-├── api-tests/         Pytest API 集成测试 (57 tests)
-├── e2e-tests/         Playwright E2E 测试 (14 tests)
+├── api-tests/         Pytest API 集成测试 (86+ tests)
+├── e2e-tests/         Playwright E2E 测试 (73 tests)
 ├── scripts/           数据库 DDL 和种子数据
 └── docs/              架构文档
 ```

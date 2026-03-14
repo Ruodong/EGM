@@ -5,7 +5,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import clsx from 'clsx';
-import { PlusCircle, Pencil, Trash2, Shield, ShieldCheck, ShieldAlert, User } from 'lucide-react';
+import { Button, Input } from 'antd';
+import { PlusCircleOutlined, EditOutlined, DeleteOutlined, SafetyCertificateOutlined, WarningOutlined, UserOutlined } from '@ant-design/icons';
 
 interface Employee {
   itcode: string;
@@ -57,28 +58,28 @@ const ROLE_COLORS: Record<string, string> = {
   requestor: 'bg-green-100 text-green-700 border border-green-300',
 };
 
-const ROLE_DEFINITIONS: { role: string; icon: typeof Shield; color: string; description: string }[] = [
+const ROLE_DEFINITIONS: { role: string; icon: typeof WarningOutlined; color: string; description: string }[] = [
   {
     role: 'admin',
-    icon: ShieldAlert,
+    icon: WarningOutlined,
     color: 'border-red-200 bg-red-50',
     description: 'Full access to all features, settings, and user management.',
   },
   {
     role: 'governance_lead',
-    icon: ShieldCheck,
+    icon: SafetyCertificateOutlined,
     color: 'border-blue-200 bg-blue-50',
     description: 'Manage governance process: Domain Management, Dispatch Rules, Questionnaire Templates. View all Requests and Reviews, but cannot modify Review content.',
   },
   {
     role: 'domain_reviewer',
-    icon: Shield,
+    icon: SafetyCertificateOutlined,
     color: 'border-purple-200 bg-purple-50',
     description: 'View all Requests, review assigned Domain\'s Reviews. Manage assigned Domain\'s Questionnaire Templates. View Dispatch Rules.',
   },
   {
     role: 'requestor',
-    icon: User,
+    icon: UserOutlined,
     color: 'border-green-200 bg-green-50',
     description: 'Submit, track, and modify own Requests.',
   },
@@ -267,22 +268,24 @@ export default function UserAuthorizationPage() {
           <p className="text-sm text-text-secondary mt-1">Search employees and assign EGM roles</p>
         </div>
         {canWrite && (
-          <button
+          <Button
+            type="primary"
+            style={{ background: '#13C2C2', borderColor: '#13C2C2' }}
+            icon={<PlusCircleOutlined />}
             onClick={() => { resetForm(); setShowForm(true); }}
-            className="btn-teal flex items-center gap-1.5"
             data-testid="assign-role-btn"
           >
-            <PlusCircle size={16} /> Assign Role
-          </button>
+            Assign Role
+          </Button>
         )}
       </div>
 
       {/* Role Definitions Panel */}
       <div className="grid grid-cols-4 gap-3 mb-6" data-testid="role-definitions">
-        {ROLE_DEFINITIONS.map(({ role, icon: Icon, color, description }) => (
+        {ROLE_DEFINITIONS.map(({ role, icon: RoleIcon, color, description }) => (
           <div key={role} className={clsx('rounded-lg border p-4', color)}>
             <div className="flex items-center gap-2 mb-2">
-              <Icon size={18} />
+              <RoleIcon style={{ fontSize: 18 }} />
               <span className="font-semibold text-sm">{ROLE_LABELS[role]}</span>
             </div>
             <p className="text-xs text-text-secondary leading-relaxed">{description}</p>
@@ -298,8 +301,7 @@ export default function UserAuthorizationPage() {
             {/* Employee Search */}
             <div className="relative">
               <label className="block text-sm font-medium mb-1">Employee</label>
-              <input
-                className="input-field w-full"
+              <Input
                 placeholder="Search by name, itcode, or email..."
                 value={employeeSearch}
                 onChange={(e) => handleEmployeeSearchChange(e.target.value)}
@@ -392,9 +394,10 @@ export default function UserAuthorizationPage() {
             )}
 
             <div className="flex gap-2">
-              <button
-                type="submit"
-                className="btn-teal"
+              <Button
+                type="primary"
+                style={{ background: '#13C2C2', borderColor: '#13C2C2' }}
+                htmlType="submit"
                 disabled={
                   assignMutation.isPending ||
                   !selectedEmployee ||
@@ -404,14 +407,10 @@ export default function UserAuthorizationPage() {
                 data-testid="save-role-btn"
               >
                 {assignMutation.isPending ? 'Saving...' : 'Assign'}
-              </button>
-              <button
-                type="button"
-                onClick={resetForm}
-                className="px-4 py-2 text-sm border rounded-lg hover:bg-gray-50"
-              >
+              </Button>
+              <Button onClick={resetForm}>
                 Cancel
-              </button>
+              </Button>
             </div>
             {assignMutation.isError && (
               <p className="text-sm text-red-500">
@@ -424,12 +423,12 @@ export default function UserAuthorizationPage() {
 
       {/* Role Search */}
       <div className="mb-4">
-        <input
+        <Input
           type="text"
           placeholder="Filter by name or itcode..."
           value={roleSearch}
           onChange={(e) => handleRoleSearchChange(e.target.value)}
-          className="input-field w-64"
+          style={{ width: 256 }}
           data-testid="role-search"
         />
       </div>
@@ -498,7 +497,7 @@ export default function UserAuthorizationPage() {
                                   className="text-blue-400 hover:text-blue-600 p-1"
                                   data-testid={`edit-role-${u.itcode}-${r.role}`}
                                 >
-                                  <Pencil size={14} />
+                                  <EditOutlined style={{ fontSize: 14 }} />
                                 </button>
                               )}
                               <button
@@ -507,7 +506,7 @@ export default function UserAuthorizationPage() {
                                 className="text-blue-400 hover:text-red-600 p-1"
                                 data-testid={`remove-role-${u.itcode}-${r.role}`}
                               >
-                                <Trash2 size={14} />
+                                <DeleteOutlined style={{ fontSize: 14 }} />
                               </button>
                             </div>
                           ))}
@@ -551,21 +550,23 @@ export default function UserAuthorizationPage() {
                             )}
                           </div>
                           <div className="flex gap-2 pt-6">
-                            <button
+                            <Button
+                              type="primary"
+                              style={{ background: '#13C2C2', borderColor: '#13C2C2' }}
+                              size="small"
                               onClick={handleEditSave}
                               disabled={updateDomainsMutation.isPending || editingUser.domainCodes.size === 0}
-                              className="btn-teal text-sm px-3 py-1.5"
                               data-testid="edit-domains-save"
                             >
                               {updateDomainsMutation.isPending ? 'Saving...' : 'Save'}
-                            </button>
-                            <button
+                            </Button>
+                            <Button
+                              size="small"
                               onClick={() => setEditingUser(null)}
-                              className="px-3 py-1.5 text-sm border rounded-lg hover:bg-gray-50"
                               data-testid="edit-domains-cancel"
                             >
                               Cancel
-                            </button>
+                            </Button>
                           </div>
                         </div>
                         {updateDomainsMutation.isError && (

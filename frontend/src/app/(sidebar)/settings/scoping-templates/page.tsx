@@ -5,6 +5,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import clsx from 'clsx';
+import { Button, Input, Select } from 'antd';
+import { PlusCircleOutlined } from '@ant-design/icons';
 
 interface Template {
   id: string;
@@ -117,9 +119,14 @@ export default function ScopingTemplatesPage() {
           <p className="text-sm text-text-secondary mt-1">Manage scoping questions used to determine applicable domains</p>
         </div>
         {canWrite && (
-          <button onClick={() => { resetForm(); setShowForm(true); }} className="btn-teal">
-            + Add Question
-          </button>
+          <Button
+            type="primary"
+            style={{ background: '#13C2C2', borderColor: '#13C2C2' }}
+            icon={<PlusCircleOutlined />}
+            onClick={() => { resetForm(); setShowForm(true); }}
+          >
+            Add Question
+          </Button>
         )}
       </div>
 
@@ -131,44 +138,47 @@ export default function ScopingTemplatesPage() {
             <div className="grid grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium mb-1">Section</label>
-                <input className="input-field" value={form.section} onChange={(e) => setForm({ ...form, section: e.target.value })} required />
+                <Input value={form.section} onChange={(e) => setForm({ ...form, section: e.target.value })} required />
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">Question #</label>
-                <input type="number" className="input-field" value={form.questionNo} onChange={(e) => setForm({ ...form, questionNo: Number(e.target.value) })} />
+                <Input type="number" value={form.questionNo} onChange={(e) => setForm({ ...form, questionNo: Number(e.target.value) })} />
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">Sort Order</label>
-                <input type="number" className="input-field" value={form.sortOrder} onChange={(e) => setForm({ ...form, sortOrder: Number(e.target.value) })} />
+                <Input type="number" value={form.sortOrder} onChange={(e) => setForm({ ...form, sortOrder: Number(e.target.value) })} />
               </div>
             </div>
 
             <div>
               <label className="block text-sm font-medium mb-1">Question Text</label>
-              <textarea className="input-field" rows={2} value={form.questionText} onChange={(e) => setForm({ ...form, questionText: e.target.value })} required />
+              <Input.TextArea rows={2} value={form.questionText} onChange={(e) => setForm({ ...form, questionText: e.target.value })} required />
             </div>
 
             <div className="grid grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium mb-1">Answer Type</label>
-                <select className="input-field" value={form.answerType} onChange={(e) => setForm({ ...form, answerType: e.target.value })}>
-                  {ANSWER_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-                </select>
+                <Select
+                  className="w-full"
+                  value={form.answerType}
+                  onChange={(value) => setForm({ ...form, answerType: value })}
+                  options={ANSWER_TYPES.map((t) => ({ label: t, value: t }))}
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">Options (comma-separated)</label>
-                <input className="input-field" value={form.options} onChange={(e) => setForm({ ...form, options: e.target.value })} placeholder="Yes, No" />
+                <Input value={form.options} onChange={(e) => setForm({ ...form, options: e.target.value })} placeholder="Yes, No" />
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">Triggers Domain (comma-separated)</label>
-                <input className="input-field" value={form.triggersDomain} onChange={(e) => setForm({ ...form, triggersDomain: e.target.value })} placeholder="BIA, RAI" />
+                <Input value={form.triggersDomain} onChange={(e) => setForm({ ...form, triggersDomain: e.target.value })} placeholder="BIA, RAI" />
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium mb-1">Help Text</label>
-                <input className="input-field" value={form.helpText} onChange={(e) => setForm({ ...form, helpText: e.target.value })} />
+                <Input value={form.helpText} onChange={(e) => setForm({ ...form, helpText: e.target.value })} />
               </div>
               <div className="flex items-center gap-2 pt-6">
                 <input type="checkbox" id="isRequired" checked={form.isRequired} onChange={(e) => setForm({ ...form, isRequired: e.target.checked })} />
@@ -177,12 +187,17 @@ export default function ScopingTemplatesPage() {
             </div>
 
             <div className="flex gap-2">
-              <button type="submit" className="btn-teal" disabled={saveMutation.isPending}>
+              <Button
+                type="primary"
+                style={{ background: '#13C2C2', borderColor: '#13C2C2' }}
+                htmlType="submit"
+                disabled={saveMutation.isPending}
+              >
                 {saveMutation.isPending ? 'Saving...' : editing ? 'Update' : 'Create'}
-              </button>
-              <button type="button" onClick={resetForm} className="px-4 py-2 text-sm border rounded-lg hover:bg-gray-50">
+              </Button>
+              <Button onClick={resetForm}>
                 Cancel
-              </button>
+              </Button>
             </div>
           </form>
         </div>

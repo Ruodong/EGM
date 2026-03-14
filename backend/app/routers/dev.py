@@ -15,6 +15,7 @@ _SEED_LEVEL1_RULES = "('INTERNAL','EXTERNAL','AI','PII','OPEN_SOURCE')"
 _TRANSACTIONAL_TABLES = [
     "review_comment",
     "review_action",
+    "request_questionnaire_response",
     "domain_questionnaire_response",
     "shared_artifact",
     "info_supplement_request",
@@ -148,7 +149,15 @@ async def delete_specific_resources(body: dict, db: AsyncSession = Depends(get_d
         ), {"codes": domain_codes})
         deleted["domain_registry"] = r.rowcount
 
-    # 5. User roles
+    # 5. Questionnaire templates
+    qt_ids = body.get("questionnaireTemplates") or []
+    if qt_ids:
+        r = await db.execute(text(
+            "DELETE FROM domain_questionnaire_template WHERE id::text = ANY(:ids)"
+        ), {"ids": qt_ids})
+        deleted["domain_questionnaire_template"] = r.rowcount
+
+    # 6. User roles
     itcodes = body.get("userRoles") or []
     if itcodes:
         r = await db.execute(text(

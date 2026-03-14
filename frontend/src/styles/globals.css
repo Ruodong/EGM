@@ -14,17 +14,7 @@
 }
 
 @layer components {
-  .btn-primary {
-    @apply bg-primary-blue text-white px-6 py-2 rounded hover:bg-primary-blue-hover transition-colors font-medium;
-  }
-
-  .btn-default {
-    @apply bg-white text-text-primary px-6 py-2 rounded border border-border-light hover:border-primary-blue hover:text-primary-blue transition-colors;
-  }
-
-  .btn-teal {
-    @apply bg-egm-teal text-white px-6 py-2 rounded hover:bg-egm-teal-dark transition-colors font-medium;
-  }
+  /* btn-primary, btn-default, btn-teal removed — use antd <Button> instead */
 
   .input-field {
     @apply border border-border-light rounded px-3 py-2 text-sm focus:outline-none focus:border-primary-blue transition-colors w-full;

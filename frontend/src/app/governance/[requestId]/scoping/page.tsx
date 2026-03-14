@@ -6,6 +6,7 @@ import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
 import { useToast } from '@/components/ui/Toast';
 import { PageLayout } from '@/components/layout/PageLayout';
+import { Button } from 'antd';
 import clsx from 'clsx';
 
 interface Template {
@@ -153,24 +154,25 @@ export default function ScopingPage() {
         ))}
 
         <div className="flex justify-between mt-6">
-          <button className="btn-default" onClick={() => router.push(`/governance/${requestId}`)}>
+          <Button type="default" onClick={() => router.push(`/governance/${requestId}`)}>
             Back
-          </button>
+          </Button>
           <div className="flex gap-3">
-            <button
-              className="btn-default"
+            <Button
+              type="default"
               disabled={saveMutation.isPending}
               onClick={() => saveMutation.mutate()}
             >
               Save Draft
-            </button>
-            <button
-              className="btn-teal"
+            </Button>
+            <Button
+              type="primary"
+              style={{ background: '#13C2C2', borderColor: '#13C2C2' }}
               disabled={saving}
               onClick={handleSaveAndContinue}
             >
               {saving ? 'Processing...' : 'Save & Continue'}
-            </button>
+            </Button>
           </div>
         </div>
       </div>

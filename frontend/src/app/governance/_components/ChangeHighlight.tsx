@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { History } from 'lucide-react';
+import { HistoryOutlined } from '@ant-design/icons';
 import clsx from 'clsx';
 
 export interface ChangeEntry {
@@ -61,7 +61,7 @@ export function ChangeHighlight({ fieldName, changelog, children }: ChangeHighli
           title="View change history"
           data-testid={`change-history-btn-${fieldName}`}
         >
-          <History className="h-3.5 w-3.5 text-amber-600" />
+          <HistoryOutlined className="text-amber-600" style={{ fontSize: 14 }} />
         </button>
       </div>
 

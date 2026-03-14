@@ -4,7 +4,7 @@ test.describe('Reports Pages', () => {
   test('domain metrics page loads', async ({ page }) => {
     await page.goto('/reports/domain-metrics');
     await page.waitForTimeout(1000);
-    await expect(page.locator('h1, h2').first()).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Domain Metrics' })).toBeVisible();
     await expect(page.locator('body')).not.toContainText('Application error');
   });
 

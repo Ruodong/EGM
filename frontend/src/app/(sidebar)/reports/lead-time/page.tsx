@@ -2,6 +2,9 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { Tag, Typography, Spin } from 'antd';
+
+const { Title, Text } = Typography;
 
 interface GovRequest {
   id: string;
@@ -40,10 +43,10 @@ export default function LeadTimePage() {
 
   return (
     <div>
-      <h1 className="text-xl font-bold mb-6">Lead Time Analysis</h1>
+      <Title level={4} style={{ margin: 0, marginBottom: 24 }}>Lead Time Analysis</Title>
 
       {isLoading ? (
-        <p className="text-text-secondary">Loading...</p>
+        <div className="text-center py-4"><Spin /></div>
       ) : (
         <>
           {/* Summary */}
@@ -85,10 +88,10 @@ export default function LeadTimePage() {
                   const days = daysBetween(r.createAt, r.completedAt);
                   return (
                     <tr key={r.id} className="border-b border-border-light last:border-0">
-                      <td className="px-4 py-3 font-mono text-xs">{r.requestId}</td>
+                      <td className="px-4 py-3 text-xs">{r.requestId}</td>
                       <td className="px-4 py-3">{r.title}</td>
                       <td className="px-4 py-3">
-                        <span className="px-2 py-0.5 rounded text-xs bg-blue-50 text-blue-700">{r.status}</span>
+                        <Tag color="blue">{r.status}</Tag>
                       </td>
                       <td className="px-4 py-3">{r.priority}</td>
                       <td className="px-4 py-3 text-text-secondary">{new Date(r.createAt).toLocaleDateString()}</td>
@@ -108,8 +111,8 @@ export default function LeadTimePage() {
           </div>
 
           {requests.length === 0 && (
-            <div className="bg-white rounded-lg border border-border-light p-8 text-center text-text-secondary mt-4">
-              No requests available for lead time analysis.
+            <div className="bg-white rounded-lg border border-border-light p-8 text-center mt-4">
+              <Text type="secondary">No requests available for lead time analysis.</Text>
             </div>
           )}
         </>

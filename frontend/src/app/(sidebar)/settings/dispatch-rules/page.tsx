@@ -5,7 +5,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import clsx from 'clsx';
-import { PlusCircle, Pencil, ToggleLeft, ToggleRight, Save, ChevronRight, ChevronDown, ArrowUp, ArrowDown, Plus } from 'lucide-react';
+import { Button, Input, Switch } from 'antd';
+import { PlusCircleOutlined, EditOutlined, SaveOutlined, RightOutlined, DownOutlined, ArrowUpOutlined, ArrowDownOutlined, PlusOutlined } from '@ant-design/icons';
 
 interface DispatchRule {
   id: string;
@@ -403,13 +404,15 @@ export default function DispatchRulesPage() {
           </p>
         </div>
         {canWrite && (
-          <button
+          <Button
+            type="primary"
+            style={{ background: '#13C2C2', borderColor: '#13C2C2' }}
+            icon={<PlusCircleOutlined />}
             onClick={() => { resetForm(); setShowForm(true); }}
-            className="btn-teal flex items-center gap-1.5"
             data-testid="add-rule-btn"
           >
-            <PlusCircle size={16} /> Add Rule
-          </button>
+            Add Rule
+          </Button>
         )}
       </div>
 
@@ -421,8 +424,7 @@ export default function DispatchRulesPage() {
             <div className="grid grid-cols-4 gap-4">
               <div>
                 <label className="block text-sm font-medium mb-1">Rule Code</label>
-                <input
-                  className="input-field w-full"
+                <Input
                   placeholder="e.g. INTERNAL"
                   value={formData.ruleCode}
                   onChange={(e) => setFormData({ ...formData, ruleCode: e.target.value })}
@@ -432,8 +434,7 @@ export default function DispatchRulesPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">Rule Name</label>
-                <input
-                  className="input-field w-full"
+                <Input
                   placeholder="e.g. 内部项目"
                   value={formData.ruleName}
                   onChange={(e) => setFormData({ ...formData, ruleName: e.target.value })}
@@ -443,7 +444,8 @@ export default function DispatchRulesPage() {
               <div>
                 <label className="block text-sm font-medium mb-1">Parent Rule</label>
                 <select
-                  className="input-field w-full"
+                  className="ant-input w-full"
+                  style={{ height: 32, borderRadius: 6, border: '1px solid #d9d9d9', padding: '0 8px' }}
                   value={formData.parentRuleCode}
                   onChange={(e) => setFormData({ ...formData, parentRuleCode: e.target.value })}
                   disabled={editingRuleHasChildren}
@@ -459,9 +461,8 @@ export default function DispatchRulesPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">Sort Order</label>
-                <input
+                <Input
                   type="number"
-                  className="input-field w-full"
                   value={formData.sortOrder}
                   onChange={(e) => setFormData({ ...formData, sortOrder: parseInt(e.target.value) || 0 })}
                 />
@@ -470,8 +471,7 @@ export default function DispatchRulesPage() {
             <div className="flex items-center gap-4">
               <div className="flex-1">
                 <label className="block text-sm font-medium mb-1">Description</label>
-                <input
-                  className="input-field w-full"
+                <Input
                   placeholder="Optional description"
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
@@ -492,21 +492,18 @@ export default function DispatchRulesPage() {
               </div>
             </div>
             <div className="flex gap-2">
-              <button
-                type="submit"
-                className="btn-teal"
+              <Button
+                type="primary"
+                style={{ background: '#13C2C2', borderColor: '#13C2C2' }}
+                htmlType="submit"
                 disabled={createMutation.isPending || !formData.ruleCode || !formData.ruleName}
                 data-testid="save-rule-btn"
               >
                 {createMutation.isPending ? 'Saving...' : editingCode ? 'Update' : 'Create'}
-              </button>
-              <button
-                type="button"
-                onClick={resetForm}
-                className="px-4 py-2 text-sm border rounded-lg hover:bg-gray-50"
-              >
+              </Button>
+              <Button onClick={resetForm}>
                 Cancel
-              </button>
+              </Button>
             </div>
           </form>
         </div>
@@ -561,7 +558,7 @@ export default function DispatchRulesPage() {
                       )}
                       data-testid={isChild ? `child-rule-${r.ruleCode}` : `parent-rule-${r.ruleCode}`}
                     >
-                      <td className="px-4 py-2 font-mono text-xs">
+                      <td className="px-4 py-2 text-xs font-semibold">
                         <span className={clsx('inline-flex items-center gap-1', isChild && 'ml-6')}>
                           {isParent && hasChildren && (
                             <button
@@ -569,14 +566,14 @@ export default function DispatchRulesPage() {
                               className="text-gray-400 hover:text-gray-600 -ml-1"
                               data-testid={`collapse-${r.ruleCode}`}
                             >
-                              {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                              {isCollapsed ? <RightOutlined style={{ fontSize: 12 }} /> : <DownOutlined style={{ fontSize: 12 }} />}
                             </button>
                           )}
-                          {isChild && <ChevronRight size={12} className="text-gray-400" />}
+                          {isChild && <RightOutlined style={{ fontSize: 10, color: '#9ca3af' }} />}
                           {r.ruleCode}
                         </span>
                       </td>
-                      <td className={clsx('px-4 py-2', isParent ? 'font-semibold' : 'font-medium')}>
+                      <td className="px-4 py-2 font-normal">
                         {r.ruleName}
                         {isParent && hasChildren && (
                           <span className="text-xs text-text-secondary ml-2">({childCount})</span>
@@ -602,7 +599,7 @@ export default function DispatchRulesPage() {
                               )}
                               data-testid={`move-up-${r.ruleCode}`}
                             >
-                              <ArrowUp size={14} />
+                              <ArrowUpOutlined style={{ fontSize: 14 }} />
                             </button>
                             {/* Move down */}
                             <button
@@ -615,7 +612,7 @@ export default function DispatchRulesPage() {
                               )}
                               data-testid={`move-down-${r.ruleCode}`}
                             >
-                              <ArrowDown size={14} />
+                              <ArrowDownOutlined style={{ fontSize: 14 }} />
                             </button>
                             {/* Add child (only for level-1 rules) */}
                             {isParent && (
@@ -625,7 +622,7 @@ export default function DispatchRulesPage() {
                                 className="text-teal-600 hover:text-teal-700 p-1 rounded hover:bg-teal-50"
                                 data-testid={`add-child-${r.ruleCode}`}
                               >
-                                <Plus size={14} />
+                                <PlusOutlined style={{ fontSize: 14 }} />
                               </button>
                             )}
                             {/* Edit */}
@@ -634,17 +631,15 @@ export default function DispatchRulesPage() {
                               title="Edit"
                               className="text-primary-blue hover:text-blue-700 p-1"
                             >
-                              <Pencil size={14} />
+                              <EditOutlined style={{ fontSize: 14 }} />
                             </button>
                             {/* Toggle active */}
-                            <button
-                              onClick={() => toggleMutation.mutate(r.ruleCode)}
-                              title={r.isActive ? 'Deactivate' : 'Activate'}
-                              className={clsx('p-1', r.isActive ? 'text-green-500 hover:text-red-500' : 'text-gray-400 hover:text-green-600')}
+                            <Switch
+                              size="small"
+                              checked={r.isActive}
+                              onChange={() => toggleMutation.mutate(r.ruleCode)}
                               data-testid={r.isActive ? `deactivate-${r.ruleCode}` : `reactivate-${r.ruleCode}`}
-                            >
-                              {r.isActive ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
-                            </button>
+                            />
                           </div>
                         </td>
                       )}
@@ -693,20 +688,16 @@ export default function DispatchRulesPage() {
               Click cells to toggle in/out. Save when done.
             </p>
             {canWrite && (
-              <button
+              <Button
+                type="primary"
+                style={matrixDirty ? { background: '#13C2C2', borderColor: '#13C2C2' } : undefined}
+                icon={<SaveOutlined />}
                 onClick={saveMatrix}
                 disabled={!matrixDirty || matrixMutation.isPending}
-                className={clsx(
-                  'flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium',
-                  matrixDirty
-                    ? 'btn-teal'
-                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                )}
                 data-testid="save-matrix-btn"
               >
-                <Save size={16} />
                 {matrixMutation.isPending ? 'Saving...' : 'Save Matrix'}
-              </button>
+              </Button>
             )}
           </div>
 
@@ -725,7 +716,7 @@ export default function DispatchRulesPage() {
                         key={domain.domainCode}
                         className="text-center px-2 py-1.5 min-w-[90px] border-l border-border-light"
                       >
-                        <div className="text-[10px] font-mono">{domain.domainCode}</div>
+                        <div className="text-[10px]">{domain.domainCode}</div>
                         <div className="text-[9px] text-text-secondary font-normal truncate max-w-[100px]">
                           {domain.domainName}
                         </div>
@@ -740,7 +731,7 @@ export default function DispatchRulesPage() {
                       <tr key={rule.ruleCode} className={clsx('border-b border-border-light last:border-0', !isChild && 'bg-gray-50/40')}>
                         <td className="px-4 py-2 font-medium sticky left-0 bg-white z-10 border-r border-border-light whitespace-nowrap">
                           <span className={clsx('inline-flex items-center gap-1', isChild && 'ml-4')}>
-                            {isChild && <ChevronRight size={12} className="text-gray-400" />}
+                            {isChild && <RightOutlined style={{ fontSize: 10, color: '#9ca3af' }} />}
                             {rule.ruleName}
                             <span className="text-text-secondary text-xs ml-1">({rule.ruleCode})</span>
                           </span>
@@ -787,20 +778,16 @@ export default function DispatchRulesPage() {
               Configure mutually exclusive rules. Level-1 rules exclude other Level-1 rules; Level-2 rules exclude siblings under the same parent.
             </p>
             {canWrite && (
-              <button
+              <Button
+                type="primary"
+                style={exclusionsDirty ? { background: '#13C2C2', borderColor: '#13C2C2' } : undefined}
+                icon={<SaveOutlined />}
                 onClick={saveExclusions}
                 disabled={!exclusionsDirty || exclusionsMutation.isPending}
-                className={clsx(
-                  'flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium',
-                  exclusionsDirty
-                    ? 'btn-teal'
-                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                )}
                 data-testid="save-exclusions-btn"
               >
-                <Save size={16} />
                 {exclusionsMutation.isPending ? 'Saving...' : 'Save Exclusions'}
-              </button>
+              </Button>
             )}
           </div>
 
@@ -929,20 +916,16 @@ export default function DispatchRulesPage() {
               Configure prerequisite rules. A rule with dependencies can only be selected when at least one of its required rules is selected (OR logic).
             </p>
             {canWrite && (
-              <button
+              <Button
+                type="primary"
+                style={dependenciesDirty ? { background: '#13C2C2', borderColor: '#13C2C2' } : undefined}
+                icon={<SaveOutlined />}
                 onClick={saveDependencies}
                 disabled={!dependenciesDirty || dependenciesMutation.isPending}
-                className={clsx(
-                  'flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium',
-                  dependenciesDirty
-                    ? 'btn-teal'
-                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                )}
                 data-testid="save-dependencies-btn"
               >
-                <Save size={16} />
                 {dependenciesMutation.isPending ? 'Saving...' : 'Save Dependencies'}
-              </button>
+              </Button>
             )}
           </div>
 
@@ -963,7 +946,7 @@ export default function DispatchRulesPage() {
                       <tr key={rule.ruleCode} className="border-b border-border-light" data-testid={`dep-row-${rule.ruleCode}`}>
                         <td className="px-4 py-2 font-medium">
                           <span className={clsx(rule.parentRuleCode && 'ml-4')}>
-                            {rule.parentRuleCode && <ChevronRight size={12} className="inline text-gray-400 mr-1" />}
+                            {rule.parentRuleCode && <RightOutlined style={{ fontSize: 10, color: '#9ca3af', marginRight: 4 }} />}
                             {rule.ruleName}
                             <span className="text-text-secondary text-xs ml-1">({rule.ruleCode})</span>
                           </span>

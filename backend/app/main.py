@@ -19,6 +19,8 @@ from app.routers import (
     audit_log,
     user_authorization,
     employees,
+    questionnaire_templates,
+    request_questionnaire,
     dev,
 )
 
@@ -50,6 +52,8 @@ app.include_router(dispatch_rules.router, prefix="/api/dispatch-rules", tags=["D
 app.include_router(audit_log.router, prefix="/api/audit-log", tags=["Audit Log"])
 app.include_router(user_authorization.router, prefix="/api/user-authorization", tags=["User Authorization"])
 app.include_router(employees.router, prefix="/api/employees", tags=["Employees"])
+app.include_router(questionnaire_templates.router, prefix="/api/questionnaire-templates", tags=["Questionnaire Templates"])
+app.include_router(request_questionnaire.router, prefix="/api/request-questionnaire", tags=["Request Questionnaire"])
 app.include_router(dev.router, prefix="/api/dev", tags=["Dev"])
 
 

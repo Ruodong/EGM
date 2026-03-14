@@ -1,11 +1,15 @@
 'use client';
 
+import { Typography } from 'antd';
+
+const { Title, Text } = Typography;
+
 export default function ActionsPage() {
   return (
     <div>
-      <h1 className="text-xl font-bold mb-6">Review Actions</h1>
+      <Title level={4} style={{ margin: 0, marginBottom: 24 }}>Review Actions</Title>
       <div className="bg-white rounded-lg border border-border-light p-8 text-center">
-        <p className="text-text-secondary">Action items tracking — coming soon.</p>
+        <Text type="secondary">Action items tracking — coming soon.</Text>
       </div>
     </div>
   );

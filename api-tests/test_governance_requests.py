@@ -1,5 +1,6 @@
 """Test governance request CRUD + lifecycle."""
 import httpx
+from conftest import _answer_all_required_questionnaires
 
 # Required fields for all governance request creation calls
 _BASE = {
@@ -64,6 +65,7 @@ def test_update_request(client: httpx.Client, create_request):
 
 def test_submit_request(client: httpx.Client, create_request):
     rid = create_request["requestId"]
+    _answer_all_required_questionnaires(client, rid)
     resp = client.put(f"/governance-requests/{rid}/submit")
     assert resp.status_code == 200
     assert resp.json()["status"] == "Submitted"
@@ -71,26 +73,13 @@ def test_submit_request(client: httpx.Client, create_request):
 
 def test_submit_non_draft_fails(client: httpx.Client, create_request):
     rid = create_request["requestId"]
+    _answer_all_required_questionnaires(client, rid)
     # Submit first
     client.put(f"/governance-requests/{rid}/submit")
     # Try to submit again
     resp = client.put(f"/governance-requests/{rid}/submit")
     assert resp.status_code == 400
 
-
-def test_verdict_on_draft_fails(client: httpx.Client, create_request):
-    """Fix 5: verdict guard — cannot complete a Draft request."""
-    rid = create_request["requestId"]
-    resp = client.put(f"/governance-requests/{rid}/verdict", json={"verdict": "Approved"})
-    assert resp.status_code == 400
-    assert "In Progress" in resp.json()["detail"]
-
-
-def test_verdict_invalid_value(client: httpx.Client, create_request):
-    rid = create_request["requestId"]
-    resp = client.put(f"/governance-requests/{rid}/verdict", json={"verdict": "Maybe"})
-    assert resp.status_code == 400
-    assert "Invalid verdict" in resp.json()["detail"]
 
 
 def test_delete_draft_request(client: httpx.Client):
@@ -105,6 +94,7 @@ def test_delete_draft_request(client: httpx.Client):
 
 def test_delete_non_draft_fails(client: httpx.Client, create_request):
     rid = create_request["requestId"]
+    _answer_all_required_questionnaires(client, rid)
     client.put(f"/governance-requests/{rid}/submit")  # Make it Submitted
     resp = client.delete(f"/governance-requests/{rid}")
     assert resp.status_code == 400
@@ -132,26 +122,6 @@ def test_sequence_generates_unique_ids(client: httpx.Client, cleanup_requests):
     assert r1["requestId"].startswith("EGQ")
     assert r2["requestId"].startswith("EGQ")
 
-
-def test_verdict_approved(client: httpx.Client, dispatched_request):
-    """Full lifecycle: complete review then record verdict."""
-    review_id = dispatched_request["reviewId"]
-    rid = dispatched_request["request"]["requestId"]
-
-    # Assign → Start → Complete the domain review
-    client.put(f"/domain-reviews/{review_id}/assign")
-    client.put(f"/domain-reviews/{review_id}/start")
-    client.put(f"/domain-reviews/{review_id}/complete", json={
-        "outcome": "Approved",
-        "notes": "All good",
-    })
-
-    # Now record verdict on the governance request
-    resp = client.put(f"/governance-requests/{rid}/verdict", json={"verdict": "Approved"})
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["status"] == "Completed"
-    assert data["overallVerdict"] == "Approved"
 
 
 def test_create_request_with_empty_optional_fields(client: httpx.Client, cleanup_requests):
@@ -793,6 +763,7 @@ def test_submit_missing_required_fields(client: httpx.Client, cleanup_requests):
     detail = resp.json()["detail"]
     assert "govProjectType" in detail
     assert "businessUnit" in detail
+    assert "projectType" in detail
     assert "productSoftwareType" in detail
     assert "productEndUser" in detail
     assert "userRegion" in detail

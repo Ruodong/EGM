@@ -13,60 +13,68 @@ test.describe('Role Switcher', () => {
     await page.goto('/');
     await expect(page.locator('text=Admin User')).toBeVisible();
     await expect(page.locator('text=(Admin)')).toBeVisible();
-    // Admin sees Settings and Domains
-    await expect(page.locator('nav >> text=Settings')).toBeVisible();
-    await expect(page.locator('nav >> text=Domains')).toBeVisible();
+    // Admin sees Settings and Domains in the antd sidebar (rendered as <aside>)
+    await expect(page.locator('aside >> text=Settings')).toBeVisible();
+    await expect(page.locator('aside >> text=Domains')).toBeVisible();
   });
 
   test('switch to requestor hides admin menus', async ({ page }) => {
     await page.goto('/');
-    // Open user switcher dropdown
+    // Open user switcher dropdown (antd Dropdown renders items in a portal)
     await page.locator('text=Admin User').click();
-    await expect(page.locator('text=Switch User')).toBeVisible();
+    // Wait for dropdown to appear
+    const dropdown = page.locator('.ant-dropdown').last();
+    await expect(dropdown).toBeVisible({ timeout: 5000 });
 
-    // Click a requestor user by name
-    await page.getByRole('button', { name: new RegExp(USERS.requestor.name) }).click();
+    // Click a requestor user by name in the antd dropdown menu
+    await dropdown.locator('.ant-dropdown-menu-item').filter({ hasText: USERS.requestor.name }).click();
 
-    // Wait for identity switch
-    await expect(page.locator(`text=${USERS.requestor.name}`)).toBeVisible();
+    // Wait for identity switch (use .first() since name may appear in multiple elements)
+    await expect(page.locator(`text=${USERS.requestor.name}`).first()).toBeVisible();
     await expect(page.locator(`text=(${USERS.requestor.label})`)).toBeVisible();
 
-    // Requestor should NOT see Settings or Domains
-    await expect(page.locator('nav >> text=Settings')).not.toBeVisible();
-    await expect(page.locator('nav >> text=Domains')).not.toBeVisible();
-    // But should see Governance Requests
-    await expect(page.locator('nav >> text=Governance Requests')).toBeVisible();
+    // Requestor should NOT see Settings
+    await expect(page.locator('aside >> text=Settings')).not.toBeVisible();
+    // Requestor CAN see Domains (has domain_registry:read permission)
+    await expect(page.locator('aside >> text=Domains')).toBeVisible();
+    // And should see Governance Requests
+    await expect(page.locator('aside >> text=Governance Requests')).toBeVisible();
   });
 
   test('switch to reviewer shows limited menus', async ({ page }) => {
     await page.goto('/');
     // Open user switcher dropdown
     await page.locator('text=Admin User').click();
-    await expect(page.locator('text=Switch User')).toBeVisible();
+    const dropdown = page.locator('.ant-dropdown').last();
+    await expect(dropdown).toBeVisible({ timeout: 5000 });
 
     // Click the domain reviewer user by name
-    await page.getByRole('button', { name: new RegExp(USERS.domainReviewer.name) }).click();
+    await dropdown.locator('.ant-dropdown-menu-item').filter({ hasText: USERS.domainReviewer.name }).click();
 
     await expect(page.locator(`text=(${USERS.domainReviewer.label})`)).toBeVisible();
-    await expect(page.locator('nav >> text=Reviews')).toBeVisible();
+    await expect(page.locator('aside >> text=Reviews')).toBeVisible();
     // Domain Reviewer CAN see Settings (Questionnaire Templates + Dispatch Rules children are visible)
-    await expect(page.locator('nav >> text=Settings')).toBeVisible();
+    await expect(page.locator('aside >> text=Settings')).toBeVisible();
     // But should NOT see Domains (requires domain_registry:read)
-    await expect(page.locator('nav >> text=Domains')).not.toBeVisible();
+    await expect(page.locator('aside >> text=Domains')).not.toBeVisible();
   });
 
   test('switch back to admin restores full sidebar', async ({ page }) => {
     await page.goto('/');
     // Switch to requestor first
     await page.locator('text=Admin User').click();
-    await page.getByRole('button', { name: new RegExp(USERS.requestor.name) }).click();
+    const dropdown1 = page.locator('.ant-dropdown').last();
+    await expect(dropdown1).toBeVisible({ timeout: 5000 });
+    await dropdown1.locator('.ant-dropdown-menu-item').filter({ hasText: USERS.requestor.name }).click();
     await expect(page.locator(`text=(${USERS.requestor.label})`)).toBeVisible();
 
     // Switch back to admin (RuoDong Yang)
     await page.locator(`text=${USERS.requestor.name}`).first().click();
-    await page.getByRole('button', { name: new RegExp(USERS.admin.name) }).click();
+    const dropdown2 = page.locator('.ant-dropdown').last();
+    await expect(dropdown2).toBeVisible({ timeout: 5000 });
+    await dropdown2.locator('.ant-dropdown-menu-item').filter({ hasText: USERS.admin.name }).click();
     await expect(page.locator(`text=(${USERS.admin.label})`)).toBeVisible();
-    await expect(page.locator('nav >> text=Settings')).toBeVisible();
-    await expect(page.locator('nav >> text=Domains')).toBeVisible();
+    await expect(page.locator('aside >> text=Settings')).toBeVisible();
+    await expect(page.locator('aside >> text=Domains')).toBeVisible();
   });
 });

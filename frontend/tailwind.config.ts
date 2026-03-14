@@ -5,6 +5,18 @@ const config: Config = {
     './src/pages/**/*.{js,ts,jsx,tsx,mdx}',
     './src/components/**/*.{js,ts,jsx,tsx,mdx}',
     './src/app/**/*.{js,ts,jsx,tsx,mdx}',
+    './src/lib/**/*.{js,ts,jsx,tsx}',
+  ],
+  safelist: [
+    'bg-status-draft',
+    'bg-status-in-review',
+    'bg-status-in-progress',
+    'bg-status-completed',
+    'bg-status-pending',
+    'bg-status-info-requested',
+    'bg-primary-blue',
+    'bg-red-500',
+    'bg-gray-400',
   ],
   theme: {
     extend: {

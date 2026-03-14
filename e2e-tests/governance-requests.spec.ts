@@ -7,6 +7,7 @@ const BASE_DATA = {
   productSoftwareType: 'Hardware',
   productEndUser: ['Lenovo internal employee/contractors'],
   userRegion: ['PRC'],
+  ruleCodes: ['PII'],  // PII rule triggers DP domain — required for submit
 };
 
 test.describe('Governance Requests', () => {
@@ -108,16 +109,20 @@ test.describe('Governance Requests', () => {
     createdRequestIds.push((await statusFilterResp.json()).requestId);
     await page.goto('/requests');
     await expect(page.getByRole('heading', { name: 'Governance Requests' })).toBeVisible();
-    // Status filter should be a dropdown select
-    const statusSelect = page.getByTestId('status-filter');
-    await expect(statusSelect).toBeVisible();
-    // Select "Draft" and wait for the filtered API response
+    // Status filter is an antd multi-select component wrapped in a div
+    const statusFilter = page.getByTestId('status-filter');
+    await expect(statusFilter).toBeVisible();
+    // Click the antd Select inside the wrapper to open dropdown
+    await statusFilter.locator('.ant-select').click();
+    // Wait for the portal-rendered dropdown to appear
+    const dropdown = page.locator('.ant-select-dropdown').last();
+    await expect(dropdown).toBeVisible({ timeout: 5000 });
     const [response] = await Promise.all([
       page.waitForResponse(
         (resp) => resp.url().includes('/governance-requests') && resp.url().includes('status=Draft') && resp.request().method() === 'GET',
         { timeout: 10000 },
       ),
-      statusSelect.selectOption('Draft'),
+      dropdown.locator('.ant-select-item-option').filter({ hasText: 'Draft' }).click(),
     ]);
     expect(response.status()).toBe(200);
     const body = await response.json();
@@ -131,7 +136,7 @@ test.describe('Governance Requests', () => {
     await page.goto('/requests');
     await expect(page.getByRole('heading', { name: 'Governance Requests' })).toBeVisible();
     // Search input should be visible
-    const searchInput = page.getByPlaceholder('Search by Request ID or Title...');
+    const searchInput = page.getByPlaceholder('Search by Request ID or Project Name...');
     await expect(searchInput).toBeVisible();
     // Type a search term
     await searchInput.fill('GR-');
@@ -161,31 +166,45 @@ test.describe('Governance Requests', () => {
   test('date preset dropdown and custom date pickers work', async ({ page }) => {
     await page.goto('/requests');
     await expect(page.getByRole('heading', { name: 'Governance Requests' })).toBeVisible();
-    // Period dropdown should be visible with default "All Time"
+    // Period dropdown (antd Select) should be visible
     const dateSelect = page.getByTestId('date-filter');
     await expect(dateSelect).toBeVisible();
-    // Date inputs should NOT be visible by default
-    await expect(page.locator('input[type="date"]')).toHaveCount(0);
-    // Select "Custom" to reveal date pickers
-    await dateSelect.selectOption('custom');
-    await expect(page.getByTestId('custom-date-from')).toBeVisible();
-    await expect(page.getByTestId('custom-date-to')).toBeVisible();
+    // Date range picker should NOT be visible by default
+    await expect(page.locator('.ant-picker-range')).toHaveCount(0);
+    // Click the antd Select inside the wrapper to open dropdown
+    await dateSelect.locator('.ant-select').click();
+    // Wait for the portal-rendered dropdown to appear
+    const dateDropdown = page.locator('.ant-select-dropdown').last();
+    await expect(dateDropdown).toBeVisible({ timeout: 5000 });
+    await dateDropdown.locator('.ant-select-item-option').filter({ hasText: 'Custom' }).click();
+    // RangePicker should now be visible
+    await expect(page.locator('.ant-picker-range')).toBeVisible();
   });
 
   test('column header sort indicators appear on click', async ({ page }) => {
     await page.goto('/requests');
     await expect(page.getByRole('heading', { name: 'Governance Requests' })).toBeVisible();
-    // Click on "Title" column header to sort
-    await page.getByRole('columnheader', { name: /Title/ }).click();
+    // Click on "Project Name" column header to sort
+    await page.getByRole('columnheader', { name: /Project Name/ }).click();
     await page.waitForTimeout(500);
-    // Sort indicator should appear (▲ for ASC)
-    await expect(page.getByTestId('sort-indicator-title')).toBeVisible();
+    // Antd Table shows sort indicator via .ant-table-column-sorter-up/down active class
+    const sorterActive = page.locator('.ant-table-column-sorter-up.active, .ant-table-column-sorter-down.active');
+    await expect(sorterActive.first()).toBeVisible();
   });
 
   test('submit draft request via detail page', async ({ page }) => {
-    // Create a Draft request via API
+    // Create a Draft request via API — include project info (required for submit)
     const resp = await page.request.post('http://localhost:4001/api/governance-requests', {
-      data: { ...BASE_DATA, title: 'Submit Flow E2E Test' },
+      data: {
+        ...BASE_DATA,
+        title: 'Submit Flow E2E Test',
+        projectType: 'non_mspo',
+        projectCode: 'E2E-SUB-001',
+        projectName: 'E2E Submit Test Project',
+        projectPm: 'E2E PM',
+        projectStartDate: '2026-01-01',
+        projectGoLiveDate: '2026-06-01',
+      },
     });
     const gr = await resp.json();
     createdRequestIds.push(gr.requestId);

@@ -20,7 +20,16 @@ def _is_requestor_only(user: AuthUser) -> bool:
     """True if user has ONLY the Requestor role (no admin/lead/reviewer)."""
     return all(r == Role.REQUESTOR for r in user.roles)
 
-ALLOWED_SORT = {"request_id", "title", "status", "create_at", "update_at", "requestor"}
+
+def _is_domain_reviewer_only(user: AuthUser) -> bool:
+    """True when highest role is domain_reviewer (no admin/lead)."""
+    return (
+        Role.DOMAIN_REVIEWER in user.roles
+        and Role.ADMIN not in user.roles
+        and Role.GOVERNANCE_LEAD not in user.roles
+    )
+
+ALLOWED_SORT = {"request_id", "title", "status", "create_at", "update_at", "requestor", "project_name"}
 
 
 async def _validate_mandatory_rules(db: AsyncSession, all_saved_codes: set[str]):
@@ -123,8 +132,7 @@ def _map(r: dict) -> dict:
         "requestor": r["requestor"],
         "requestorName": r.get("requestor_name"),
         "status": r["status"],
-        "overallVerdict": r.get("overall_verdict"),
-        "completedAt": r["completed_at"].isoformat() if r.get("completed_at") else None,
+        "lifecycleStatus": r.get("lifecycle_status", "Active"),
         "createBy": r.get("create_by"),
         "createAt": r["create_at"].isoformat() if r.get("create_at") else None,
         "updateAt": r["update_at"].isoformat() if r.get("update_at") else None,
@@ -145,8 +153,10 @@ _PROJECT_COLS = [
 @router.get("", dependencies=[Depends(require_permission("governance_request", "read"))])
 async def list_requests(
     status: str | None = Query(None),
+    lifecycleStatus: str | None = Query(None),
     requestor: str | None = Query(None),
     search: str | None = Query(None),
+    domain: str | None = Query(None),
     dateFrom: str | None = Query(None),
     dateTo: str | None = Query(None),
     pg: PaginationParams = Depends(),
@@ -160,6 +170,26 @@ async def list_requests(
     if _is_requestor_only(user):
         conditions.append("gr.requestor = :current_user")
         params["current_user"] = user.id
+    # Domain reviewers see only non-Draft requests with matching domains
+    elif _is_domain_reviewer_only(user):
+        conditions.append("gr.status != 'Draft'")
+        if user.domain_codes:
+            conditions.append("""EXISTS (
+                SELECT 1
+                FROM governance_request_rule grr
+                JOIN dispatch_rule cr ON cr.rule_code = grr.rule_code AND cr.is_active = true
+                JOIN dispatch_rule_domain crd ON crd.rule_id = cr.id AND crd.relationship = 'in'
+                WHERE grr.request_id = gr.id AND crd.domain_code = ANY(:reviewer_domains)
+            )""")
+            params["reviewer_domains"] = user.domain_codes
+        else:
+            conditions.append("FALSE")
+
+    # Lifecycle status filter: default to Active if not specified
+    if lifecycleStatus:
+        conditions.append(multi_value_condition("gr.lifecycle_status", "lifecycle_status", lifecycleStatus, params))
+    else:
+        conditions.append("gr.lifecycle_status = 'Active'")
 
     if status:
         conditions.append(multi_value_condition("gr.status", "status", status, params))
@@ -168,7 +198,16 @@ async def list_requests(
         conditions.append("(gr.requestor ILIKE :requestor OR gr.requestor_name ILIKE :requestor)")
     if search:
         params["search"] = f"%{search}%"
-        conditions.append("(gr.request_id ILIKE :search OR gr.title ILIKE :search)")
+        conditions.append("(gr.request_id ILIKE :search OR gr.project_name ILIKE :search OR gr.title ILIKE :search)")
+    if domain:
+        params["domain_filter"] = domain
+        conditions.append("""EXISTS (
+            SELECT 1
+            FROM governance_request_rule grr
+            JOIN dispatch_rule cr ON cr.rule_code = grr.rule_code AND cr.is_active = true
+            JOIN dispatch_rule_domain crd ON crd.rule_id = cr.id AND crd.relationship = 'in'
+            WHERE grr.request_id = gr.id AND crd.domain_code = :domain_filter
+        )""")
     if dateFrom:
         params["date_from"] = dt_date.fromisoformat(dateFrom)
         conditions.append("gr.create_at >= :date_from")
@@ -197,7 +236,31 @@ async def list_requests(
     params["offset"] = pg.offset
 
     rows = (await db.execute(text(data_sql), params)).mappings().all()
-    return paginated_response([_map(dict(r)) for r in rows], total, pg.page, pg.page_size)
+
+    # Batch-resolve domain review statuses for all rows
+    row_ids = [r["id"] for r in rows]
+    review_map: dict[str, list[dict]] = {}
+    if row_ids:
+        review_rows = (await db.execute(text("""
+            SELECT dr.request_id, dr.domain_code, dr.status, dr.outcome
+            FROM domain_review dr
+            WHERE dr.request_id = ANY(:ids)
+            ORDER BY dr.domain_code
+        """), {"ids": row_ids})).mappings().all()
+        for rv in review_rows:
+            rid = str(rv["request_id"])
+            review_map.setdefault(rid, []).append({
+                "domainCode": rv["domain_code"],
+                "status": rv["status"],
+                "outcome": rv["outcome"],
+            })
+
+    mapped = []
+    for r in rows:
+        m = _map(dict(r))
+        m["domainReviews"] = review_map.get(str(r["id"]), [])
+        mapped.append(m)
+    return paginated_response(mapped, total, pg.page, pg.page_size)
 
 
 @router.get("/filter-options", dependencies=[Depends(require_permission("governance_request", "read"))])
@@ -218,7 +281,33 @@ async def get_request(request_id: str, user: AuthUser = Depends(get_current_user
     # Requestor-only users can only view their own requests
     if _is_requestor_only(user) and row["requestor"] != user.id:
         raise HTTPException(status_code=403, detail="Access denied: you can only view your own requests")
+
+    # Domain reviewers: no Draft access, and must match assigned domains
+    if _is_domain_reviewer_only(user):
+        if row["status"] == "Draft":
+            raise HTTPException(status_code=403, detail="Access denied")
+        req_domains = (await db.execute(text("""
+            SELECT DISTINCT crd.domain_code
+            FROM governance_request_rule grr
+            JOIN dispatch_rule cr ON cr.rule_code = grr.rule_code AND cr.is_active = true
+            JOIN dispatch_rule_domain crd ON crd.rule_id = cr.id AND crd.relationship = 'in'
+            WHERE grr.request_id = :rid
+        """), {"rid": row["id"]})).scalars().all()
+        if not any(dc in user.domain_codes for dc in req_domains):
+            raise HTTPException(status_code=403, detail="Access denied: request not in your assigned domains")
+
     result = _map(dict(row))
+
+    # Fetch requestor employee info
+    emp = (await db.execute(text(
+        "SELECT email, manager_name, tier_1_org, tier_2_org "
+        "FROM employee_info WHERE itcode = :itcode"
+    ), {"itcode": row["requestor"]})).mappings().first()
+    if emp:
+        result["requestorEmail"] = emp["email"]
+        result["requestorManagerName"] = emp["manager_name"]
+        result["requestorTier1Org"] = emp["tier_1_org"]
+        result["requestorTier2Org"] = emp["tier_2_org"]
 
     # Fetch associated dispatch rule codes
     rule_rows = (await db.execute(text(
@@ -427,7 +516,7 @@ async def update_request(request_id: str, body: dict, user: AuthUser = Depends(g
     if _is_requestor_only(user) and current["requestor"] != user.id:
         raise HTTPException(status_code=403, detail="Access denied: you can only edit your own requests")
 
-    track_changes = current["status"] in ("Submitted", "In Progress")
+    track_changes = current["status"] in ("Submitted", "In Progress", "Information Inquiry")
 
     # ── 2. Build SET clause ──
     sets: list[str] = []
@@ -661,13 +750,22 @@ async def submit_request(request_id: str, user: AuthUser = Depends(get_current_u
         missing.append("productEndUser")
     if not lookup["user_region"]:
         missing.append("userRegion")
-    if lookup.get("project_type") == "non_mspo":
+    if not lookup.get("project_type"):
+        missing.append("projectType")
+    elif lookup.get("project_type") == "mspo":
+        if not lookup.get("project_id"):
+            missing.append("projectId")
+    elif lookup.get("project_type") == "non_mspo":
         if not lookup["project_code"]:
             missing.append("projectCode")
         if not lookup["project_name"]:
             missing.append("projectName")
         if not lookup["project_pm"]:
             missing.append("projectPm")
+        if not lookup.get("project_start_date"):
+            missing.append("projectStartDate")
+        if not lookup.get("project_go_live_date"):
+            missing.append("projectGoLiveDate")
     if missing:
         raise HTTPException(status_code=400, detail=f"Missing required fields: {', '.join(missing)}")
 
@@ -679,55 +777,69 @@ async def submit_request(request_id: str, user: AuthUser = Depends(get_current_u
     await _validate_mandatory_rules(db, all_codes)
     await _validate_dependencies(db, all_codes)
 
+    # Validate at least one domain is triggered by the selected rules
+    domain_rows = (await db.execute(text("""
+        SELECT DISTINCT crd.domain_code
+        FROM governance_request_rule grr
+        JOIN dispatch_rule cr ON cr.rule_code = grr.rule_code AND cr.is_active = true
+        JOIN dispatch_rule_domain crd ON crd.rule_id = cr.id AND crd.relationship = 'in'
+        WHERE grr.request_id = :rid
+    """), {"rid": lookup["id"]})).scalars().all()
+    if not domain_rows:
+        raise HTTPException(status_code=400, detail="At least one governance domain must be triggered by the selected rules")
+
+    # Validate questionnaire completion for internal domains
+    internal_domains = (await db.execute(text("""
+        SELECT DISTINCT crd.domain_code
+        FROM governance_request_rule grr
+        JOIN dispatch_rule cr ON cr.rule_code = grr.rule_code AND cr.is_active = true
+        JOIN dispatch_rule_domain crd ON crd.rule_id = cr.id AND crd.relationship = 'in'
+        JOIN domain_registry dr ON dr.domain_code = crd.domain_code
+            AND dr.is_active = true AND dr.integration_type = 'internal'
+        WHERE grr.request_id = :rid
+    """), {"rid": lookup["id"]})).scalars().all()
+
+    if internal_domains:
+        # Get required active templates for internal domains
+        required_templates = (await db.execute(text("""
+            SELECT id, domain_code FROM domain_questionnaire_template
+            WHERE domain_code = ANY(:codes) AND is_active = true AND is_required = true
+        """), {"codes": list(internal_domains)})).mappings().all()
+
+        if required_templates:
+            # Get answered template IDs for this request
+            answered = set((await db.execute(text("""
+                SELECT template_id FROM request_questionnaire_response
+                WHERE request_id = :rid AND answer IS NOT NULL
+            """), {"rid": lookup["id"]})).scalars().all())
+
+            incomplete_domains = set()
+            for tmpl in required_templates:
+                if tmpl["id"] not in answered:
+                    incomplete_domains.add(tmpl["domain_code"])
+
+            if incomplete_domains:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Incomplete domain questionnaires: {', '.join(sorted(incomplete_domains))}"
+                )
+
     # Transition to Submitted
     row = (await db.execute(text(
         "UPDATE governance_request SET status = 'Submitted', update_by = :user, update_at = NOW() "
         "WHERE id = :id RETURNING *"
     ), {"id": lookup["id"], "user": user.id})).mappings().first()
+
+    # Auto-create domain reviews for each triggered domain
+    for dc in domain_rows:
+        await db.execute(text("""
+            INSERT INTO domain_review (request_id, domain_code, status, create_by, update_by)
+            VALUES (:rid, :code, 'Waiting for Accept', :user, :user)
+            ON CONFLICT (request_id, domain_code) DO NOTHING
+        """), {"rid": lookup["id"], "code": dc, "user": user.id})
+
     await write_audit(db, "governance_request", str(row["id"]), "submitted", user.id,
                       old_value={"status": "Draft"}, new_value={"status": "Submitted"})
-    await db.commit()
-    return _map(dict(row))
-
-
-@router.put("/{request_id}/verdict", dependencies=[Depends(require_permission("governance_request", "write"))])
-async def record_verdict(request_id: str, body: dict, user: AuthUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    verdict = body.get("verdict")
-    if verdict not in ("Approved", "Approved with Conditions", "Rejected", "Deferred"):
-        raise HTTPException(status_code=400, detail="Invalid verdict")
-
-    # Resolve the governance request UUID
-    gr = (await db.execute(text(
-        "SELECT id FROM governance_request WHERE (request_id = :id OR id::text = :id) AND status = 'In Progress'"
-    ), {"id": request_id})).scalar()
-    if not gr:
-        raise HTTPException(status_code=400, detail="Request not found or not in 'In Progress' status")
-    gr_uuid = str(gr)
-
-    # Guard: all domain reviews must be complete
-    incomplete = (await db.execute(text(
-        "SELECT COUNT(*) FROM domain_review WHERE request_id = :rid "
-        "AND status NOT IN ('Review Complete', 'Waived')"
-    ), {"rid": gr_uuid})).scalar() or 0
-    if incomplete > 0:
-        raise HTTPException(status_code=400, detail=f"{incomplete} domain review(s) still incomplete")
-
-    # Guard: no open ISRs
-    open_isrs = (await db.execute(text(
-        "SELECT COUNT(*) FROM info_supplement_request WHERE request_id = :rid "
-        "AND status IN ('Open', 'Acknowledged')"
-    ), {"rid": gr_uuid})).scalar() or 0
-    if open_isrs > 0:
-        raise HTTPException(status_code=400, detail=f"{open_isrs} open information request(s)")
-
-    row = (await db.execute(text(
-        "UPDATE governance_request SET status = 'Completed', overall_verdict = :verdict, "
-        "completed_at = NOW(), update_by = :user, update_at = NOW() "
-        "WHERE id = :id "
-        "RETURNING *"
-    ), {"id": gr_uuid, "verdict": verdict, "user": user.id})).mappings().first()
-    await write_audit(db, "governance_request", gr_uuid, "verdict_recorded", user.id,
-                      old_value={"status": "In Progress"}, new_value={"status": "Completed", "verdict": verdict})
     await db.commit()
     return _map(dict(row))
 
@@ -764,6 +876,143 @@ async def get_changelog(request_id: str, db: AsyncSession = Depends(get_db)):
         "changedBy": r["changed_by"],
         "changedAt": r["changed_at"].isoformat() if r["changed_at"] else None,
     } for r in rows]}
+
+
+# ═══════════════════════════════════════════════════════
+# Lifecycle status endpoints (Cancel / Archive)
+# ═══════════════════════════════════════════════════════
+
+
+@router.put("/{request_id}/cancel", dependencies=[Depends(require_permission("governance_request", "write"))])
+async def cancel_request(request_id: str, user: AuthUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Cancel a Draft request. Only the requestor (owner) can cancel."""
+    row = (await db.execute(text(
+        "SELECT id, status, lifecycle_status, requestor FROM governance_request "
+        "WHERE request_id = :id OR id::text = :id"
+    ), {"id": request_id})).mappings().first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Not found")
+    if row["lifecycle_status"] != "Active":
+        raise HTTPException(status_code=400, detail=f"Request is already {row['lifecycle_status']}")
+    if row["status"] != "Draft":
+        raise HTTPException(status_code=400, detail="Only Draft requests can be cancelled")
+    if _is_requestor_only(user) and row["requestor"] != user.id:
+        raise HTTPException(status_code=403, detail="You can only cancel your own requests")
+
+    await db.execute(text(
+        "UPDATE governance_request SET lifecycle_status = 'Cancelled', update_by = :user, update_at = NOW() "
+        "WHERE id = :id"
+    ), {"id": row["id"], "user": user.id})
+    await db.commit()
+    return {"status": "ok", "lifecycleStatus": "Cancelled"}
+
+
+@router.put("/{request_id}/archive", dependencies=[Depends(require_permission("governance_request", "write"))])
+async def archive_request(request_id: str, user: AuthUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Archive a Completed request. Only admin/governance_lead can archive."""
+    if _is_requestor_only(user) or _is_domain_reviewer_only(user):
+        raise HTTPException(status_code=403, detail="Only admin or governance lead can archive requests")
+
+    row = (await db.execute(text(
+        "SELECT id, status, lifecycle_status FROM governance_request "
+        "WHERE request_id = :id OR id::text = :id"
+    ), {"id": request_id})).mappings().first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Not found")
+    if row["lifecycle_status"] != "Active":
+        raise HTTPException(status_code=400, detail=f"Request is already {row['lifecycle_status']}")
+    if row["status"] != "Completed":
+        raise HTTPException(status_code=400, detail="Only Completed requests can be archived")
+
+    await db.execute(text(
+        "UPDATE governance_request SET lifecycle_status = 'Archived', update_by = :user, update_at = NOW() "
+        "WHERE id = :id"
+    ), {"id": row["id"], "user": user.id})
+    await db.commit()
+    return {"status": "ok", "lifecycleStatus": "Archived"}
+
+
+@router.post("/{request_id}/copy", dependencies=[Depends(require_permission("governance_request", "write"))])
+async def copy_request(request_id: str, user: AuthUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Copy a request to create a new Draft request. Copies all form data but not attachments or reviews."""
+    src = (await db.execute(text(
+        "SELECT * FROM governance_request WHERE request_id = :id OR id::text = :id"
+    ), {"id": request_id})).mappings().first()
+    if not src:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    # Requestor-only can only copy their own requests
+    if _is_requestor_only(user) and src["requestor"] != user.id:
+        raise HTTPException(status_code=403, detail="You can only copy your own requests")
+
+    # Generate new request_id
+    today_str = dt_date.today().strftime('%y%m%d')
+    egq_count = (await db.execute(text(
+        "SELECT COUNT(*) FROM governance_request WHERE request_id LIKE :prefix"
+    ), {"prefix": f"EGQ{today_str}%"})).scalar() or 0
+    new_id = f"EGQ{today_str}{egq_count + 1:04d}"
+
+    proj_col_str = ", ".join(_PROJECT_COLS)
+    proj_param_str = ", ".join(f":{c}" for c in _PROJECT_COLS)
+
+    sql = text(f"""
+        INSERT INTO governance_request (request_id, title, description, gov_project_type, business_unit, project_id,
+            {proj_col_str},
+            product_software_type, product_software_type_other, product_end_user, user_region, third_party_vendor,
+            requestor, requestor_name, status, lifecycle_status, create_by, update_by)
+        VALUES (:request_id, :title, :description, :gov_project_type, :business_unit, :project_id,
+            {proj_param_str},
+            :product_software_type, :product_software_type_other, :product_end_user, :user_region, :third_party_vendor,
+            :requestor, :requestor_name, 'Draft', 'Active', :create_by, :create_by)
+        RETURNING *
+    """)
+    params = {
+        "request_id": new_id,
+        "title": new_id,
+        "description": src.get("description"),
+        "gov_project_type": src.get("gov_project_type"),
+        "business_unit": src.get("business_unit"),
+        "project_id": src.get("project_id"),
+        **{col: src.get(col) for col in _PROJECT_COLS},
+        "product_software_type": src.get("product_software_type"),
+        "product_software_type_other": src.get("product_software_type_other"),
+        "product_end_user": list(src.get("product_end_user") or []) or None,
+        "user_region": list(src.get("user_region") or []) or None,
+        "third_party_vendor": src.get("third_party_vendor"),
+        "requestor": user.id,
+        "requestor_name": user.name,
+        "create_by": user.id,
+    }
+    new_row = (await db.execute(sql, params)).mappings().first()
+
+    # Copy rule associations
+    src_rules = (await db.execute(text(
+        "SELECT rule_code, is_auto FROM governance_request_rule WHERE request_id = :rid"
+    ), {"rid": src["id"]})).mappings().all()
+    for rule in src_rules:
+        await db.execute(text(
+            "INSERT INTO governance_request_rule (request_id, rule_code, is_auto) VALUES (:rid, :rc, :auto)"
+        ), {"rid": new_row["id"], "rc": rule["rule_code"], "auto": rule["is_auto"]})
+
+    # Copy questionnaire responses
+    src_responses = (await db.execute(text(
+        "SELECT template_id, domain_code, answer FROM request_questionnaire_response WHERE request_id = :rid"
+    ), {"rid": src["id"]})).mappings().all()
+    for resp in src_responses:
+        await db.execute(text(
+            "INSERT INTO request_questionnaire_response (request_id, template_id, domain_code, answer) "
+            "VALUES (:rid, :tid, :dc, :answer)"
+        ), {"rid": new_row["id"], "tid": resp["template_id"], "dc": resp["domain_code"], "answer": resp["answer"]})
+
+    await db.commit()
+
+    result = _map(dict(new_row))
+    # Also return rule codes for the frontend
+    rule_rows = (await db.execute(text(
+        "SELECT rule_code FROM governance_request_rule WHERE request_id = :rid AND is_auto = FALSE"
+    ), {"rid": new_row["id"]})).scalars().all()
+    result["ruleCodes"] = list(rule_rows)
+    return result
 
 
 # ═══════════════════════════════════════════════════════

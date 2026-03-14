@@ -1,37 +1,48 @@
 'use client';
 
-import { Check } from 'lucide-react';
+import { CheckOutlined, WarningOutlined } from '@ant-design/icons';
 import clsx from 'clsx';
 
-const STEPS = [
-  { label: 'Draft', number: 1 },
-  { label: 'Submitted', number: 2 },
-  { label: 'In Progress', number: 3 },
-  { label: 'Completed', number: 4 },
+const BASE_STEPS = [
+  { key: 'Draft', label: 'Draft', number: 1 },
+  { key: 'Submitted', label: 'Submitted', number: 2 },
+  { key: 'In Progress', label: 'In Progress', number: 3 },
+  { key: 'Completed', label: 'Completed', number: 4 },
 ];
-
-const STATUS_INDEX: Record<string, number> = {
-  Draft: 0,
-  Submitted: 1,
-  'In Progress': 2,
-  Completed: 3,
-};
 
 interface ProcessingLogStepperProps {
   currentStatus: string;
+  /** Domain name to display when status is Information Inquiry, e.g. "Diversity by Design" */
+  infoInquiryDomain?: string;
 }
 
-export function ProcessingLogStepper({ currentStatus }: ProcessingLogStepperProps) {
-  const currentIdx = STATUS_INDEX[currentStatus] ?? 0;
+export function ProcessingLogStepper({ currentStatus, infoInquiryDomain }: ProcessingLogStepperProps) {
+  const isInfoInquiry = currentStatus === 'Information Inquiry';
+
+  // When status is Information Inquiry, insert it as a separate step between Submitted and In Progress
+  const steps = isInfoInquiry
+    ? [
+        { key: 'Draft', label: 'Draft', number: 1 },
+        { key: 'Submitted', label: 'Submitted', number: 2 },
+        { key: 'Information Inquiry', label: infoInquiryDomain ? `Information Inquiry - ${infoInquiryDomain}` : 'Information Inquiry', number: 3 },
+        { key: 'In Progress', label: 'In Progress', number: 4 },
+        { key: 'Completed', label: 'Completed', number: 5 },
+      ]
+    : BASE_STEPS;
+
+  // Find current step index
+  const currentIdx = steps.findIndex(s => s.key === currentStatus);
+  const activeIdx = currentIdx >= 0 ? currentIdx : 0;
 
   return (
     <div className="flex items-center justify-between w-full py-4" data-testid="processing-log-stepper">
-      {STEPS.map((step, i) => {
-        const isCompleted = i < currentIdx;
-        const isCurrent = i === currentIdx;
+      {steps.map((step, i) => {
+        const isCompleted = i < activeIdx;
+        const isCurrent = i === activeIdx;
+        const isInquiryStep = step.key === 'Information Inquiry';
 
         return (
-          <div key={step.label} className="flex items-center flex-1 last:flex-none">
+          <div key={step.key} className="flex items-center flex-1 last:flex-none">
             {/* Step circle + label */}
             <div className="flex flex-col items-center">
               <div
@@ -39,22 +50,32 @@ export function ProcessingLogStepper({ currentStatus }: ProcessingLogStepperProp
                   'w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold border-2 transition-colors',
                   isCompleted
                     ? 'bg-green-500 border-green-500 text-white'
-                    : isCurrent
-                      ? 'bg-egm-teal border-egm-teal text-white'
-                      : 'bg-white border-gray-300 text-gray-400',
+                    : isCurrent && isInquiryStep
+                      ? 'bg-amber-500 border-amber-500 text-white'
+                      : isCurrent
+                        ? 'bg-egm-teal border-egm-teal text-white'
+                        : 'bg-white border-gray-300 text-gray-400',
                 )}
                 data-testid={`step-circle-${step.number}`}
               >
-                {isCompleted ? <Check className="h-4 w-4" /> : step.number}
+                {isCompleted ? (
+                  <CheckOutlined style={{ fontSize: 16 }} />
+                ) : isCurrent && isInquiryStep ? (
+                  <WarningOutlined style={{ fontSize: 16 }} />
+                ) : (
+                  step.number
+                )}
               </div>
               <span
                 className={clsx(
                   'mt-1.5 text-xs font-medium whitespace-nowrap',
                   isCompleted
                     ? 'text-green-600'
-                    : isCurrent
-                      ? 'text-egm-teal'
-                      : 'text-gray-400',
+                    : isCurrent && isInquiryStep
+                      ? 'text-amber-600'
+                      : isCurrent
+                        ? 'text-egm-teal'
+                        : 'text-gray-400',
                 )}
               >
                 {step.label}
@@ -62,11 +83,11 @@ export function ProcessingLogStepper({ currentStatus }: ProcessingLogStepperProp
             </div>
 
             {/* Connecting line */}
-            {i < STEPS.length - 1 && (
+            {i < steps.length - 1 && (
               <div
                 className={clsx(
                   'flex-1 h-0.5 mx-3 mt-[-1rem]',
-                  i < currentIdx ? 'bg-green-500' : 'bg-gray-200',
+                  i < activeIdx ? 'bg-green-500' : 'bg-gray-200',
                 )}
               />
             )}

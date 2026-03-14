@@ -66,8 +66,7 @@ CREATE TABLE IF NOT EXISTS governance_request (
     requestor       VARCHAR NOT NULL,
     requestor_name  VARCHAR,
     status          VARCHAR NOT NULL DEFAULT 'Draft',
-    overall_verdict VARCHAR,
-    completed_at    TIMESTAMP,
+    lifecycle_status VARCHAR NOT NULL DEFAULT 'Active',
     create_by       VARCHAR,
     create_at       TIMESTAMP DEFAULT NOW(),
     update_by       VARCHAR,
@@ -153,6 +152,7 @@ CREATE TABLE IF NOT EXISTS domain_review (
     reviewer_name   VARCHAR,
     outcome         VARCHAR,
     outcome_notes   TEXT,
+    return_reason   TEXT,
     external_ref_id VARCHAR,
     common_data_updated_at TIMESTAMP,
     started_at      TIMESTAMP,
@@ -170,6 +170,7 @@ CREATE TABLE IF NOT EXISTS domain_questionnaire_template (
     section         VARCHAR,
     question_no     INT NOT NULL,
     question_text   TEXT NOT NULL,
+    question_description TEXT,
     answer_type     VARCHAR NOT NULL DEFAULT 'text',
     options         JSONB,
     is_required     BOOLEAN DEFAULT FALSE,
@@ -187,6 +188,17 @@ CREATE TABLE IF NOT EXISTS domain_questionnaire_response (
     update_by       VARCHAR,
     update_at       TIMESTAMP DEFAULT NOW(),
     UNIQUE(domain_review_id, template_id)
+);
+
+CREATE TABLE IF NOT EXISTS request_questionnaire_response (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    request_id      UUID NOT NULL REFERENCES governance_request(id) ON DELETE CASCADE,
+    template_id     UUID NOT NULL REFERENCES domain_questionnaire_template(id),
+    domain_code     VARCHAR NOT NULL,
+    answer          JSONB,
+    create_at       TIMESTAMPTZ DEFAULT NOW(),
+    update_at       TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(request_id, template_id)
 );
 
 -- ═══════════════════════════════════════════════════════

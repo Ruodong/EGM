@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { Select, Button } from 'antd';
 
 interface AuditEntry {
   id: string;
@@ -63,14 +64,14 @@ export default function AuditLogPage() {
 
       {/* Filters */}
       <div className="flex gap-4 mb-4">
-        <select
-          className="input-field w-auto"
-          value={entityType}
-          onChange={(e) => { setEntityType(e.target.value); setPage(1); }}
-        >
-          <option value="">All Entity Types</option>
-          {ENTITY_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-        </select>
+        <Select
+          style={{ minWidth: 200 }}
+          value={entityType || undefined}
+          onChange={(value) => { setEntityType(value || ''); setPage(1); }}
+          allowClear
+          placeholder="All Entity Types"
+          options={ENTITY_TYPES.map((t) => ({ label: t, value: t }))}
+        />
       </div>
 
       {/* Table */}
@@ -104,7 +105,7 @@ export default function AuditLogPage() {
                       <td className="px-4 py-2">
                         <span className="px-2 py-0.5 rounded text-xs bg-blue-50 text-blue-700">{e.entityType}</span>
                       </td>
-                      <td className="px-4 py-2 font-mono text-xs">{e.entityId ? e.entityId.substring(0, 8) + '...' : '-'}</td>
+                      <td className="px-4 py-2 text-xs">{e.entityId ? e.entityId.substring(0, 8) + '...' : '-'}</td>
                       <td className="px-4 py-2">
                         <span className="px-2 py-0.5 rounded text-xs bg-amber-50 text-amber-700">{e.action}</span>
                       </td>
@@ -150,20 +151,20 @@ export default function AuditLogPage() {
                 Page {page} of {totalPages} ({data?.total || 0} entries)
               </p>
               <div className="flex gap-2">
-                <button
+                <Button
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={page === 1}
-                  className="px-3 py-1 text-sm border rounded hover:bg-gray-50 disabled:opacity-50"
+                  size="small"
                 >
                   Previous
-                </button>
-                <button
+                </Button>
+                <Button
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                   disabled={page === totalPages}
-                  className="px-3 py-1 text-sm border rounded hover:bg-gray-50 disabled:opacity-50"
+                  size="small"
                 >
                   Next
-                </button>
+                </Button>
               </div>
             </div>
           )}

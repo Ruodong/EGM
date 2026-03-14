@@ -17,10 +17,6 @@ async def dashboard_stats(db: AsyncSession = Depends(get_db)):
     by_status = (await db.execute(text(
         "SELECT status, COUNT(*) as cnt FROM governance_request GROUP BY status ORDER BY status"
     ))).mappings().all()
-    by_verdict = (await db.execute(text(
-        "SELECT overall_verdict, COUNT(*) as cnt FROM governance_request "
-        "WHERE overall_verdict IS NOT NULL GROUP BY overall_verdict"
-    ))).mappings().all()
     review_counts = (await db.execute(text(
         "SELECT domain_code, status, COUNT(*) as cnt FROM domain_review GROUP BY domain_code, status"
     ))).mappings().all()
@@ -28,7 +24,6 @@ async def dashboard_stats(db: AsyncSession = Depends(get_db)):
     return {
         "totalRequests": total,
         "byStatus": [{"status": r["status"], "count": r["cnt"]} for r in by_status],
-        "byVerdict": [{"verdict": r["overall_verdict"], "count": r["cnt"]} for r in by_verdict],
         "reviewCounts": [{"domainCode": r["domain_code"], "status": r["status"], "count": r["cnt"]} for r in review_counts],
     }
 

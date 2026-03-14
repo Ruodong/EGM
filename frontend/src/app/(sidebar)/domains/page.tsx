@@ -3,7 +3,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import clsx from 'clsx';
+import { Tag, Typography, Spin } from 'antd';
 import { getDomainIcon } from '@/lib/domain-icons';
+
+const { Title, Text } = Typography;
 
 interface Domain {
   id: string;
@@ -25,12 +28,12 @@ export default function DomainsPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-bold">Domain Registry</h1>
+        <Title level={4} style={{ margin: 0 }}>Domain Registry</Title>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         {isLoading ? (
-          <p className="text-text-secondary col-span-2">Loading...</p>
+          <div className="col-span-2 text-center py-4"><Spin /></div>
         ) : (
           data?.data?.map((d) => {
             const { Icon, colors } = getDomainIcon(d.domainCode);
@@ -39,25 +42,25 @@ export default function DomainsPage() {
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-3">
                     <div className={clsx('w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0', colors)}>
-                      <Icon size={20} />
+                      <Icon style={{ fontSize: 20 }} />
                     </div>
                     <div>
                       <h3 className="font-medium">{d.domainName}</h3>
-                      <span className="text-xs font-mono text-text-secondary">{d.domainCode}</span>
+                      <span className="text-xs text-text-secondary">{d.domainCode}</span>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
                     {d.integrationType === 'external' && (
-                      <span className="px-2 py-0.5 rounded text-xs bg-purple-100 text-purple-700">External</span>
+                      <Tag color="purple">External</Tag>
                     )}
-                    <span className={clsx('px-2 py-0.5 rounded text-xs', d.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500')}>
+                    <Tag color={d.isActive ? 'green' : 'default'}>
                       {d.isActive ? 'Active' : 'Inactive'}
-                    </span>
+                    </Tag>
                   </div>
                 </div>
-                {d.description && <p className="text-sm text-text-secondary mt-2">{d.description}</p>}
+                {d.description && <Text type="secondary" className="block text-sm mt-2">{d.description}</Text>}
                 {d.externalBaseUrl && (
-                  <p className="text-xs text-text-secondary mt-1">System URL: {d.externalBaseUrl}</p>
+                  <Text type="secondary" className="block text-xs mt-1">System URL: {d.externalBaseUrl}</Text>
                 )}
               </div>
             );

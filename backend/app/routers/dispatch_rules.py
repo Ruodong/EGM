@@ -103,7 +103,7 @@ async def list_rules(
 
 @router.get(
     "/matrix",
-    dependencies=[Depends(require_permission("dispatch_rule", "read"))],
+    dependencies=[Depends(require_permission("governance_request", "read"))],
 )
 async def get_matrix(db: AsyncSession = Depends(get_db)):
     """Return the full Rule × Domain matrix."""

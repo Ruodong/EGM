@@ -3,6 +3,9 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import clsx from 'clsx';
+import { Tag, Typography } from 'antd';
+
+const { Title } = Typography;
 
 interface DomainReview {
   id: string;
@@ -55,7 +58,7 @@ export default function DomainMetricsPage() {
 
   return (
     <div>
-      <h1 className="text-xl font-bold mb-6">Domain Metrics</h1>
+      <Title level={4} style={{ margin: 0, marginBottom: 24 }}>Domain Metrics</Title>
 
       {isLoading ? (
         <p className="text-text-secondary">Loading metrics...</p>
@@ -109,7 +112,7 @@ export default function DomainMetricsPage() {
                   <tr key={d.domainCode} className="border-b border-border-light last:border-0">
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
-                        <span className="px-2 py-0.5 rounded text-xs bg-purple-50 text-purple-700 font-medium">{d.domainCode}</span>
+                        <Tag color="purple">{d.domainCode}</Tag>
                         <span>{d.domainName}</span>
                       </div>
                     </td>

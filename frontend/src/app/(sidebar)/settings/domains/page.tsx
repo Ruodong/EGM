@@ -5,7 +5,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import clsx from 'clsx';
-import { PlusCircle, Pencil, ToggleLeft, ToggleRight } from 'lucide-react';
+import { Button, Input, Select, Switch } from 'antd';
+import { PlusCircleOutlined, EditOutlined } from '@ant-design/icons';
 import { getDomainIcon } from '@/lib/domain-icons';
 
 interface Domain {
@@ -100,13 +101,15 @@ export default function DomainManagementPage() {
           <p className="text-sm text-text-secondary mt-1">Create, edit and manage governance domain definitions</p>
         </div>
         {canWrite && (
-          <button
+          <Button
+            type="primary"
+            style={{ background: '#13C2C2', borderColor: '#13C2C2' }}
+            icon={<PlusCircleOutlined />}
             onClick={() => { resetForm(); setShowForm(true); }}
-            className="btn-teal flex items-center gap-1.5"
             data-testid="add-domain-btn"
           >
-            <PlusCircle size={16} /> Add Domain
-          </button>
+            Add Domain
+          </Button>
         )}
       </div>
 
@@ -118,8 +121,8 @@ export default function DomainManagementPage() {
             <div className="grid grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium mb-1">Domain Code</label>
-                <input
-                  className={clsx('input-field w-full', editing && 'bg-gray-50 text-text-secondary')}
+                <Input
+                  className={clsx(editing && 'bg-gray-50 text-text-secondary')}
                   value={form.domainCode}
                   onChange={(e) => setForm({ ...form, domainCode: e.target.value.toUpperCase() })}
                   disabled={!!editing}
@@ -130,8 +133,7 @@ export default function DomainManagementPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">Domain Name</label>
-                <input
-                  className="input-field w-full"
+                <Input
                   value={form.domainName}
                   onChange={(e) => setForm({ ...form, domainName: e.target.value })}
                   required
@@ -141,23 +143,23 @@ export default function DomainManagementPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">Integration Type</label>
-                <select
-                  className="input-field w-full"
+                <Select
+                  className="w-full"
                   value={form.integrationType}
-                  onChange={(e) => setForm({ ...form, integrationType: e.target.value })}
+                  onChange={(value) => setForm({ ...form, integrationType: value })}
                   data-testid="integration-type-select"
-                >
-                  <option value="internal">Internal</option>
-                  <option value="external">External</option>
-                </select>
+                  options={[
+                    { label: 'Internal', value: 'internal' },
+                    { label: 'External', value: 'external' },
+                  ]}
+                />
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium mb-1">Description</label>
-                <textarea
-                  className="input-field w-full"
+                <Input.TextArea
                   value={form.description}
                   onChange={(e) => setForm({ ...form, description: e.target.value })}
                   rows={2}
@@ -167,8 +169,7 @@ export default function DomainManagementPage() {
               {form.integrationType === 'external' && (
                 <div>
                   <label className="block text-sm font-medium mb-1">External Base URL</label>
-                  <input
-                    className="input-field w-full"
+                  <Input
                     value={form.externalBaseUrl}
                     onChange={(e) => setForm({ ...form, externalBaseUrl: e.target.value })}
                     placeholder="https://..."
@@ -178,12 +179,18 @@ export default function DomainManagementPage() {
             </div>
 
             <div className="flex gap-2">
-              <button type="submit" className="btn-teal" disabled={saveMutation.isPending} data-testid="save-domain-btn">
+              <Button
+                type="primary"
+                style={{ background: '#13C2C2', borderColor: '#13C2C2' }}
+                htmlType="submit"
+                disabled={saveMutation.isPending}
+                data-testid="save-domain-btn"
+              >
                 {saveMutation.isPending ? 'Saving...' : editing ? 'Update' : 'Create'}
-              </button>
-              <button type="button" onClick={resetForm} className="px-4 py-2 text-sm border rounded-lg hover:bg-gray-50">
+              </Button>
+              <Button onClick={resetForm}>
                 Cancel
-              </button>
+              </Button>
             </div>
           </form>
         </div>
@@ -234,14 +241,14 @@ export default function DomainManagementPage() {
                       className={clsx('border-b border-border-light last:border-0', !d.isActive && 'opacity-50')}
                     >
                       <td className="px-4 py-2">
-                        <span className="px-2 py-0.5 rounded text-xs bg-purple-50 text-purple-700 font-medium font-mono">
+                        <span className="px-2 py-0.5 rounded text-xs bg-purple-50 text-purple-700 font-medium">
                           {d.domainCode}
                         </span>
                       </td>
                       <td className="px-4 py-2">
                         <div className="flex items-center gap-2">
                           <span className={clsx('inline-flex items-center justify-center w-7 h-7 rounded-lg flex-shrink-0', colors)}>
-                            <Icon size={15} />
+                            <Icon style={{ fontSize: 15 }} />
                           </span>
                           <span className="font-medium">{d.domainName}</span>
                         </div>
@@ -266,16 +273,14 @@ export default function DomainManagementPage() {
                         <td className="px-4 py-2">
                           <div className="flex items-center gap-1">
                             <button onClick={() => openEdit(d)} title="Edit" className="text-primary-blue hover:text-blue-700 p-1">
-                              <Pencil size={16} />
+                              <EditOutlined />
                             </button>
-                            <button
-                              onClick={() => toggleActiveMutation.mutate(d.domainCode)}
-                              title={d.isActive ? 'Deactivate' : 'Activate'}
-                              className={clsx('p-1', d.isActive ? 'text-green-500 hover:text-red-500' : 'text-gray-400 hover:text-green-600')}
+                            <Switch
+                              size="small"
+                              checked={d.isActive}
+                              onChange={() => toggleActiveMutation.mutate(d.domainCode)}
                               data-testid={d.isActive ? `deactivate-${d.domainCode}` : `reactivate-${d.domainCode}`}
-                            >
-                              {d.isActive ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
-                            </button>
+                            />
                           </div>
                         </td>
                       )}

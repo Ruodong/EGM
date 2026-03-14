@@ -6,6 +6,7 @@ import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
 import { useToast } from '@/components/ui/Toast';
 import { PageLayout } from '@/components/layout/PageLayout';
+import { Button } from 'antd';
 
 interface Template {
   id: string;
@@ -183,24 +184,25 @@ export default function CommonQuestionnairePage() {
         ))}
 
         <div className="flex justify-between mt-6">
-          <button className="btn-default" onClick={() => router.push(`/governance/${requestId}/scoping`)}>
+          <Button type="default" onClick={() => router.push(`/governance/${requestId}/scoping`)}>
             Back to Scoping
-          </button>
+          </Button>
           <div className="flex gap-3">
-            <button
-              className="btn-default"
+            <Button
+              type="default"
               disabled={saveMutation.isPending}
               onClick={() => saveMutation.mutate()}
             >
               Save Draft
-            </button>
-            <button
-              className="btn-teal"
+            </Button>
+            <Button
+              type="primary"
+              style={{ background: '#13C2C2', borderColor: '#13C2C2' }}
               disabled={saveMutation.isPending}
               onClick={handleSaveAndContinue}
             >
               {saveMutation.isPending ? 'Saving...' : 'Save & Continue'}
-            </button>
+            </Button>
           </div>
         </div>
       </div>

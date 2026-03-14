@@ -2,6 +2,9 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { Typography, Spin } from 'antd';
+
+const { Title, Text } = Typography;
 
 interface StatusCount {
   status: string;
@@ -36,7 +39,7 @@ export default function GovernanceDashboardPage() {
     queryFn: () => api.get('/dashboard/stats'),
   });
 
-  if (isLoading) return <p className="text-text-secondary">Loading dashboard...</p>;
+  if (isLoading) return <div className="text-center py-8"><Spin tip="Loading dashboard..." /></div>;
 
   // Aggregate review counts by domain
   const domainTotals: Record<string, number> = {};
@@ -46,7 +49,7 @@ export default function GovernanceDashboardPage() {
 
   return (
     <div>
-      <h1 className="text-xl font-bold mb-6">Governance Dashboard</h1>
+      <Title level={4} style={{ margin: 0, marginBottom: 24 }}>Governance Dashboard</Title>
 
       <div className="grid grid-cols-3 gap-4 mb-6">
         <div className="bg-white rounded-lg border border-border-light p-5">
@@ -87,7 +90,7 @@ export default function GovernanceDashboardPage() {
                 <span className="font-medium">{item.count}</span>
               </div>
             )) : (
-              <p className="text-sm text-text-secondary">No verdicts recorded yet</p>
+              <Text type="secondary" className="text-sm">No verdicts recorded yet</Text>
             )}
           </div>
         </div>

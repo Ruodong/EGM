@@ -8,7 +8,6 @@ def test_dashboard_stats(client: httpx.Client):
     data = resp.json()
     assert "totalRequests" in data
     assert "byStatus" in data
-    assert "byVerdict" in data
     assert "reviewCounts" in data
     assert isinstance(data["totalRequests"], int)
 

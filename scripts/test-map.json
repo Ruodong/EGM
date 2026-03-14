@@ -121,6 +121,18 @@
     "frontend/src/app/(sidebar)/settings/dispatch-rules/": {
       "api": [],
       "e2e": ["e2e-tests/dispatch-rules.spec.ts"]
+    },
+    "backend/app/routers/questionnaire_templates.py": {
+      "api": ["api-tests/test_questionnaire_templates.py"],
+      "e2e": []
+    },
+    "backend/app/routers/request_questionnaire.py": {
+      "api": ["api-tests/test_request_questionnaire.py"],
+      "e2e": []
+    },
+    "frontend/src/app/(sidebar)/settings/questionnaire-templates/": {
+      "api": [],
+      "e2e": []
     }
   },
   "wildcards": {

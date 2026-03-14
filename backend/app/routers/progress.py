@@ -39,7 +39,6 @@ async def get_progress(request_id: str, db: AsyncSession = Depends(get_db)):
     return {
         "requestId": gr["request_id"],
         "status": gr["status"],
-        "overallVerdict": gr.get("overall_verdict"),
         "totalDomains": total,
         "completedDomains": completed,
         "inProgressDomains": in_progress,

@@ -13,6 +13,30 @@ def _dev_delete(payload: dict):
         assert resp.status_code == 200, f"Dev delete failed: {resp.text}"
 
 
+def _answer_all_required_questionnaires(client: httpx.Client, request_id: str):
+    """Answer all required domain questionnaire templates for a request."""
+    resp = client.get(f"/request-questionnaire/templates/{request_id}")
+    if resp.status_code != 200:
+        return
+    responses = []
+    for domain in resp.json().get("data", []):
+        for q in domain["questions"]:
+            if q["isRequired"]:
+                if q["answerType"] in ("radio", "dropdown") and q.get("options"):
+                    answer = {"value": q["options"][0]}
+                elif q["answerType"] == "multiselect" and q.get("options"):
+                    answer = {"value": [q["options"][0]]}
+                else:
+                    answer = {"value": "Test answer"}
+                responses.append({
+                    "templateId": q["id"],
+                    "domainCode": domain["domainCode"],
+                    "answer": answer,
+                })
+    if responses:
+        client.post(f"/request-questionnaire/{request_id}", json={"responses": responses})
+
+
 def _reset_mandatory_rules():
     """Reset all mandatory dispatch rule flags and return codes to restore."""
     codes = []
@@ -76,9 +100,76 @@ def cleanup_dispatch():
         _dev_delete(payload)
 
 
+@pytest.fixture(scope="session")
+def test_rule_with_domain(client: httpx.Client):
+    """Create a test dispatch rule mapped to a test domain (session-scoped).
+
+    This ensures that governance requests created with this rule will have at
+    least one triggered domain, satisfying the submit validation.
+    """
+    domain_code = "PYTEST_DOM"
+    rule_code = "PYTEST_RULE"
+
+    # Create domain (ignore 409 if already exists)
+    resp = client.post("/domains", json={
+        "domainCode": domain_code,
+        "domainName": "Pytest Test Domain",
+        "description": "Auto-created for API tests",
+        "integrationType": "internal",
+    })
+    assert resp.status_code in (200, 409)
+
+    # Create dispatch rule (ignore 409 if already exists)
+    resp = client.post("/dispatch-rules/", json={
+        "ruleCode": rule_code,
+        "ruleName": "Pytest Test Rule",
+        "description": "Auto-created for API tests",
+    })
+    assert resp.status_code in (200, 409)
+
+    # Map rule → domain via direct SQL through dev endpoint
+    # Use the matrix endpoint but only for this specific rule
+    # Instead, insert directly: need the rule's UUID first
+    resp = client.get("/dispatch-rules/")
+    rules = resp.json().get("data", resp.json()) if isinstance(resp.json(), dict) else resp.json()
+    rule_id = None
+    for r in rules:
+        if r["ruleCode"] == rule_code:
+            rule_id = r["id"]
+            break
+    assert rule_id, f"Rule {rule_code} not found after creation"
+
+    # Save matrix entry for just this rule (use PUT matrix with only our rule)
+    # This is destructive to other mappings! Instead, use raw SQL via dev endpoint.
+    # Better: POST a mapping directly. But there's no endpoint for that.
+    # Safest: use the dev/exec endpoint if it exists, or add one.
+    # Actually, let's just call save_matrix with ALL existing mappings + ours.
+    # Fetch current matrix first:
+    resp = client.get("/dispatch-rules/matrix")
+    assert resp.status_code == 200
+    matrix_data = resp.json()
+    current_matrix = matrix_data.get("matrix", {})
+
+    # Add our mapping
+    current_matrix[rule_code] = {domain_code: "in"}
+
+    # Save
+    resp = client.put("/dispatch-rules/matrix", json={"matrix": current_matrix})
+    assert resp.status_code == 200
+
+    yield {"ruleCode": rule_code, "domainCode": domain_code}
+
+    # Cleanup: remove the mapping, rule, and domain
+    # Re-save matrix without our rule
+    if rule_code in current_matrix:
+        del current_matrix[rule_code]
+    client.put("/dispatch-rules/matrix", json={"matrix": current_matrix})
+    _dev_delete({"dispatchRules": [rule_code], "domains": [domain_code]})
+
+
 @pytest.fixture()
-def create_request(client: httpx.Client):
-    """Helper: create a governance request and return it. Auto-cleans up."""
+def create_request(client: httpx.Client, test_rule_with_domain):
+    """Helper: create a governance request with a rule that triggers a domain. Auto-cleans up."""
     resp = client.post("/governance-requests", json={
         "title": "Test Request",
         "description": "Created by pytest",
@@ -87,6 +178,13 @@ def create_request(client: httpx.Client):
         "productSoftwareType": "Hardware",
         "productEndUser": ["Lenovo internal employee/contractors"],
         "userRegion": ["PRC"],
+        "ruleCodes": [test_rule_with_domain["ruleCode"]],
+        "projectType": "non_mspo",
+        "projectCode": "TEST-001",
+        "projectName": "Test Project",
+        "projectPm": "Test PM",
+        "projectStartDate": "2026-01-01",
+        "projectGoLiveDate": "2026-06-01",
     })
     assert resp.status_code == 200
     data = resp.json()
@@ -98,6 +196,7 @@ def create_request(client: httpx.Client):
 def submitted_request(client: httpx.Client, create_request):
     """Create and submit a governance request."""
     rid = create_request["requestId"]
+    _answer_all_required_questionnaires(client, rid)
     resp = client.put(f"/governance-requests/{rid}/submit")
     assert resp.status_code == 200
     yield resp.json()
@@ -121,9 +220,9 @@ def create_domain(client: httpx.Client):
 
 
 @pytest.fixture()
-def dispatched_request(client: httpx.Client, create_domain):
+def dispatched_request(client: httpx.Client, create_domain, test_rule_with_domain):
     """Create → submit → dispatch a governance request with a domain review."""
-    # Create request
+    # Create request with a rule that triggers a domain (required for submit)
     resp = client.post("/governance-requests", json={
         "title": "Dispatch Test",
         "description": "For dispatch testing",
@@ -132,10 +231,20 @@ def dispatched_request(client: httpx.Client, create_domain):
         "productSoftwareType": "Hardware",
         "productEndUser": ["Lenovo internal employee/contractors"],
         "userRegion": ["PRC"],
+        "ruleCodes": [test_rule_with_domain["ruleCode"]],
+        "projectType": "non_mspo",
+        "projectCode": "DISP-001",
+        "projectName": "Dispatch Test Project",
+        "projectPm": "Test PM",
+        "projectStartDate": "2026-01-01",
+        "projectGoLiveDate": "2026-06-01",
     })
     assert resp.status_code == 200
     gr = resp.json()
     rid = gr["requestId"]
+
+    # Answer required questionnaires before submit
+    _answer_all_required_questionnaires(client, rid)
 
     # Submit
     resp = client.put(f"/governance-requests/{rid}/submit")

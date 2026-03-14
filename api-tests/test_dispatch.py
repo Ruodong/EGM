@@ -1,6 +1,7 @@
 """Test dispatch rules (matrix-based) and execute endpoints."""
 import uuid
 import httpx
+from conftest import _answer_all_required_questionnaires
 
 _BASE = {
     "govProjectType": "PoC",
@@ -8,6 +9,12 @@ _BASE = {
     "productSoftwareType": "Hardware",
     "productEndUser": ["Lenovo internal employee/contractors"],
     "userRegion": ["PRC"],
+    "projectType": "non_mspo",
+    "projectCode": "DISP-BASE",
+    "projectName": "Dispatch Base Project",
+    "projectPm": "Test PM",
+    "projectStartDate": "2026-01-01",
+    "projectGoLiveDate": "2026-06-01",
 }
 
 
@@ -428,12 +435,16 @@ def test_save_exclusions_rbac():
 
 # ── Dispatch execution ─────────────────────────────────────────
 
-def test_execute_dispatch(client: httpx.Client, create_domain, cleanup_dispatch):
+def test_execute_dispatch(client: httpx.Client, create_domain, test_rule_with_domain, cleanup_dispatch):
     """Create + submit + dispatch to a specific domain."""
-    resp = client.post("/governance-requests", json={**_BASE, "title": "Dispatch Exec Test"})
+    resp = client.post("/governance-requests", json={
+        **_BASE, "title": "Dispatch Exec Test",
+        "ruleCodes": [test_rule_with_domain["ruleCode"]],
+    })
     rid = resp.json()["requestId"]
     cleanup_dispatch["requests"].append(rid)
 
+    _answer_all_required_questionnaires(client, rid)
     resp = client.put(f"/governance-requests/{rid}/submit")
     assert resp.status_code == 200
 
@@ -446,11 +457,15 @@ def test_execute_dispatch(client: httpx.Client, create_domain, cleanup_dispatch)
     assert data["dispatched"][0]["domainCode"] == create_domain["domainCode"]
 
 
-def test_execute_dispatch_idempotent(client: httpx.Client, create_domain, cleanup_dispatch):
+def test_execute_dispatch_idempotent(client: httpx.Client, create_domain, test_rule_with_domain, cleanup_dispatch):
     """Dispatching the same domain twice should not create duplicates."""
-    resp = client.post("/governance-requests", json={**_BASE, "title": "Idempotent Test"})
+    resp = client.post("/governance-requests", json={
+        **_BASE, "title": "Idempotent Test",
+        "ruleCodes": [test_rule_with_domain["ruleCode"]],
+    })
     rid = resp.json()["requestId"]
     cleanup_dispatch["requests"].append(rid)
+    _answer_all_required_questionnaires(client, rid)
     client.put(f"/governance-requests/{rid}/submit")
 
     code = create_domain["domainCode"]

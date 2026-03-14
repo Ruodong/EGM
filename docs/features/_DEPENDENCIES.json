@@ -84,6 +84,38 @@
       "frontendPaths": [
         "frontend/src/app/(sidebar)/settings/user-authorization/"
       ]
+    },
+    "questionnaire-templates": {
+      "doc": "docs/features/questionnaire-templates.md",
+      "tables": ["domain_questionnaire_template"],
+      "routers": ["questionnaire_templates.py"],
+      "frontendPaths": [
+        "frontend/src/app/(sidebar)/settings/questionnaire-templates/"
+      ]
+    },
+    "request-questionnaire": {
+      "doc": "docs/features/request-questionnaire.md",
+      "tables": ["request_questionnaire_response"],
+      "routers": ["request_questionnaire.py"],
+      "frontendPaths": [
+        "frontend/src/app/governance/_components/DomainQuestionnaires.tsx",
+        "frontend/src/app/governance/[requestId]/",
+        "frontend/src/app/governance/create/"
+      ]
+    },
+    "antd-migration": {
+      "doc": "docs/features/antd-migration.md",
+      "tables": [],
+      "routers": [],
+      "frontendPaths": [
+        "frontend/src/app/providers.tsx",
+        "frontend/src/components/layout/",
+        "frontend/src/components/shared/",
+        "frontend/src/components/ui/",
+        "frontend/src/lib/constants.ts",
+        "frontend/src/lib/domain-icons.ts",
+        "frontend/src/styles/globals.css"
+      ]
     }
   },
   "edges": [
@@ -128,10 +160,34 @@
       "to": "domain-dispatch",
       "type": "FK",
       "detail": "governance_request_rule.rule_code FK -> dispatch_rule.rule_code; create/update request saves rule associations"
+    },
+    {
+      "from": "questionnaire-templates",
+      "to": "domain-dispatch",
+      "type": "data_read",
+      "detail": "questionnaire_templates reads domain_registry to filter internal domains; domain_questionnaire_template table shared"
+    },
+    {
+      "from": "request-questionnaire",
+      "to": "governance-requests",
+      "type": "FK+guard",
+      "detail": "request_questionnaire_response.request_id FK; submit endpoint validates all required questionnaire answers present"
+    },
+    {
+      "from": "request-questionnaire",
+      "to": "questionnaire-templates",
+      "type": "data_read",
+      "detail": "reads domain_questionnaire_template to determine which questions apply for triggered internal domains"
+    },
+    {
+      "from": "request-questionnaire",
+      "to": "domain-dispatch",
+      "type": "data_read",
+      "detail": "reads domain_registry to identify triggered internal domains for the request"
     }
   ],
   "sharedTables": {
-    "governance_request": ["governance-requests", "intake-scoping", "domain-dispatch", "project-linking"],
+    "governance_request": ["governance-requests", "intake-scoping", "domain-dispatch", "project-linking", "request-questionnaire"],
     "audit_log": ["governance-requests", "domain-dispatch", "audit-log"]
   },
   "globalFiles": [

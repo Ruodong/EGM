@@ -4,7 +4,8 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { PageLayout } from '@/components/layout/PageLayout';
-import { FileCheck, ClipboardCheck, AlertCircle, CheckCircle, Plus } from 'lucide-react';
+import { FileProtectOutlined, AuditOutlined, ExclamationCircleOutlined, CheckCircleOutlined, PlusOutlined } from '@ant-design/icons';
+import { Button } from 'antd';
 import Link from 'next/link';
 
 interface HomeStats {
@@ -14,11 +15,11 @@ interface HomeStats {
   openInfoRequests: number;
 }
 
-function StatsCard({ label, value, icon: Icon, color }: { label: string; value: number; icon: any; color: string }) {
+function StatsCard({ label, value, icon, color }: { label: string; value: React.ReactNode; icon: React.ReactNode; color: string }) {
   return (
     <div className="bg-white rounded-lg border border-border-light p-5 flex items-center gap-4">
-      <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${color}`}>
-        <Icon className="w-6 h-6 text-white" />
+      <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${color}`} style={{ fontSize: 24, color: '#fff' }}>
+        {icon}
       </div>
       <div>
         <p className="text-2xl font-bold text-text-primary">{value}</p>
@@ -44,17 +45,18 @@ export default function HomePage() {
             <h1 className="text-2xl font-bold text-text-primary">Enterprise Governance Portal</h1>
             <p className="text-text-secondary mt-1">AI Governance Management Dashboard</p>
           </div>
-          <Link href="/governance/create" className="btn-teal flex items-center gap-2">
-            <Plus className="w-4 h-4" />
-            New Governance Request
+          <Link href="/governance/create">
+            <Button type="primary" style={{ background: '#13C2C2', borderColor: '#13C2C2' }} icon={<PlusOutlined />}>
+              New Governance Request
+            </Button>
           </Link>
         </div>
 
         <div className="grid grid-cols-4 gap-4 mb-8">
-          <StatsCard label="Total Requests" value={stats?.totalRequests ?? 0} icon={FileCheck} color="bg-primary-blue" />
-          <StatsCard label="In Progress" value={stats?.inReview ?? 0} icon={ClipboardCheck} color="bg-status-in-progress" />
-          <StatsCard label="Completed" value={stats?.completed ?? 0} icon={CheckCircle} color="bg-status-completed" />
-          <StatsCard label="Open Info Requests" value={stats?.openInfoRequests ?? 0} icon={AlertCircle} color="bg-status-info-requested" />
+          <StatsCard label="Total Requests" value={stats?.totalRequests ?? 0} icon={<FileProtectOutlined />} color="bg-primary-blue" />
+          <StatsCard label="In Progress" value={stats?.inReview ?? 0} icon={<AuditOutlined />} color="bg-status-in-progress" />
+          <StatsCard label="Completed" value={stats?.completed ?? 0} icon={<CheckCircleOutlined />} color="bg-status-completed" />
+          <StatsCard label="Open Info Requests" value={stats?.openInfoRequests ?? 0} icon={<ExclamationCircleOutlined />} color="bg-status-info-requested" />
         </div>
 
         <div className="bg-white rounded-lg border border-border-light p-6">

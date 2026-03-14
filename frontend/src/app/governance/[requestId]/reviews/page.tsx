@@ -7,6 +7,7 @@ import { useToast } from '@/components/ui/Toast';
 import { PageLayout } from '@/components/layout/PageLayout';
 import { statusColors } from '@/lib/constants';
 import Link from 'next/link';
+import { Button } from 'antd';
 import clsx from 'clsx';
 
 interface DomainReview {
@@ -73,13 +74,14 @@ export default function ReviewsPage() {
             </p>
           </div>
           {(!reviews?.data || reviews.data.length === 0) && (
-            <button
-              className="btn-teal"
+            <Button
+              type="primary"
+              style={{ background: '#13C2C2', borderColor: '#13C2C2' }}
               disabled={dispatchMutation.isPending}
               onClick={() => dispatchMutation.mutate()}
             >
               {dispatchMutation.isPending ? 'Dispatching...' : 'Dispatch Reviews'}
-            </button>
+            </Button>
           )}
         </div>
 
@@ -144,11 +146,8 @@ export default function ReviewsPage() {
                     {review.reviewer && (
                       <span className="text-sm text-text-secondary">Reviewer: {review.reviewerName || review.reviewer}</span>
                     )}
-                    <Link
-                      href={`/governance/${requestId}/reviews/${review.domainCode}`}
-                      className="btn-default text-sm"
-                    >
-                      View Details
+                    <Link href={`/governance/${requestId}/reviews/${review.domainCode}`}>
+                      <Button type="default" size="small">View Details</Button>
                     </Link>
                   </div>
                 </div>
@@ -161,12 +160,12 @@ export default function ReviewsPage() {
         )}
 
         <div className="flex justify-between mt-8">
-          <button className="btn-default" onClick={() => router.push(`/governance/${requestId}/common-questionnaire`)}>
+          <Button type="default" onClick={() => router.push(`/governance/${requestId}/common-questionnaire`)}>
             Back to Questionnaire
-          </button>
-          <button className="btn-teal" onClick={() => router.push(`/governance/${requestId}/summary`)}>
+          </Button>
+          <Button type="primary" style={{ background: '#13C2C2', borderColor: '#13C2C2' }} onClick={() => router.push(`/governance/${requestId}/summary`)}>
             View Summary
-          </button>
+          </Button>
         </div>
       </div>
     </PageLayout>

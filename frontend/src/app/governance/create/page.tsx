@@ -10,6 +10,7 @@ import { GovernanceScopeDetermination } from '../_components/GovernanceScopeDete
 import { FileUpload } from '../_components/FileUpload';
 import projectTypes from '@/config/project-types.json';
 import businessUnits from '@/config/business-units.json';
+import { Button, Input } from 'antd';
 
 interface Project {
   projectId: string;
@@ -39,6 +40,7 @@ export default function CreateRequestPage() {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [selectedRules, setSelectedRules] = useState<string[]>([]);
+  const triggeredDomainsRef = useRef<{ domainCode: string; domainName: string }[]>([]);
   const [govProjectType, setGovProjectType] = useState('');
   const [businessUnit, setBusinessUnit] = useState('');
   const [attachments, setAttachments] = useState<File[]>([]);
@@ -184,6 +186,9 @@ export default function CreateRequestPage() {
       const errors: Record<string, string> = {};
       if (!govProjectType) errors.govProjectType = 'Project Type is required';
       if (!businessUnit) errors.businessUnit = 'Business Unit is required';
+      if (projectType === 'mspo' && !selectedProject) {
+        errors.projectId = 'Please select an MSPO project';
+      }
       if (projectType === 'non_mspo') {
         if (!nonMspo.projectCode) errors.projectCode = 'Project Code is required';
         if (!nonMspo.projectName) errors.projectName = 'Project Name is required';
@@ -195,8 +200,10 @@ export default function CreateRequestPage() {
       if (productSoftwareType === 'Other' && !productSoftwareTypeOther.trim()) errors.productSoftwareTypeOther = 'Please specify the type';
       if (productEndUser.length === 0) errors.productEndUser = 'At least one end user must be selected';
       if (userRegion.length === 0) errors.userRegion = 'At least one region must be selected';
+      if (triggeredDomainsRef.current.length === 0) errors.domains = 'At least one governance domain must be triggered by the selected rules';
       if (Object.keys(errors).length > 0) {
         setValidationErrors(errors);
+        toast('Please fill in all required fields', 'error');
         return;
       }
       setValidationErrors({});
@@ -245,8 +252,22 @@ export default function CreateRequestPage() {
 
       // If submitting, transition from Draft to Submitted
       if (action === 'submit') {
-        await api.put(`/governance-requests/${result.requestId}/submit`, {});
-        toast('Governance request submitted', 'success');
+        try {
+          await api.put(`/governance-requests/${result.requestId}/submit`, {});
+          toast('Governance request submitted', 'success');
+        } catch (submitErr: unknown) {
+          // If submit fails due to incomplete questionnaires, redirect to edit page
+          const detail = (submitErr as { detail?: string })?.detail || '';
+          if (detail.includes('Incomplete domain questionnaires')) {
+            toast('Please complete domain questionnaires before submitting', 'error');
+            router.push(`/governance/${result.requestId}`);
+            return;
+          }
+          // Show backend error detail for other submit failures
+          toast(detail || 'Failed to submit request', 'error');
+          router.push(`/governance/${result.requestId}`);
+          return;
+        }
       } else {
         toast('Governance request saved as draft', 'success');
       }
@@ -268,8 +289,10 @@ export default function CreateRequestPage() {
           <SectionCard title="Governance Scope Determination" subtitle="Select applicable compliance rules to determine governance domains">
             <GovernanceScopeDetermination
               selectedRules={selectedRules}
-              onRulesChange={setSelectedRules}
+              onRulesChange={(rules) => { setSelectedRules(rules); setValidationErrors(prev => { const n = {...prev}; delete n.domains; return n; }); }}
+              onTriggeredDomainsChange={(domains) => { triggeredDomainsRef.current = domains; }}
             />
+            {validationErrors.domains && <p className="text-red-500 text-xs mt-2">{validationErrors.domains}</p>}
           </SectionCard>
 
           {/* Section 2: Project Information */}
@@ -319,7 +342,7 @@ export default function CreateRequestPage() {
 
               {/* Project Type Toggle (MSPO / Non-MSPO) */}
               <div>
-                <label className="block text-sm font-medium mb-2">Project</label>
+                <label className="block text-sm font-medium mb-2">Project <span className="text-red-500">*</span></label>
                 <div className="flex gap-2 mb-3" data-testid="project-type-toggle">
                   <button
                     type="button"
@@ -361,11 +384,11 @@ export default function CreateRequestPage() {
                           </button>
                         </div>
                       ) : (
-                        <input
-                          className="input-field"
+                        <Input
+                          status={validationErrors.projectId ? 'error' : undefined}
                           placeholder="Search by project ID or name..."
                           value={projectSearch}
-                          onChange={(e) => handleProjectSearchChange(e.target.value)}
+                          onChange={(e) => { handleProjectSearchChange(e.target.value); setValidationErrors(prev => { const { projectId: _, ...rest } = prev; return rest; }); }}
                           onFocus={() => { if (projectSearch.trim()) setShowDropdown(true); }}
                           data-testid="input-project-search"
                         />
@@ -392,6 +415,9 @@ export default function CreateRequestPage() {
                         </div>
                       )}
                     </div>
+                    {validationErrors.projectId && (
+                      <p className="text-xs text-red-500 mt-1">{validationErrors.projectId}</p>
+                    )}
 
                     {/* MSPO Read-only Project Details */}
                     {selectedProject && (
@@ -416,8 +442,8 @@ export default function CreateRequestPage() {
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="block text-xs font-medium text-text-secondary mb-1">Project Code <span className="text-red-500">*</span></label>
-                        <input
-                          className={`input-field ${validationErrors.projectCode ? 'border-red-400' : ''}`}
+                        <Input
+                          status={validationErrors.projectCode ? 'error' : undefined}
                           value={nonMspo.projectCode}
                           onChange={(e) => { setNonMspo({ ...nonMspo, projectCode: e.target.value }); setValidationErrors((v) => { const { projectCode: _, ...rest } = v; return rest; }); }}
                           data-testid="input-project-code"
@@ -426,8 +452,8 @@ export default function CreateRequestPage() {
                       </div>
                       <div>
                         <label className="block text-xs font-medium text-text-secondary mb-1">Project Name <span className="text-red-500">*</span></label>
-                        <input
-                          className={`input-field ${validationErrors.projectName ? 'border-red-400' : ''}`}
+                        <Input
+                          status={validationErrors.projectName ? 'error' : undefined}
                           value={nonMspo.projectName}
                           onChange={(e) => { setNonMspo({ ...nonMspo, projectName: e.target.value }); setValidationErrors((v) => { const { projectName: _, ...rest } = v; return rest; }); }}
                           data-testid="input-project-name"
@@ -437,8 +463,8 @@ export default function CreateRequestPage() {
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-text-secondary mb-1">Description</label>
-                      <textarea
-                        className="input-field h-20"
+                      <Input.TextArea
+                        rows={3}
                         value={nonMspo.projectDescription}
                         onChange={(e) => setNonMspo({ ...nonMspo, projectDescription: e.target.value })}
                         data-testid="input-project-description"
@@ -459,8 +485,7 @@ export default function CreateRequestPage() {
                             </button>
                           </div>
                         ) : (
-                          <input
-                            className="input-field"
+                          <Input
                             placeholder="Search by itcode or name..."
                             value={pmSearch}
                             onChange={(e) => handlePmSearchChange(e.target.value)}
@@ -652,25 +677,26 @@ export default function CreateRequestPage() {
 
           {/* Action buttons */}
           <div className="flex justify-end gap-3 pt-2">
-            <button type="button" className="btn-default" onClick={() => router.back()} data-testid="cancel-btn">Cancel</button>
-            <button
-              type="submit"
-              className="px-4 py-2 text-sm font-medium border border-border-light rounded-lg hover:bg-gray-50 transition-colors"
+            <Button type="default" onClick={() => router.back()} data-testid="cancel-btn">Cancel</Button>
+            <Button
+              htmlType="submit"
+              type="default"
               disabled={loading}
               onClick={() => { submitActionRef.current = 'save'; }}
               data-testid="save-draft-btn"
             >
               {loading && submitActionRef.current === 'save' ? 'Saving...' : 'Save'}
-            </button>
-            <button
-              type="submit"
-              className="btn-teal"
+            </Button>
+            <Button
+              htmlType="submit"
+              type="primary"
+              style={{ background: '#13C2C2', borderColor: '#13C2C2' }}
               disabled={loading}
               onClick={() => { submitActionRef.current = 'submit'; }}
               data-testid="submit-request-btn"
             >
               {loading && submitActionRef.current === 'submit' ? 'Submitting...' : 'Submit Request'}
-            </button>
+            </Button>
           </div>
         </form>
       </div>
