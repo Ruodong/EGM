@@ -1,0 +1,15 @@
+# Dependencies & build
+node_modules/
+backend/venv/
+.next/
+__pycache__/
+.pytest_cache/
+test-results/
+
+# Large generated files
+*.lock
+package-lock.json
+
+# Skill creator workspace (large, not needed for normal dev)
+.claude/skills/skill-creator/
+closed-loop-dev-workspace/

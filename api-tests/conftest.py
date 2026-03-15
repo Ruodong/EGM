@@ -220,12 +220,14 @@ def create_domain(client: httpx.Client):
 
 
 @pytest.fixture()
-def dispatched_request(client: httpx.Client, create_domain, test_rule_with_domain):
-    """Create → submit → dispatch a governance request with a domain review."""
-    # Create request with a rule that triggers a domain (required for submit)
+def submitted_request_with_reviews(client: httpx.Client, test_rule_with_domain):
+    """Create → submit a governance request (submit auto-creates domain reviews).
+
+    Returns dict with 'request' and 'reviewId' (first review).
+    """
     resp = client.post("/governance-requests", json={
-        "title": "Dispatch Test",
-        "description": "For dispatch testing",
+        "title": "Review Test",
+        "description": "For domain review testing",
         "govProjectType": "PoC",
         "businessUnit": "IDG",
         "productSoftwareType": "Hardware",
@@ -233,8 +235,8 @@ def dispatched_request(client: httpx.Client, create_domain, test_rule_with_domai
         "userRegion": ["PRC"],
         "ruleCodes": [test_rule_with_domain["ruleCode"]],
         "projectType": "non_mspo",
-        "projectCode": "DISP-001",
-        "projectName": "Dispatch Test Project",
+        "projectCode": "REV-001",
+        "projectName": "Review Test Project",
         "projectPm": "Test PM",
         "projectStartDate": "2026-01-01",
         "projectGoLiveDate": "2026-06-01",
@@ -246,25 +248,22 @@ def dispatched_request(client: httpx.Client, create_domain, test_rule_with_domai
     # Answer required questionnaires before submit
     _answer_all_required_questionnaires(client, rid)
 
-    # Submit
+    # Submit (auto-creates domain reviews with 'Waiting for Accept')
     resp = client.put(f"/governance-requests/{rid}/submit")
     assert resp.status_code == 200
 
-    # Dispatch with specific domain
-    resp = client.post(f"/dispatch/execute/{rid}", json={
-        "domainCodes": [create_domain["domainCode"]],
-    })
+    # Fetch the created domain reviews
+    resp = client.get("/domain-reviews", params={"request_id": rid})
     assert resp.status_code == 200
-    dispatch_result = resp.json()
+    reviews = resp.json()["data"]
+    assert len(reviews) >= 1, "Submit should create at least one domain review"
 
     yield {
         "request": gr,
-        "domain": create_domain,
-        "dispatched": dispatch_result,
-        "reviewId": dispatch_result["dispatched"][0]["id"] if dispatch_result["dispatched"] else None,
+        "reviewId": reviews[0]["id"],
+        "reviews": reviews,
     }
     _dev_delete({"governanceRequests": [rid]})
-    # Domain cleanup handled by create_domain fixture
 
 
 @pytest.fixture()

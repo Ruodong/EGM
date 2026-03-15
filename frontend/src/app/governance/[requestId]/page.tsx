@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { PageLayout } from '@/components/layout/PageLayout';
@@ -95,12 +95,24 @@ interface ProgressData {
   completedDomains: number;
   progressPercent: number;
   openInfoRequests: number;
-  domains: { domainCode: string; status: string; outcome: string | null; reviewer: string | null }[];
+  domains: { reviewId: string; domainCode: string; status: string; outcome: string | null; reviewer: string | null }[];
+}
+
+interface ActivityLogEntry {
+  id: string;
+  action: string;
+  entityType: string;
+  domainCode: string | null;
+  performedBy: string;
+  performerName: string | null;
+  performedAt: string | null;
+  details: string;
 }
 
 export default function RequestDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const requestId = params.requestId as string;
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -118,6 +130,14 @@ export default function RequestDetailPage() {
     enabled: !!request,
   });
 
+  const { data: activityLogData } = useQuery<{ data: ActivityLogEntry[] }>({
+    queryKey: ['activity-log', requestId],
+    queryFn: () => api.get(`/governance-requests/${requestId}/activity-log`),
+    enabled: !!request && request.status !== 'Draft',
+  });
+
+  const activityLog: ActivityLogEntry[] = activityLogData?.data ?? [];
+
   const { data: progress } = useQuery<ProgressData>({
     queryKey: ['progress', requestId],
     queryFn: () => api.get(`/progress/${requestId}`),
@@ -129,15 +149,6 @@ export default function RequestDetailPage() {
     queryFn: () => api.get(`/governance-requests/${requestId}/attachments`),
     enabled: !!request,
   });
-
-  // Fetch domain reviews for return reason display (Information Inquiry status)
-  const { data: domainReviewsData } = useQuery<{ data: { domainCode: string; domainName?: string; status: string; returnReason?: string; reviewerName?: string }[] }>({
-    queryKey: ['domain-reviews', requestId],
-    queryFn: () => api.get('/domain-reviews', { request_id: requestId }),
-    enabled: !!request && request.status === 'Information Inquiry',
-  });
-
-  const returnedReviews = domainReviewsData?.data?.filter(r => r.status === 'Returned' && r.returnReason) ?? [];
 
   const changelog: ChangeEntry[] = changelogData?.data ?? [];
 
@@ -239,11 +250,35 @@ export default function RequestDetailPage() {
   }, []);
 
   const isOwner = !!user && !!request && user.id === request.requestor;
-  const isReadOnly = request?.status === 'Completed' || !isOwner;
+  const isReadOnly = request?.status === 'Complete' || !isOwner;
   const isEditable = !isReadOnly;
   const isScopeReadOnly = request?.status !== 'Draft' || !isOwner;  // Lock rules after submit or for non-owners
   const triggeredDomainsRef = useRef<{ domainCode: string; domainName: string }[]>([]);
   const questionnaireRef = useRef<DomainQuestionnairesRef>(null);
+
+  // Wizard mode — only for Draft status
+  const initialStep = searchParams.get('step') === '2' ? 2 : 1;
+  const [wizardStep, setWizardStep] = useState<1 | 2>(initialStep as 1 | 2);
+  const isDraft = request?.status === 'Draft';
+  const showWizard = isDraft && isEditable;
+
+  // Force re-render when triggered domains change (since ref doesn't trigger re-render)
+  const [triggeredDomainsCount, setTriggeredDomainsCount] = useState(0);
+
+  // Step 1 validation: domains determined + all required fields filled
+  const isStep1Complete = useMemo(() => {
+    if (!showWizard) return false;
+    const hasDomains = triggeredDomainsRef.current.length > 0;
+    const hasProjectType = !!govProjectType;
+    const hasBusinessUnit = !!businessUnit;
+    const hasProductType = !!productSoftwareType && (productSoftwareType !== 'Other' || !!productSoftwareTypeOther.trim());
+    const hasEndUser = productEndUser.length > 0;
+    const hasRegion = userRegion.length > 0;
+    const hasProject = projectType === 'mspo'
+      ? !!selectedProject
+      : (!!nonMspo.projectCode && !!nonMspo.projectName && !!nonMspo.projectPm && !!nonMspo.projectStartDate && !!nonMspo.projectGoLiveDate);
+    return hasDomains && hasProjectType && hasBusinessUnit && hasProductType && hasEndUser && hasRegion && hasProject;
+  }, [showWizard, govProjectType, businessUnit, productSoftwareType, productSoftwareTypeOther, productEndUser, userRegion, projectType, selectedProject, nonMspo, triggeredDomainsCount]);
 
   // --- Project search ---
   const searchProjects = useCallback(async (query: string) => {
@@ -298,6 +333,7 @@ export default function RequestDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['governance-request', requestId] });
       queryClient.invalidateQueries({ queryKey: ['changelog', requestId] });
+      queryClient.invalidateQueries({ queryKey: ['activity-log', requestId] });
       toast('Request submitted for review', 'success');
     },
     onError: (err: unknown) => {
@@ -343,6 +379,27 @@ export default function RequestDetailPage() {
     },
   });
 
+  // --- Resubmit (Return for Additional Information → Waiting for Accept) ---
+  const resubmitMutation = useMutation({
+    mutationFn: async () => {
+      // Resubmit all domain reviews that are in "Return for Additional Information" status
+      const returnedDomains = progress?.domains.filter(d => d.status === 'Return for Additional Information') || [];
+      if (returnedDomains.length === 0) throw new Error('No returned domains to resubmit');
+      await Promise.all(returnedDomains.map(d => api.put(`/domain-reviews/${d.reviewId}/resubmit`, {})));
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['governance-request', requestId] });
+      queryClient.invalidateQueries({ queryKey: ['progress', requestId] });
+      queryClient.invalidateQueries({ queryKey: ['changelog', requestId] });
+      queryClient.invalidateQueries({ queryKey: ['activity-log', requestId] });
+      toast('Returned domains resubmitted for review', 'success');
+    },
+    onError: (err: unknown) => {
+      const detail = (err as { detail?: string })?.detail;
+      toast(detail || 'Failed to resubmit', 'error');
+    },
+  });
+
   // --- Save ---
   const handleSave = async (validate = true): Promise<boolean> => {
     // Validate required fields only when explicitly requested (Submit / Save Changes)
@@ -364,7 +421,7 @@ export default function RequestDetailPage() {
       if (productSoftwareType === 'Other' && !productSoftwareTypeOther.trim()) errors.productSoftwareTypeOther = 'Please specify the type';
       if (productEndUser.length === 0) errors.productEndUser = 'At least one end user must be selected';
       if (userRegion.length === 0) errors.userRegion = 'At least one region must be selected';
-      if (request.status === 'Draft' && triggeredDomainsRef.current.length === 0) errors.domains = 'At least one governance domain must be triggered by the selected rules';
+      if (request.status === 'Draft' && triggeredDomainsRef.current.length === 0 && selectedRules.length === 0) errors.domains = 'At least one governance domain must be triggered by the selected rules';
       // Validate domain questionnaires completion
       if (request.status === 'Draft' && questionnaireRef.current) {
         const incomplete = questionnaireRef.current.getIncompleteDomains();
@@ -418,6 +475,7 @@ export default function RequestDetailPage() {
 
       queryClient.invalidateQueries({ queryKey: ['governance-request', requestId] });
       queryClient.invalidateQueries({ queryKey: ['changelog', requestId] });
+      queryClient.invalidateQueries({ queryKey: ['activity-log', requestId] });
       queryClient.invalidateQueries({ queryKey: ['attachments', requestId] });
       toast('Changes saved', 'success');
       return true;
@@ -472,42 +530,77 @@ export default function RequestDetailPage() {
         <div className="bg-white rounded-lg border border-border-light p-4 mb-4">
           <ProcessingLogStepper
             currentStatus={request.status}
-            infoInquiryDomain={returnedReviews.length > 0 ? returnedReviews.map(r => r.domainName || r.domainCode).join(', ') : undefined}
           />
         </div>
 
-        {/* Information Inquiry Banner */}
-        {request.status === 'Information Inquiry' && returnedReviews.length > 0 && (
-          <div className="bg-amber-50 border border-amber-300 rounded-lg p-4 mb-4">
-            <div className="flex items-start gap-2">
-              <span className="text-amber-600 text-lg mt-0.5">⚠</span>
-              <div>
-                <h3 className="text-sm font-semibold text-amber-800">Information Inquiry — Additional information requested</h3>
-                {returnedReviews.map((r, i) => (
-                  <div key={i} className="mt-2 bg-white rounded p-3 border border-amber-200">
-                    <p className="text-xs text-text-secondary mb-1">
-                      Returned by <span className="font-medium">{r.reviewerName || 'Reviewer'}</span>
-                      {r.domainName ? ` (${r.domainName})` : r.domainCode ? ` (${r.domainCode})` : ''}
-                    </p>
-                    <p className="text-sm text-text-primary">{r.returnReason}</p>
-                  </div>
-                ))}
-                <p className="text-xs text-amber-700 mt-2">Please update the relevant information and resubmit your request.</p>
-              </div>
+        {/* Request Activity Log — shown after submit */}
+        {request.status !== 'Draft' && activityLog.length > 0 && (
+          <div className="bg-white rounded-lg border border-border-light p-4 mb-4" data-testid="request-activity-log-section">
+            <label className="block text-sm font-medium mb-3 text-text-secondary">Request Activity Log</label>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border-light text-left text-text-secondary">
+                    <th className="pb-2 pr-4 font-medium">Action</th>
+                    <th className="pb-2 pr-4 font-medium">User</th>
+                    <th className="pb-2 pr-4 font-medium">Time</th>
+                    <th className="pb-2 font-medium">Details</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {activityLog.map((entry) => (
+                    <tr key={entry.id} className="border-b border-border-light last:border-0">
+                      <td className="py-2 pr-4 whitespace-nowrap">
+                        <span className="text-xs px-2 py-0.5 rounded bg-blue-50 text-blue-700">
+                          {entry.action}
+                        </span>
+                      </td>
+                      <td className="py-2 pr-4 whitespace-nowrap">{entry.performerName || entry.performedBy || '-'}</td>
+                      <td className="py-2 pr-4 whitespace-nowrap text-text-secondary">
+                        {entry.performedAt ? new Date(entry.performedAt).toLocaleString() : '-'}
+                      </td>
+                      <td className="py-2 text-text-secondary max-w-xs truncate">
+                        {entry.details || '-'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         )}
 
-        {/* Applicable Domains — shown after submit */}
+        {/* Applicable Governance Domains — shown after submit */}
         {request.status !== 'Draft' && (
           <div className="bg-white rounded-lg border border-border-light p-4 mb-4" data-testid="applicable-domains-section">
-            <label className="block text-sm font-medium mb-2 text-text-secondary">Applicable Domains</label>
+            <label className="block text-sm font-medium mb-2 text-text-secondary">Applicable Governance Domains</label>
             <ApplicableDomainsDisplay ruleCodes={request.ruleCodes} />
+          </div>
+        )}
+
+        {/* Wizard Step Indicator — only for Draft wizard mode */}
+        {showWizard && (
+          <div className="flex items-center gap-3 mb-4" data-testid="wizard-steps">
+            <div className={clsx('flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium',
+              wizardStep === 1 ? 'bg-egm-teal text-white' : 'bg-gray-100 text-text-secondary'
+            )}>
+              <span className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center text-xs font-bold">1</span>
+              Project Information
+            </div>
+            <div className="text-text-secondary">→</div>
+            <div className={clsx('flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium',
+              wizardStep === 2 ? 'bg-egm-teal text-white' : 'bg-gray-100 text-text-secondary'
+            )}>
+              <span className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center text-xs font-bold">2</span>
+              Domain Questionnaires
+            </div>
           </div>
         )}
 
         {/* Form sections */}
         <div className="space-y-4">
+          {/* === WIZARD STEP 1 (or non-wizard: always show) === */}
+          {(!showWizard || wizardStep === 1) && (<>
           {/* Section 1: Governance Scope Determination */}
           <SectionCard title="Governance Scope Determination" subtitle="Select applicable compliance rules to determine governance domains">
             {isScopeReadOnly ? (
@@ -519,7 +612,7 @@ export default function RequestDetailPage() {
                 <GovernanceScopeDetermination
                   selectedRules={selectedRules}
                   onRulesChange={(rules) => { setSelectedRules(rules); setValidationErrors(prev => { const n = {...prev}; delete n.domains; return n; }); }}
-                  onTriggeredDomainsChange={(domains) => { triggeredDomainsRef.current = domains; }}
+                  onTriggeredDomainsChange={(domains) => { triggeredDomainsRef.current = domains; setTriggeredDomainsCount(domains.length); }}
                 />
                 {validationErrors.domains && <p className="text-red-500 text-xs mt-2">{validationErrors.domains}</p>}
               </ChangeHighlight>
@@ -952,16 +1045,32 @@ export default function RequestDetailPage() {
             </div>
           </SectionCard>
 
-          {/* Domain Questionnaires */}
-          {request.status === 'Draft' && (
-            <SectionCard title="Domain Questionnaires" subtitle="Please answer the following questions for each triggered domain">
+          </>)}
+
+          {/* === WIZARD STEP 2 (or non-wizard Draft: always show) === */}
+          {(!showWizard || wizardStep === 2) && (
+            <>
+            {/* Domain Questionnaires */}
+            {request.status === 'Draft' && (
+              <SectionCard title="Domain Questionnaires" subtitle="Please answer the following questions for each triggered domain">
+                <DomainQuestionnaires
+                  ref={questionnaireRef}
+                  requestId={requestId}
+                />
+                {validationErrors.questionnaires && (
+                  <p className="text-red-500 text-sm mt-2">{validationErrors.questionnaires}</p>
+                )}
+              </SectionCard>
+            )}
+            </>
+          )}
+
+          {/* Domain Questionnaires — when any domain is returned for additional info */}
+          {isOwner && request.status !== 'Draft' && progress?.domains.some(d => d.status === 'Return for Additional Information') && (
+            <SectionCard title="Domain Questionnaires" subtitle="Please review and update your answers, then resubmit the returned domains">
               <DomainQuestionnaires
-                ref={questionnaireRef}
                 requestId={requestId}
               />
-              {validationErrors.questionnaires && (
-                <p className="text-red-500 text-sm mt-2">{validationErrors.questionnaires}</p>
-              )}
             </SectionCard>
           )}
 
@@ -978,9 +1087,6 @@ export default function RequestDetailPage() {
                     <div className="bg-egm-teal h-2 rounded-full transition-all" style={{ width: `${progress.progressPercent}%` }} />
                   </div>
                 </div>
-                {progress.openInfoRequests > 0 && (
-                  <p className="text-sm text-status-info-requested mb-3">{progress.openInfoRequests} open info request(s)</p>
-                )}
                 <div className="space-y-2">
                   {progress.domains.map((d) => (
                     <div key={d.domainCode} className="flex items-center justify-between text-sm p-2 bg-bg-gray rounded">
@@ -1021,7 +1127,7 @@ export default function RequestDetailPage() {
                   {cancelMutation.isPending ? 'Cancelling...' : 'Cancel Request'}
                 </Button>
               )}
-              {hasRole('admin', 'governance_lead') && request.status === 'Completed' && request.lifecycleStatus === 'Active' && (
+              {hasRole('admin', 'governance_lead') && request.status === 'Complete' && request.lifecycleStatus === 'Active' && (
                 <Button
                   type="default"
                   icon={<InboxOutlined />}
@@ -1035,43 +1141,113 @@ export default function RequestDetailPage() {
             </div>
             {/* Right side — primary actions */}
             <div className="flex gap-3">
-              <Button type="default" onClick={() => router.push('/requests')} data-testid="back-btn">Back</Button>
-              {isEditable && (
+              {/* Wizard Step 1 buttons */}
+              {showWizard && wizardStep === 1 && (
                 <>
-                  {request.status === 'Draft' && (
+                  <Button type="default" onClick={() => router.push('/requests')} data-testid="back-btn">Back</Button>
+                  <Button
+                    type="default"
+                    disabled={saving}
+                    onClick={() => handleSave(false)}
+                    data-testid="save-draft-btn"
+                  >
+                    {saving ? 'Saving...' : 'Save'}
+                  </Button>
+                  <Button
+                    type="primary"
+                    style={{ background: '#13C2C2', borderColor: '#13C2C2' }}
+                    disabled={!isStep1Complete || saving}
+                    onClick={async () => {
+                      const ok = await handleSave(false);
+                      if (ok) setWizardStep(2);
+                    }}
+                    data-testid="next-step-btn"
+                  >
+                    {saving ? 'Saving...' : 'Next'}
+                  </Button>
+                </>
+              )}
+              {/* Wizard Step 2 buttons */}
+              {showWizard && wizardStep === 2 && (
+                <>
+                  <Button type="default" onClick={() => setWizardStep(1)} data-testid="back-step-btn">Back</Button>
+                  <Button
+                    type="default"
+                    disabled={saving}
+                    onClick={() => handleSave(false)}
+                    data-testid="save-draft-btn"
+                  >
+                    {saving ? 'Saving...' : 'Save'}
+                  </Button>
+                  <Button
+                    type="primary"
+                    style={{ background: '#13C2C2', borderColor: '#13C2C2' }}
+                    disabled={submitMutation.isPending}
+                    onClick={async () => {
+                      const ok = await handleSave();
+                      if (ok) submitMutation.mutate();
+                    }}
+                    data-testid="submit-request-btn"
+                  >
+                    {submitMutation.isPending ? 'Submitting...' : 'Submit Request'}
+                  </Button>
+                </>
+              )}
+              {/* Non-wizard buttons (non-Draft or read-only) */}
+              {!showWizard && (
+                <>
+                  <Button type="default" onClick={() => router.push('/requests')} data-testid="back-btn">Back</Button>
+                  {isEditable && (
                     <>
-                      <Button
-                        type="default"
-                        disabled={saving}
-                        onClick={() => handleSave(false)}
-                        data-testid="save-draft-btn"
-                      >
-                        {saving ? 'Saving...' : 'Save'}
-                      </Button>
-                      <Button
-                        type="primary"
-                        style={{ background: '#13C2C2', borderColor: '#13C2C2' }}
-                        disabled={submitMutation.isPending}
-                        onClick={async () => {
-                          const ok = await handleSave();
-                          if (ok) submitMutation.mutate();
-                        }}
-                        data-testid="submit-request-btn"
-                      >
-                        {submitMutation.isPending ? 'Submitting...' : 'Submit Request'}
-                      </Button>
+                      {request.status === 'Draft' && (
+                        <>
+                          <Button
+                            type="default"
+                            disabled={saving}
+                            onClick={() => handleSave(false)}
+                            data-testid="save-draft-btn"
+                          >
+                            {saving ? 'Saving...' : 'Save'}
+                          </Button>
+                          <Button
+                            type="primary"
+                            style={{ background: '#13C2C2', borderColor: '#13C2C2' }}
+                            disabled={submitMutation.isPending}
+                            onClick={async () => {
+                              const ok = await handleSave();
+                              if (ok) submitMutation.mutate();
+                            }}
+                            data-testid="submit-request-btn"
+                          >
+                            {submitMutation.isPending ? 'Submitting...' : 'Submit Request'}
+                          </Button>
+                        </>
+                      )}
+                      {(request.status === 'Submitted' || request.status === 'In Progress') && (
+                        <Button
+                          type="primary"
+                          style={{ background: '#13C2C2', borderColor: '#13C2C2' }}
+                          disabled={saving}
+                          onClick={() => handleSave()}
+                          data-testid="save-changes-btn"
+                        >
+                          {saving ? 'Saving...' : 'Save Changes'}
+                        </Button>
+                      )}
+                      {progress?.domains.some(d => d.status === 'Return for Additional Information') && (
+                        <Button
+                          type="primary"
+                          style={{ background: '#13C2C2', borderColor: '#13C2C2' }}
+                          disabled={resubmitMutation.isPending}
+                          onClick={() => {
+                            if (confirm('Resubmit all returned domains for review?')) resubmitMutation.mutate();
+                          }}
+                          data-testid="resubmit-btn"
+                        >
+                          {resubmitMutation.isPending ? 'Resubmitting...' : 'Resubmit'}
+                        </Button>
+                      )}
                     </>
-                  )}
-                  {(request.status === 'Submitted' || request.status === 'In Progress' || request.status === 'Information Inquiry') && (
-                    <Button
-                      type="primary"
-                      style={{ background: '#13C2C2', borderColor: '#13C2C2' }}
-                      disabled={saving}
-                      onClick={() => handleSave()}
-                      data-testid="save-changes-btn"
-                    >
-                      {saving ? 'Saving...' : 'Save Changes'}
-                    </Button>
                   )}
                 </>
               )}

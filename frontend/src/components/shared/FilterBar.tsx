@@ -19,6 +19,7 @@ export interface FilterValues {
   requestor: string;
   dateFrom: string;
   dateTo: string;
+  domain: string;
 }
 
 export interface FilterBarConfig {
@@ -26,15 +27,20 @@ export interface FilterBarConfig {
   searchPlaceholder?: string;
   /** Status dropdown options. First entry should be '' for "All". */
   statusOptions: string[];
+  /** Enable multi-select for Status filter */
+  statusMultiSelect?: boolean;
+  /** Domain dropdown options for multi-select domain filter. If provided, domain filter is shown. */
+  domainOptions?: { value: string; label: string }[];
 }
 
 /* ─── Hook: manages all filter state + debounce ────────────────── */
 export function useFilterState(onPageReset: () => void) {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [status, setStatus] = useState('');
+  const [status, setStatus] = useState<string | string[]>('');
   const [requestor, setRequestor] = useState('');
   const [debouncedRequestor, setDebouncedRequestor] = useState('');
+  const [domain, setDomain] = useState<string[]>([]);
   const [datePreset, setDatePreset] = useState('');
   const [customDateFrom, setCustomDateFrom] = useState('');
   const [customDateTo, setCustomDateTo] = useState('');
@@ -59,8 +65,13 @@ export function useFilterState(onPageReset: () => void) {
     }, 300);
   }, [onPageReset]);
 
-  const handleStatusChange = useCallback((value: string) => {
+  const handleStatusChange = useCallback((value: string | string[]) => {
     setStatus(value);
+    onPageReset();
+  }, [onPageReset]);
+
+  const handleDomainChange = useCallback((value: string[]) => {
+    setDomain(value);
     onPageReset();
   }, [onPageReset]);
 
@@ -96,17 +107,22 @@ export function useFilterState(onPageReset: () => void) {
     return { dateFrom: from.toISOString().slice(0, 10), dateTo: to };
   }, [datePreset, customDateFrom, customDateTo]);
 
+  // Normalize to comma-separated strings for API
+  const statusStr = Array.isArray(status) ? status.join(',') : status;
+  const domainStr = domain.join(',');
+
   const filterValues: FilterValues = {
     search: debouncedSearch,
-    status,
+    status: statusStr,
     requestor: debouncedRequestor,
     dateFrom,
     dateTo,
+    domain: domainStr,
   };
 
   const uiState = {
-    search, status, requestor, datePreset, customDateFrom, customDateTo,
-    handleSearchChange, handleStatusChange, handleRequestorChange,
+    search, status, requestor, domain, datePreset, customDateFrom, customDateTo,
+    handleSearchChange, handleStatusChange, handleRequestorChange, handleDomainChange,
     handleDatePresetChange, handleCustomDateFromChange, handleCustomDateToChange,
   };
 
@@ -129,7 +145,7 @@ export default function FilterBar({
   /** Slot for page-specific extra filters (rendered after Period) */
   children?: ReactNode;
 }) {
-  const { searchPlaceholder = 'Search by ID or Name...', statusOptions } = config;
+  const { searchPlaceholder = 'Search by ID or Name...', statusOptions, statusMultiSelect, domainOptions } = config;
 
   return (
     <div style={{ marginBottom: 16 }}>
@@ -144,18 +160,50 @@ export default function FilterBar({
           data-testid="search-input"
         />
 
-        {/* Status (hidden when statusOptions is empty — page manages its own filter) */}
+        {/* Status */}
         {statusOptions.length > 0 && (
           <Space size="small">
             <Text type="secondary">Status</Text>
+            {statusMultiSelect ? (
+              <Select
+                mode="multiple"
+                value={Array.isArray(uiState.status) ? uiState.status : (uiState.status ? [uiState.status] : [])}
+                onChange={(v: string[]) => uiState.handleStatusChange(v)}
+                placeholder="All"
+                allowClear
+                style={{ minWidth: 200 }}
+                maxTagCount="responsive"
+                data-testid="status-filter"
+                options={statusOptions.filter(Boolean).map((s) => ({ value: s, label: s }))}
+              />
+            ) : (
+              <Select
+                value={(uiState.status as string) || undefined}
+                onChange={(v) => uiState.handleStatusChange(v ?? '')}
+                placeholder="All"
+                allowClear
+                style={{ minWidth: 140 }}
+                data-testid="status-filter"
+                options={statusOptions.filter(Boolean).map((s) => ({ value: s, label: s }))}
+              />
+            )}
+          </Space>
+        )}
+
+        {/* Domain (only shown when domainOptions provided) */}
+        {domainOptions && domainOptions.length > 0 && (
+          <Space size="small">
+            <Text type="secondary">Domain</Text>
             <Select
-              value={uiState.status || undefined}
-              onChange={(v) => uiState.handleStatusChange(v ?? '')}
+              mode="multiple"
+              value={uiState.domain}
+              onChange={(v: string[]) => uiState.handleDomainChange(v)}
               placeholder="All"
               allowClear
-              style={{ minWidth: 140 }}
-              data-testid="status-filter"
-              options={statusOptions.filter(Boolean).map((s) => ({ value: s, label: s }))}
+              style={{ minWidth: 200 }}
+              maxTagCount="responsive"
+              data-testid="domain-filter"
+              options={domainOptions}
             />
           </Space>
         )}

@@ -433,48 +433,9 @@ def test_save_exclusions_rbac():
         assert resp.status_code == 403
 
 
-# ── Dispatch execution ─────────────────────────────────────────
-
-def test_execute_dispatch(client: httpx.Client, create_domain, test_rule_with_domain, cleanup_dispatch):
-    """Create + submit + dispatch to a specific domain."""
-    resp = client.post("/governance-requests", json={
-        **_BASE, "title": "Dispatch Exec Test",
-        "ruleCodes": [test_rule_with_domain["ruleCode"]],
-    })
-    rid = resp.json()["requestId"]
-    cleanup_dispatch["requests"].append(rid)
-
-    _answer_all_required_questionnaires(client, rid)
-    resp = client.put(f"/governance-requests/{rid}/submit")
-    assert resp.status_code == 200
-
-    resp = client.post(f"/dispatch/execute/{rid}", json={
-        "domainCodes": [create_domain["domainCode"]],
-    })
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["count"] >= 1
-    assert data["dispatched"][0]["domainCode"] == create_domain["domainCode"]
-
-
-def test_execute_dispatch_idempotent(client: httpx.Client, create_domain, test_rule_with_domain, cleanup_dispatch):
-    """Dispatching the same domain twice should not create duplicates."""
-    resp = client.post("/governance-requests", json={
-        **_BASE, "title": "Idempotent Test",
-        "ruleCodes": [test_rule_with_domain["ruleCode"]],
-    })
-    rid = resp.json()["requestId"]
-    cleanup_dispatch["requests"].append(rid)
-    _answer_all_required_questionnaires(client, rid)
-    client.put(f"/governance-requests/{rid}/submit")
-
-    code = create_domain["domainCode"]
-
-    resp1 = client.post(f"/dispatch/execute/{rid}", json={"domainCodes": [code]})
-    assert resp1.json()["count"] == 1
-
-    resp2 = client.post(f"/dispatch/execute/{rid}", json={"domainCodes": [code]})
-    assert resp2.json()["count"] == 0
+# ── Dispatch execution (REMOVED — dispatcher no longer exists) ──
+# Submit now auto-creates domain reviews with 'Waiting for Accept' status.
+# See test_domain_reviews.py for the new review lifecycle tests.
 
 
 # ── Mandatory / Optional ──────────────────────────────────────

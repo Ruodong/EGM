@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { useToast } from '@/components/ui/Toast';
@@ -11,6 +11,7 @@ import { FileUpload } from '../_components/FileUpload';
 import projectTypes from '@/config/project-types.json';
 import businessUnits from '@/config/business-units.json';
 import { Button, Input } from 'antd';
+import clsx from 'clsx';
 
 interface Project {
   projectId: string;
@@ -41,6 +42,7 @@ export default function CreateRequestPage() {
   const [loading, setLoading] = useState(false);
   const [selectedRules, setSelectedRules] = useState<string[]>([]);
   const triggeredDomainsRef = useRef<{ domainCode: string; domainName: string }[]>([]);
+  const [triggeredDomainsCount, setTriggeredDomainsCount] = useState(0);
   const [govProjectType, setGovProjectType] = useState('');
   const [businessUnit, setBusinessUnit] = useState('');
   const [attachments, setAttachments] = useState<File[]>([]);
@@ -84,6 +86,20 @@ export default function CreateRequestPage() {
   const [pmLoading, setPmLoading] = useState(false);
   const pmDropdownRef = useRef<HTMLDivElement>(null);
   const pmDebounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  // Step 1 validation: domains determined + all required fields filled
+  const isStep1Complete = useMemo(() => {
+    const hasDomains = triggeredDomainsRef.current.length > 0;
+    const hasProjectType = !!govProjectType;
+    const hasBusinessUnit = !!businessUnit;
+    const hasProductType = !!productSoftwareType && (productSoftwareType !== 'Other' || !!productSoftwareTypeOther.trim());
+    const hasEndUser = productEndUser.length > 0;
+    const hasRegion = userRegion.length > 0;
+    const hasProject = projectType === 'mspo'
+      ? !!selectedProject
+      : (!!nonMspo.projectCode && !!nonMspo.projectName && !!nonMspo.projectPm && !!nonMspo.projectStartDate && !!nonMspo.projectGoLiveDate);
+    return hasDomains && hasProjectType && hasBusinessUnit && hasProductType && hasEndUser && hasRegion && hasProject;
+  }, [govProjectType, businessUnit, productSoftwareType, productSoftwareTypeOther, productEndUser, userRegion, projectType, selectedProject, nonMspo, triggeredDomainsCount]);
 
   // Close dropdowns on click outside
   useEffect(() => {
@@ -175,39 +191,11 @@ export default function CreateRequestPage() {
     // Only the active mode's data is sent on submit.
   };
 
-  const submitActionRef = useRef<'save' | 'submit'>('save');
+  const submitActionRef = useRef<'save' | 'next'>('save');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const action = submitActionRef.current;
-
-    // Frontend validation for required fields — only on Submit, not Save Draft
-    if (action === 'submit') {
-      const errors: Record<string, string> = {};
-      if (!govProjectType) errors.govProjectType = 'Project Type is required';
-      if (!businessUnit) errors.businessUnit = 'Business Unit is required';
-      if (projectType === 'mspo' && !selectedProject) {
-        errors.projectId = 'Please select an MSPO project';
-      }
-      if (projectType === 'non_mspo') {
-        if (!nonMspo.projectCode) errors.projectCode = 'Project Code is required';
-        if (!nonMspo.projectName) errors.projectName = 'Project Name is required';
-        if (!nonMspo.projectPm) errors.projectPm = 'Project Manager is required';
-        if (!nonMspo.projectStartDate) errors.projectStartDate = 'Start Date is required';
-        if (!nonMspo.projectGoLiveDate) errors.projectGoLiveDate = 'Go Live Date is required';
-      }
-      if (!productSoftwareType) errors.productSoftwareType = 'Product/Software Type is required';
-      if (productSoftwareType === 'Other' && !productSoftwareTypeOther.trim()) errors.productSoftwareTypeOther = 'Please specify the type';
-      if (productEndUser.length === 0) errors.productEndUser = 'At least one end user must be selected';
-      if (userRegion.length === 0) errors.userRegion = 'At least one region must be selected';
-      if (triggeredDomainsRef.current.length === 0) errors.domains = 'At least one governance domain must be triggered by the selected rules';
-      if (Object.keys(errors).length > 0) {
-        setValidationErrors(errors);
-        toast('Please fill in all required fields', 'error');
-        return;
-      }
-      setValidationErrors({});
-    }
 
     setLoading(true);
     try {
@@ -250,29 +238,14 @@ export default function CreateRequestPage() {
         }
       }
 
-      // If submitting, transition from Draft to Submitted
-      if (action === 'submit') {
-        try {
-          await api.put(`/governance-requests/${result.requestId}/submit`, {});
-          toast('Governance request submitted', 'success');
-        } catch (submitErr: unknown) {
-          // If submit fails due to incomplete questionnaires, redirect to edit page
-          const detail = (submitErr as { detail?: string })?.detail || '';
-          if (detail.includes('Incomplete domain questionnaires')) {
-            toast('Please complete domain questionnaires before submitting', 'error');
-            router.push(`/governance/${result.requestId}`);
-            return;
-          }
-          // Show backend error detail for other submit failures
-          toast(detail || 'Failed to submit request', 'error');
-          router.push(`/governance/${result.requestId}`);
-          return;
-        }
+      if (action === 'next') {
+        // Next: save as draft, then redirect to detail page step 2 (questionnaires)
+        toast('Draft saved — please complete domain questionnaires', 'success');
+        router.push(`/governance/${result.requestId}?step=2`);
       } else {
         toast('Governance request saved as draft', 'success');
+        router.push(`/governance/${result.requestId}`);
       }
-
-      router.push(`/governance/${result.requestId}`);
     } catch {
       toast('Failed to create request', 'error');
     } finally {
@@ -284,13 +257,27 @@ export default function CreateRequestPage() {
     <PageLayout>
       <div className="max-w-2xl mx-auto">
         <h1 className="text-xl font-bold mb-6">Create Governance Request</h1>
+
+        {/* Wizard Step Indicator */}
+        <div className="flex items-center gap-3 mb-4" data-testid="wizard-steps">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium bg-egm-teal text-white">
+            <span className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center text-xs font-bold">1</span>
+            Project Information
+          </div>
+          <div className="text-text-secondary">→</div>
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium bg-gray-100 text-text-secondary">
+            <span className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center text-xs font-bold">2</span>
+            Domain Questionnaires
+          </div>
+        </div>
+
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Section 1: Governance Scope Determination */}
           <SectionCard title="Governance Scope Determination" subtitle="Select applicable compliance rules to determine governance domains">
             <GovernanceScopeDetermination
               selectedRules={selectedRules}
               onRulesChange={(rules) => { setSelectedRules(rules); setValidationErrors(prev => { const n = {...prev}; delete n.domains; return n; }); }}
-              onTriggeredDomainsChange={(domains) => { triggeredDomainsRef.current = domains; }}
+              onTriggeredDomainsChange={(domains) => { triggeredDomainsRef.current = domains; setTriggeredDomainsCount(domains.length); }}
             />
             {validationErrors.domains && <p className="text-red-500 text-xs mt-2">{validationErrors.domains}</p>}
           </SectionCard>
@@ -691,11 +678,11 @@ export default function CreateRequestPage() {
               htmlType="submit"
               type="primary"
               style={{ background: '#13C2C2', borderColor: '#13C2C2' }}
-              disabled={loading}
-              onClick={() => { submitActionRef.current = 'submit'; }}
-              data-testid="submit-request-btn"
+              disabled={!isStep1Complete || loading}
+              onClick={() => { submitActionRef.current = 'next'; }}
+              data-testid="next-step-btn"
             >
-              {loading && submitActionRef.current === 'submit' ? 'Submitting...' : 'Submit Request'}
+              {loading && submitActionRef.current === 'next' ? 'Saving...' : 'Next'}
             </Button>
           </div>
         </form>

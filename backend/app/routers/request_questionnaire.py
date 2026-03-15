@@ -69,6 +69,7 @@ async def get_templates_for_request(
     for r in tmpl_rows:
         by_domain.setdefault(r["domain_code"], []).append({
             "id": str(r["id"]),
+            "section": r.get("section") or None,
             "questionNo": r["question_no"],
             "questionText": r["question_text"],
             "questionDescription": r.get("question_description"),
@@ -124,7 +125,7 @@ async def save_responses(
         "SELECT status FROM governance_request WHERE id = :rid"
     ), {"rid": rid})).mappings().first()
     track_changes = gr_row and gr_row["status"] in (
-        "Submitted", "In Progress", "Information Inquiry"
+        "Submitted", "In Progress"
     )
 
     # Pre-fetch existing answers for change tracking

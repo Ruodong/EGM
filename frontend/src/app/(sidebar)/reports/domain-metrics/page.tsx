@@ -37,22 +37,22 @@ export default function DomainMetricsPage() {
   });
 
   const domainStats = Array.from(domainMap.entries()).map(([code, items]) => {
-    const completed = items.filter((r) => r.status === 'Review Complete');
-    const approved = completed.filter((r) => r.outcome === 'Approved' || r.outcome === 'Approved with Conditions');
-    const rejected = completed.filter((r) => r.outcome === 'Rejected');
-    const inProgress = items.filter((r) => r.status === 'In Progress');
-    const pending = items.filter((r) => r.status === 'Pending' || r.status === 'Assigned');
+    const terminal = items.filter((r) => r.status === 'Approved' || r.status === 'Approved with Exception' || r.status === 'Not Passed');
+    const approved = items.filter((r) => r.status === 'Approved' || r.status === 'Approved with Exception');
+    const notPassed = items.filter((r) => r.status === 'Not Passed');
+    const inProgress = items.filter((r) => r.status === 'Accept');
+    const pending = items.filter((r) => r.status === 'Waiting for Accept' || r.status === 'Return for Additional Information');
 
     return {
       domainCode: code,
       domainName: items[0]?.domainName || code,
       total: items.length,
-      completed: completed.length,
+      completed: terminal.length,
       approved: approved.length,
-      rejected: rejected.length,
+      rejected: notPassed.length,
       inProgress: inProgress.length,
       pending: pending.length,
-      completionRate: items.length > 0 ? Math.round((completed.length / items.length) * 100) : 0,
+      completionRate: items.length > 0 ? Math.round((terminal.length / items.length) * 100) : 0,
     };
   });
 
@@ -82,7 +82,7 @@ export default function DomainMetricsPage() {
             </div>
             <div className="bg-white rounded-lg border border-border-light p-5">
               <p className="text-3xl font-bold text-status-completed">
-                {reviews.filter((r) => r.status === 'Review Complete').length}
+                {reviews.filter((r) => r.status === 'Approved' || r.status === 'Approved with Exception' || r.status === 'Not Passed').length}
               </p>
               <p className="text-sm text-text-secondary mt-1">Completed</p>
             </div>

@@ -56,7 +56,7 @@ const STATUS_OPTIONS: MultiSelectOption[] = [
   { value: 'Draft', label: 'Draft' },
   { value: 'Submitted', label: 'Submitted' },
   { value: 'In Progress', label: 'In Progress' },
-  { value: 'Completed', label: 'Completed' },
+  { value: 'Complete', label: 'Complete' },
 ];
 
 const LIFECYCLE_OPTIONS: MultiSelectOption[] = [

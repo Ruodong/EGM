@@ -35,15 +35,11 @@ async def home_stats(db: AsyncSession = Depends(get_db)):
         "SELECT COUNT(*) FROM governance_request WHERE status = 'In Progress'"
     ))).scalar() or 0
     completed = (await db.execute(text(
-        "SELECT COUNT(*) FROM governance_request WHERE status = 'Completed'"
-    ))).scalar() or 0
-    open_isrs = (await db.execute(text(
-        "SELECT COUNT(*) FROM info_supplement_request WHERE status IN ('Open', 'Acknowledged')"
+        "SELECT COUNT(*) FROM governance_request WHERE status = 'Complete'"
     ))).scalar() or 0
 
     return {
         "totalRequests": total,
         "inReview": in_review,
         "completed": completed,
-        "openInfoRequests": open_isrs,
     }

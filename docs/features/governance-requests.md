@@ -45,6 +45,7 @@ Governance Requests is the core feature of EGM, providing full CRUD lifecycle ma
 | GET | `/api/governance-requests/{request_id}/attachments` | List attachment metadata for a request |
 | GET | `/api/governance-requests/{request_id}/attachments/{att_id}` | Download attachment binary |
 | DELETE | `/api/governance-requests/{request_id}/attachments/{att_id}` | Delete an attachment |
+| GET | `/api/governance-requests/{request_id}/activity-log` | Return chronological activity log combining request and domain review audit entries |
 | GET | `/api/employees/search?q={query}` | Search employees by itcode or name (ILIKE) |
 
 ## UI Behavior
@@ -77,7 +78,8 @@ Governance Requests is the core feature of EGM, providing full CRUD lifecycle ma
 - Header shows EGQ ID (or business ID fallback), governance project type, project name, status badge, priority, and verdict badge (if set)
 - Step indicator bar: Create > Scoping > Questionnaire > Reviews > Summary, with completed steps highlighted in teal
 - Left panel: Request Details (requestor, organization, project, created date, description)
-- Right panel (conditional): Review Progress showing domain completion bar, open info request count, and per-domain status list; only displayed when the request has been dispatched (status is not Draft)
+- Right panel (conditional): Review Progress showing domain completion bar and per-domain status list; only displayed when the request has been dispatched (status is not Draft)
+- **Returned domains**: When any domain review has "Return for Additional Information" status, a Domain Questionnaire section appears (editable) above Review Progress, and a Resubmit button appears to send returned domains back for review
 
 ### Error States
 - 404 on detail page: renders "Request not found" message
@@ -217,4 +219,5 @@ frontend/src/lib/csv.ts                   -> e2e-tests/governance-requests.spec.
 - **Project linking**: The optional `projectId` field references the `project` table (synced from EAM). A LEFT JOIN resolves `projectName` on all read operations. Invalid project IDs are rejected at creation and update time.
 - **Audit trail**: Create, submit, and verdict actions write entries to the audit log via `write_audit()`, capturing old and new values for traceability.
 - **camelCase mapping**: The `_map()` function converts snake_case database columns to camelCase JSON keys, consistent with the project-wide API convention.
-- **Status lifecycle**: Draft -> Submitted -> (dispatcher moves to In Review) -> Completed. The "In Review" and "Info Requested" states are managed by other subsystems (dispatcher, domain reviews, ISRs) rather than this router directly.
+- **Status lifecycle**: Draft -> Submitted -> In Progress (first domain accept) -> Complete (all reviews terminal). Status transitions are managed by domain review actions rather than this router directly.
+- **Activity log**: The `/{request_id}/activity-log` endpoint combines audit entries for both the governance request and all its domain reviews. Entries are sorted by `performed_at ASC, entity_type ASC` so domain review events appear before request status changes when timestamps are identical (causal ordering). Details column shows: return reasons from `new_value.reason`, outcome notes from `new_value.outcomeNotes`, and falls back to `domain_review.outcome_notes` for `approved_with_exception` and `not_passed` actions (covers historical audit entries).

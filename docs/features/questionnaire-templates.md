@@ -38,13 +38,14 @@ Settings UI for managing per-domain questionnaire templates that domain reviewer
 
 ## UI Behavior
 
-1. Page loads showing internal domains as expandable accordion sections
-2. Each domain section shows a table of questions: #, Question, Type, Required, Actions
-3. "Add Question" button opens a form dialog with: Domain dropdown, Section, Question #, Question Text, Answer Type, Options editor (for radio/multiselect/dropdown), Required checkbox, Sort Order
-4. Edit button on each row opens the same form pre-filled
-5. Toggle button on each row toggles is_active status
-6. Domain Reviewer only sees their assigned domains
-7. Write permission required for Add/Edit/Toggle buttons
+1. Page loads showing internal domains as expandable accordion sections (all collapsed by default)
+2. Each domain section shows a table of questions: Section, Question, Type, Required, Actions
+3. "Add Question" button opens a form dialog with: Domain dropdown, Section (AutoComplete — select existing sections for the domain or type new), Question Text, Answer Type, Options editor (for radio/multiselect/dropdown), Required checkbox, Sort Order
+4. In the DomainQuestionnaires component (request detail / domain review detail), questions within each domain are grouped by section with collapsible sub-headers (gray bar with arrow, section name, question count)
+5. Edit button on each row opens the same form pre-filled
+6. Toggle button on each row toggles is_active status
+7. Domain Reviewer only sees their assigned domains
+8. Write permission required for Add/Edit/Toggle buttons
 
 ## Acceptance Criteria
 

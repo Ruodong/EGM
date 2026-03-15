@@ -25,11 +25,11 @@
       "tables": [
         "domain_registry", "dispatch_rule", "dispatch_rule_domain", "domain_review",
         "domain_questionnaire_response", "domain_questionnaire_template",
-        "info_supplement_request", "review_action", "review_comment"
+        "review_action", "review_comment"
       ],
       "routers": [
-        "dispatcher.py", "dispatch_rules.py", "domain_registry.py",
-        "domain_reviews.py", "info_requests.py"
+        "dispatch_rules.py", "domain_registry.py",
+        "domain_reviews.py"
       ],
       "frontendPaths": [
         "frontend/src/app/(sidebar)/settings/",
@@ -129,7 +129,7 @@
       "from": "domain-dispatch",
       "to": "governance-requests",
       "type": "FK+status_write",
-      "detail": "domain_review.request_id FK ON DELETE CASCADE; dispatcher sets status='In Review'; ISR sets 'Info Requested'; ISR resolve restores 'In Review'"
+      "detail": "domain_review.request_id FK ON DELETE CASCADE; first accept sets status='In Progress'; auto-complete sets status='Complete' when all reviews terminal"
     },
     {
       "from": "domain-dispatch",
@@ -140,14 +140,14 @@
     {
       "from": "domain-dispatch",
       "to": "intake-scoping",
-      "type": "data_write",
-      "detail": "ISR change_reason links to intake_change_log entries"
+      "type": "data_read",
+      "detail": "return_reason on domain review may reference intake fields"
     },
     {
       "from": "governance-requests",
       "to": "domain-dispatch",
       "type": "guard",
-      "detail": "verdict endpoint checks all domain_review statuses are Complete/Waived + no open ISRs"
+      "detail": "auto-complete checks all domain_review statuses are terminal (Approved/Approved with Exception/Not Passed)"
     },
     {
       "from": "project-linking",

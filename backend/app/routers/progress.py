@@ -26,15 +26,9 @@ async def get_progress(request_id: str, db: AsyncSession = Depends(get_db)):
     ), {"rid": str(gr["id"])})).mappings().all()
 
     total = len(reviews)
-    completed = sum(1 for r in reviews if r["status"] in ("Review Complete", "Waived"))
-    in_progress = sum(1 for r in reviews if r["status"] == "In Progress")
-    pending = sum(1 for r in reviews if r["status"] in ("Pending", "Assigned"))
-
-    # Check open ISRs
-    open_isrs = (await db.execute(text(
-        "SELECT COUNT(*) FROM info_supplement_request "
-        "WHERE request_id = :rid AND status IN ('Open', 'Acknowledged')"
-    ), {"rid": str(gr["id"])})).scalar() or 0
+    completed = sum(1 for r in reviews if r["status"] in ("Approved", "Approved with Exception", "Not Passed"))
+    in_progress = sum(1 for r in reviews if r["status"] == "Accept")
+    pending = sum(1 for r in reviews if r["status"] in ("Waiting for Accept", "Return for Additional Information"))
 
     return {
         "requestId": gr["request_id"],
@@ -44,11 +38,10 @@ async def get_progress(request_id: str, db: AsyncSession = Depends(get_db)):
         "inProgressDomains": in_progress,
         "pendingDomains": pending,
         "progressPercent": round(completed / total * 100) if total > 0 else 0,
-        "openInfoRequests": open_isrs,
         "domains": [{
+            "reviewId": str(r["id"]),
             "domainCode": r["domain_code"],
             "status": r["status"],
-            "outcome": r.get("outcome"),
             "reviewer": r.get("reviewer_name") or r.get("reviewer"),
         } for r in reviews],
     }

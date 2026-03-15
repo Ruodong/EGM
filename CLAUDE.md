@@ -5,7 +5,7 @@
 - `frontend/` — Next.js 15 (TypeScript), port 3001
 - `api-tests/` — pytest API integration tests (against localhost:4001)
 - `e2e-tests/` — Playwright E2E browser tests (against localhost:3001)
-- `scripts/` — DB migrations, sync scripts
+- `scripts/` — DB migrations, sync scripts, test-map.json
 
 ## Databases
 - EGM: PostgreSQL `egm_local` on port 5433 (Docker: `egm-postgres`), schema `egm`
@@ -16,72 +16,21 @@
 - Frontend: `npm run dev:frontend` (port 3001)
 - Use `.claude/launch.json` preview servers when possible
 
-## Feature Development Workflow (MANDATORY — ALL CODE CHANGES)
+## Code Changes → Closed-Loop Workflow (MANDATORY)
 
-**Every request that involves code changes, feature additions, bug fixes, or refactors MUST follow the Closed-Loop Feature Development workflow.** This is not optional — it applies to all changes, not just "new features" or "significant changes".
+All code changes MUST follow `.claude/skills/closed-loop-development.md` (Assess → Doc → Code → Test → Verify).
 
-- **Skill definition**: `.claude/skills/closed-loop-development.md` (5 phases: Assess → Doc → Code → Test → Verify)
-- **Full documentation**: `docs/development-workflow.md` (for human reference and onboarding)
+Skip only for: documentation-only changes, test-only changes, dependency version bumps with no code changes.
 
-### When to trigger the workflow
+## Testing
 
-The workflow MUST be triggered for:
-- New feature implementation
-- Bug fixes that touch backend or frontend code
-- Refactors that modify existing behavior
-- Schema changes (ALTER TABLE, new tables, new columns)
-- API contract changes (new endpoints, changed request/response shapes)
-- Frontend page additions or modifications
-- Configuration or infrastructure changes that affect runtime behavior
-
-The workflow may be skipped ONLY for:
-- Documentation-only changes (markdown files, comments)
-- Test-only changes (adding tests without changing source code)
-- Dependency version bumps with no code changes
-
-### Quick reference for the 5 phases
-
-1. **Assess** — Read `docs/features/_DEPENDENCIES.json`, classify Impact (L1-L4) × Risk (Low/Med/High), auto-approve or pause for user review
-2. **Doc** — Create/update `docs/features/<slug>.md` from `docs/features/_TEMPLATE.md`, update dependency graph if needed
-3. **Code** — Implement backend + frontend, add new files to `scripts/test-map.json`
-4. **Test** — Write API tests + E2E tests per AC. PostToolUse hook auto-runs affected tests on every Edit/Write.
-5. **Verify** — Check off ACs, fill test coverage, set status to "Implemented", run full test suite
-
-When modifying an existing feature, always check for and update the corresponding feature doc in `docs/features/`. Every feature now has a spec — there should be no `"doc": null` entries in `_DEPENDENCIES.json`.
-
-## Testing Rules (MANDATORY)
-
-### Test mapping (single source of truth)
-All source-file → test-file mappings live in `scripts/test-map.json`.
-- The PostToolUse hook reads this file to decide which tests to run automatically.
-- When you add a new source file, add its mapping to `scripts/test-map.json`.
-- Do NOT duplicate mappings elsewhere — `test-map.json` is the only place.
-- New router added → create `api-tests/test_<name>.py`, register in `backend/app/main.py`, add to `test-map.json`
-- New frontend page added → add E2E cases, add to `test-map.json`
-
-### How to run tests after changes
-After modifying code, run ONLY the affected tests:
-
-```bash
-# API tests — specific file
-python3 -m pytest api-tests/test_governance_requests.py -v --tb=short
-
-# E2E tests — specific file
-npx playwright test e2e-tests/governance-requests.spec.ts --reporter=list
-
-# E2E tests — specific test by name
-npx playwright test -g "create new request" --reporter=list
-```
-
-### Full test suite (before marking work complete)
-```bash
-python3 -m pytest api-tests/ -v --tb=short    # 86+ API tests
-npx playwright test --reporter=list            # 24+ E2E tests
-```
+- Source → test mappings: `scripts/test-map.json` (single source of truth)
+- PostToolUse hook auto-runs affected tests on Edit/Write
+- New router → create `api-tests/test_<name>.py`, register in `main.py`, add to `test-map.json`
+- New page → add E2E cases, add to `test-map.json`
+- Full suite: `python3 -m pytest api-tests/ -v --tb=short` + `npx playwright test --reporter=list`
 
 ## Code Conventions
-- Backend responses use camelCase keys (mapped from snake_case DB columns)
-- All routers use `require_permission(resource, action)` for RBAC
-- DB queries use raw SQL via `sqlalchemy.text()` (no ORM models)
-- Frontend uses `@/lib/api` wrapper for all API calls
-- Shared fixtures in `api-tests/conftest.py` (create_request, dispatched_request, etc.)
+- Backend: camelCase responses (mapped from snake_case DB), `require_permission()` RBAC, raw SQL via `sqlalchemy.text()`
+- Frontend: `@/lib/api` wrapper, Ant Design 5 components
+- Shared test fixtures: `api-tests/conftest.py`

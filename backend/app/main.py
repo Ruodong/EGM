@@ -11,9 +11,7 @@ from app.routers import (
     intake,
     domain_registry,
     domain_reviews,
-    dispatcher,
     dispatch_rules,
-    info_requests,
     dashboard,
     progress,
     audit_log,
@@ -44,8 +42,6 @@ app.include_router(projects.router, prefix="/api/projects", tags=["Projects"])
 app.include_router(intake.router, prefix="/api/intake", tags=["Intake"])
 app.include_router(domain_registry.router, prefix="/api/domains", tags=["Domain Registry"])
 app.include_router(domain_reviews.router, prefix="/api/domain-reviews", tags=["Domain Reviews"])
-app.include_router(dispatcher.router, prefix="/api/dispatch", tags=["Dispatcher"])
-app.include_router(info_requests.router, prefix="/api/info-requests", tags=["Info Supplement Requests"])
 app.include_router(dashboard.router, prefix="/api/dashboard", tags=["Dashboard"])
 app.include_router(progress.router, prefix="/api/progress", tags=["Progress"])
 app.include_router(dispatch_rules.router, prefix="/api/dispatch-rules", tags=["Dispatch Rules"])

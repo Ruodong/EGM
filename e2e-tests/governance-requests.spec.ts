@@ -210,9 +210,18 @@ test.describe('Governance Requests', () => {
     createdRequestIds.push(gr.requestId);
     expect(gr.status).toBe('Draft');
 
-    // Navigate to detail page
+    // Navigate to detail page (wizard step 1)
     await page.goto(`/governance/${gr.requestId}`);
-    await expect(page.getByTestId('submit-request-btn')).toBeVisible();
+
+    // Wizard mode: click Next to go to step 2 (questionnaires), then Submit
+    const nextBtn = page.getByTestId('next-step-btn');
+    await expect(nextBtn).toBeVisible({ timeout: 15000 });
+    // Wait for Next to become enabled (all required fields loaded)
+    await expect(nextBtn).toBeEnabled({ timeout: 10000 });
+    await nextBtn.click();
+
+    // Now on step 2 — Submit button should be visible
+    await expect(page.getByTestId('submit-request-btn')).toBeVisible({ timeout: 5000 });
 
     // Click Submit and intercept the PUT response
     const [submitResp] = await Promise.all([

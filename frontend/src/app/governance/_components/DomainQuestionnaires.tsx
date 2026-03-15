@@ -9,6 +9,7 @@ import { getDomainIcon } from '@/lib/domain-icons';
 
 interface Question {
   id: string;
+  section: string | null;
   questionNo: number;
   questionText: string;
   questionDescription: string | null;
@@ -51,6 +52,7 @@ export const DomainQuestionnaires = forwardRef<DomainQuestionnairesRef, DomainQu
   function DomainQuestionnaires({ requestId, readOnly = false }, ref) {
     const qc = useQueryClient();
     const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+    const [sectionCollapsed, setSectionCollapsed] = useState<Record<string, boolean>>({});
     const [answers, setAnswers] = useState<Record<string, SavedResponse['answer']>>({});
     const pendingSaves = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
@@ -194,19 +196,75 @@ export const DomainQuestionnaires = forwardRef<DomainQuestionnairesRef, DomainQu
                 </span>
               </button>
 
-              {/* Questions */}
+              {/* Questions — grouped by section */}
               {!isCollapsed && (
-                <div className="px-4 pb-4 space-y-4 border-t border-border-light pt-3">
-                  {group.questions.map((q) => (
-                    <QuestionInput
-                      key={q.id}
-                      question={q}
-                      domainCode={group.domainCode}
-                      answer={answers[q.id] || null}
-                      onChange={(answer) => updateAnswer(q.id, group.domainCode, answer)}
-                      readOnly={readOnly}
-                    />
-                  ))}
+                <div className="border-t border-border-light">
+                  {(() => {
+                    // Group questions by section (preserve order)
+                    const sections: { name: string | null; questions: Question[] }[] = [];
+                    for (const q of group.questions) {
+                      const sName = q.section || null;
+                      const last = sections[sections.length - 1];
+                      if (last && last.name === sName) {
+                        last.questions.push(q);
+                      } else {
+                        sections.push({ name: sName, questions: [q] });
+                      }
+                    }
+                    const hasSections = sections.some(s => s.name);
+
+                    return sections.map((sec, si) => {
+                      const sectionKey = `${group.domainCode}::${sec.name ?? si}`;
+                      const isSectionCollapsed = sectionCollapsed[sectionKey] ?? false;
+
+                      if (!hasSections || !sec.name) {
+                        // No section header — render questions directly
+                        return (
+                          <div key={sectionKey} className="px-4 pb-4 pt-3 space-y-4">
+                            {sec.questions.map((q) => (
+                              <QuestionInput
+                                key={q.id}
+                                question={q}
+                                domainCode={group.domainCode}
+                                answer={answers[q.id] || null}
+                                onChange={(answer) => updateAnswer(q.id, group.domainCode, answer)}
+                                readOnly={readOnly}
+                              />
+                            ))}
+                          </div>
+                        );
+                      }
+
+                      // Section with collapsible header
+                      return (
+                        <div key={sectionKey}>
+                          <button
+                            type="button"
+                            onClick={() => setSectionCollapsed(prev => ({ ...prev, [sectionKey]: !prev[sectionKey] }))}
+                            className="w-full flex items-center gap-2 px-4 py-2.5 bg-gray-50 hover:bg-gray-100 transition-colors border-t border-border-light first:border-t-0 text-left"
+                          >
+                            {isSectionCollapsed ? <RightOutlined style={{ fontSize: 10 }} /> : <DownOutlined style={{ fontSize: 10 }} />}
+                            <span className="text-sm font-medium text-text-secondary">{sec.name}</span>
+                            <span className="text-xs text-text-secondary ml-auto">{sec.questions.length} question{sec.questions.length !== 1 ? 's' : ''}</span>
+                          </button>
+                          {!isSectionCollapsed && (
+                            <div className="px-4 pb-4 pt-3 space-y-4">
+                              {sec.questions.map((q) => (
+                                <QuestionInput
+                                  key={q.id}
+                                  question={q}
+                                  domainCode={group.domainCode}
+                                  answer={answers[q.id] || null}
+                                  onChange={(answer) => updateAnswer(q.id, group.domainCode, answer)}
+                                  readOnly={readOnly}
+                                />
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    });
+                  })()}
                 </div>
               )}
             </div>

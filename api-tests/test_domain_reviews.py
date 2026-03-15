@@ -1,4 +1,4 @@
-"""Test domain review lifecycle endpoints."""
+"""Test domain review lifecycle endpoints (new 6-state machine)."""
 import httpx
 
 
@@ -10,75 +10,190 @@ def test_list_reviews(client: httpx.Client):
     assert "total" in data
 
 
-def test_dispatch_creates_review(client: httpx.Client, dispatched_request):
-    """Dispatch should create at least one domain review."""
-    dispatch = dispatched_request["dispatched"]
-    assert dispatch["count"] >= 1
-    assert len(dispatch["dispatched"]) >= 1
-    assert dispatch["dispatched"][0]["status"] == "Pending"
+def test_submit_creates_reviews(client: httpx.Client, submitted_request_with_reviews):
+    """Submit should auto-create domain reviews with 'Waiting for Accept' status."""
+    reviews = submitted_request_with_reviews["reviews"]
+    assert len(reviews) >= 1
+    assert reviews[0]["status"] == "Waiting for Accept"
 
 
-def test_get_review(client: httpx.Client, dispatched_request):
-    review_id = dispatched_request["reviewId"]
+def test_get_review(client: httpx.Client, submitted_request_with_reviews):
+    review_id = submitted_request_with_reviews["reviewId"]
     resp = client.get(f"/domain-reviews/{review_id}")
     assert resp.status_code == 200
     data = resp.json()
     assert data["id"] == review_id
-    assert data["status"] == "Pending"
+    assert data["status"] == "Waiting for Accept"
 
 
-def test_assign_reviewer(client: httpx.Client, dispatched_request):
-    review_id = dispatched_request["reviewId"]
-    resp = client.put(f"/domain-reviews/{review_id}/assign", json={
-        "reviewer": "test_reviewer",
-        "reviewerName": "Test Reviewer",
-    })
+def test_accept_review(client: httpx.Client, submitted_request_with_reviews):
+    """Accept: Waiting for Accept → Accept. First accept transitions request to In Progress."""
+    review_id = submitted_request_with_reviews["reviewId"]
+    rid = submitted_request_with_reviews["request"]["requestId"]
+
+    resp = client.put(f"/domain-reviews/{review_id}/accept")
     assert resp.status_code == 200
-    assert resp.json()["status"] == "Assigned"
-    assert resp.json()["reviewer"] == "test_reviewer"
+    assert resp.json()["status"] == "Accept"
+    assert resp.json()["reviewer"] is not None
+    assert resp.json()["startedAt"] is not None
+
+    # Request should now be In Progress
+    gr_resp = client.get(f"/governance-requests/{rid}")
+    assert gr_resp.status_code == 200
+    assert gr_resp.json()["status"] == "In Progress"
 
 
-def test_start_review(client: httpx.Client, dispatched_request):
-    review_id = dispatched_request["reviewId"]
-    # Assign first
-    client.put(f"/domain-reviews/{review_id}/assign")
-    # Start
-    resp = client.put(f"/domain-reviews/{review_id}/start")
-    assert resp.status_code == 200
-    assert resp.json()["status"] == "In Progress"
-
-
-def test_complete_review(client: httpx.Client, dispatched_request):
-    review_id = dispatched_request["reviewId"]
-    # Assign → Start → Complete
-    client.put(f"/domain-reviews/{review_id}/assign")
-    client.put(f"/domain-reviews/{review_id}/start")
-    resp = client.put(f"/domain-reviews/{review_id}/complete", json={
-        "outcome": "Approved",
-        "outcomeNotes": "Looks good",
-    })
-    assert resp.status_code == 200
-    assert resp.json()["status"] == "Review Complete"
-    assert resp.json()["outcome"] == "Approved"
-
-
-def test_complete_invalid_outcome(client: httpx.Client, dispatched_request):
-    review_id = dispatched_request["reviewId"]
-    resp = client.put(f"/domain-reviews/{review_id}/complete", json={
-        "outcome": "InvalidValue",
-    })
+def test_accept_requires_waiting_status(client: httpx.Client, submitted_request_with_reviews):
+    """Cannot accept a review that's not in 'Waiting for Accept' status."""
+    review_id = submitted_request_with_reviews["reviewId"]
+    # Accept first
+    client.put(f"/domain-reviews/{review_id}/accept")
+    # Try accept again (now in 'Accept' status)
+    resp = client.put(f"/domain-reviews/{review_id}/accept")
     assert resp.status_code == 400
 
 
-def test_waive_review(client: httpx.Client, dispatched_request):
-    review_id = dispatched_request["reviewId"]
-    resp = client.put(f"/domain-reviews/{review_id}/waive")
+def test_return_review(client: httpx.Client, submitted_request_with_reviews):
+    """Return: Waiting for Accept → Return for Additional Information."""
+    review_id = submitted_request_with_reviews["reviewId"]
+
+    resp = client.put(f"/domain-reviews/{review_id}/return", json={
+        "reason": "Need more details about the architecture"
+    })
     assert resp.status_code == 200
-    assert resp.json()["status"] == "Waived"
+    assert resp.json()["status"] == "Return for Additional Information"
+    assert resp.json()["returnReason"] == "Need more details about the architecture"
 
 
-def test_filter_reviews_by_request(client: httpx.Client, dispatched_request):
-    rid = dispatched_request["request"]["requestId"]
+def test_return_requires_reason(client: httpx.Client, submitted_request_with_reviews):
+    """Return without reason should fail."""
+    review_id = submitted_request_with_reviews["reviewId"]
+    resp = client.put(f"/domain-reviews/{review_id}/return", json={"reason": ""})
+    assert resp.status_code == 400
+
+
+def test_return_does_not_change_request_status(client: httpx.Client, submitted_request_with_reviews):
+    """Return should NOT change governance request status."""
+    review_id = submitted_request_with_reviews["reviewId"]
+    rid = submitted_request_with_reviews["request"]["requestId"]
+
+    # Check initial request status
+    gr_before = client.get(f"/governance-requests/{rid}").json()
+    initial_status = gr_before["status"]
+
+    # Return the review
+    client.put(f"/domain-reviews/{review_id}/return", json={"reason": "Test reason"})
+
+    # Request status should be unchanged
+    gr_after = client.get(f"/governance-requests/{rid}").json()
+    assert gr_after["status"] == initial_status
+
+
+def test_resubmit_review(client: httpx.Client, submitted_request_with_reviews):
+    """Resubmit: Return for Additional Information → Waiting for Accept."""
+    review_id = submitted_request_with_reviews["reviewId"]
+
+    # Return first
+    client.put(f"/domain-reviews/{review_id}/return", json={"reason": "Need info"})
+
+    # Resubmit
+    resp = client.put(f"/domain-reviews/{review_id}/resubmit")
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "Waiting for Accept"
+    assert resp.json()["returnReason"] is None  # cleared
+
+
+def test_resubmit_requires_return_status(client: httpx.Client, submitted_request_with_reviews):
+    """Cannot resubmit a review not in 'Return for Additional Information' status."""
+    review_id = submitted_request_with_reviews["reviewId"]
+    # Review is in 'Waiting for Accept', not 'Return for Additional Information'
+    resp = client.put(f"/domain-reviews/{review_id}/resubmit")
+    assert resp.status_code == 400
+
+
+def test_approve_review(client: httpx.Client, submitted_request_with_reviews):
+    """Approve: Accept → Approved (terminal)."""
+    review_id = submitted_request_with_reviews["reviewId"]
+
+    # Accept first
+    client.put(f"/domain-reviews/{review_id}/accept")
+
+    # Approve
+    resp = client.put(f"/domain-reviews/{review_id}/approve")
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "Approved"
+    assert resp.json()["completedAt"] is not None
+
+
+def test_approve_with_exception(client: httpx.Client, submitted_request_with_reviews):
+    """Approve with exception: Accept → Approved with Exception (terminal)."""
+    review_id = submitted_request_with_reviews["reviewId"]
+
+    client.put(f"/domain-reviews/{review_id}/accept")
+
+    resp = client.put(f"/domain-reviews/{review_id}/approve-with-exception", json={
+        "outcomeNotes": "Exception: requires follow-up audit"
+    })
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "Approved with Exception"
+    assert resp.json()["outcomeNotes"] == "Exception: requires follow-up audit"
+
+
+def test_not_pass_review(client: httpx.Client, submitted_request_with_reviews):
+    """Not pass: Accept → Not Passed (terminal)."""
+    review_id = submitted_request_with_reviews["reviewId"]
+
+    client.put(f"/domain-reviews/{review_id}/accept")
+
+    resp = client.put(f"/domain-reviews/{review_id}/not-pass", json={
+        "outcomeNotes": "Does not meet compliance requirements"
+    })
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "Not Passed"
+
+
+def test_terminal_requires_accept_status(client: httpx.Client, submitted_request_with_reviews):
+    """Cannot approve/not-pass a review that's not in 'Accept' status."""
+    review_id = submitted_request_with_reviews["reviewId"]
+    # Review is in 'Waiting for Accept'
+    resp = client.put(f"/domain-reviews/{review_id}/approve")
+    assert resp.status_code == 400
+
+    resp = client.put(f"/domain-reviews/{review_id}/approve-with-exception")
+    assert resp.status_code == 400
+
+    resp = client.put(f"/domain-reviews/{review_id}/not-pass")
+    assert resp.status_code == 400
+
+
+def test_accept_is_one_way(client: httpx.Client, submitted_request_with_reviews):
+    """After Accept, cannot return to 'Return for Additional Information'."""
+    review_id = submitted_request_with_reviews["reviewId"]
+    client.put(f"/domain-reviews/{review_id}/accept")
+
+    # Try to return — should fail because status is 'Accept', not 'Waiting for Accept'
+    resp = client.put(f"/domain-reviews/{review_id}/return", json={"reason": "Try to return"})
+    assert resp.status_code == 400
+
+
+def test_auto_complete_request(client: httpx.Client, submitted_request_with_reviews):
+    """When all reviews reach terminal status, request auto-transitions to Complete."""
+    reviews = submitted_request_with_reviews["reviews"]
+    rid = submitted_request_with_reviews["request"]["requestId"]
+
+    # Accept and approve all reviews
+    for review in reviews:
+        client.put(f"/domain-reviews/{review['id']}/accept")
+        client.put(f"/domain-reviews/{review['id']}/approve")
+
+    # Request should now be Complete
+    gr_resp = client.get(f"/governance-requests/{rid}")
+    assert gr_resp.status_code == 200
+    assert gr_resp.json()["status"] == "Complete"
+
+
+def test_filter_reviews_by_request(client: httpx.Client, submitted_request_with_reviews):
+    rid = submitted_request_with_reviews["request"]["requestId"]
     resp = client.get("/domain-reviews", params={"request_id": rid})
     assert resp.status_code == 200
     assert resp.json()["total"] >= 1

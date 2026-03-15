@@ -508,15 +508,15 @@ async def update_request(request_id: str, body: dict, user: AuthUser = Depends(g
     if not current:
         raise HTTPException(status_code=404, detail="Not found")
 
-    # Block edits on Completed requests
-    if current["status"] == "Completed":
-        raise HTTPException(status_code=403, detail="Completed requests cannot be edited")
+    # Block edits on Complete requests
+    if current["status"] == "Complete":
+        raise HTTPException(status_code=403, detail="Complete requests cannot be edited")
 
     # Requestor-only users can only edit their own requests
     if _is_requestor_only(user) and current["requestor"] != user.id:
         raise HTTPException(status_code=403, detail="Access denied: you can only edit your own requests")
 
-    track_changes = current["status"] in ("Submitted", "In Progress", "Information Inquiry")
+    track_changes = current["status"] in ("Submitted", "In Progress")
 
     # ── 2. Build SET clause ──
     sets: list[str] = []
@@ -878,6 +878,91 @@ async def get_changelog(request_id: str, db: AsyncSession = Depends(get_db)):
     } for r in rows]}
 
 
+# Map raw audit action → business-friendly description
+_ACTION_LABELS: dict[str, str] = {
+    # governance_request actions
+    "created": "Draft Creation",
+    "submitted": "Submit",
+    "cancelled": "Cancel",
+    "archived": "Archive",
+    "auto_completed": "Request Complete",
+    "status_in_progress": "Request In Progress",
+    # domain_review actions
+    "accepted": "Accept by {domain}",
+    "returned": "Return by {domain} for Additional Information",
+    "resubmitted": "Resubmit for {domain}",
+    "approved": "Approve by {domain}",
+    "approved_with_exception": "Approve with Exception by {domain}",
+    "not_passed": "Not Pass by {domain}",
+}
+
+
+@router.get("/{request_id}/activity-log", dependencies=[Depends(require_permission("governance_request", "read"))])
+async def get_activity_log(request_id: str, db: AsyncSession = Depends(get_db)):
+    """Return business-level activity log for a governance request.
+
+    Combines audit_log entries for both the governance_request itself
+    and all its domain_reviews into a single chronological list.
+    """
+    gr_uuid = await _resolve_request_uuid(db, request_id)
+
+    rows = (await db.execute(text("""
+        (
+            SELECT al.id, al.entity_type, al.action, al.new_value,
+                   al.performed_by, al.performed_at,
+                   ei.name AS performer_name,
+                   NULL AS dr_outcome_notes
+            FROM audit_log al
+            LEFT JOIN employee_info ei ON ei.itcode = al.performed_by
+            WHERE al.entity_type = 'governance_request'
+              AND al.entity_id = :rid
+        )
+        UNION ALL
+        (
+            SELECT al.id, al.entity_type, al.action, al.new_value,
+                   al.performed_by, al.performed_at,
+                   ei.name AS performer_name,
+                   dr.outcome_notes AS dr_outcome_notes
+            FROM audit_log al
+            LEFT JOIN employee_info ei ON ei.itcode = al.performed_by
+            JOIN domain_review dr ON dr.id = al.entity_id
+            WHERE al.entity_type = 'domain_review'
+              AND dr.request_id = :rid
+        )
+        ORDER BY performed_at ASC,
+                 entity_type ASC
+    """), {"rid": str(gr_uuid)})).mappings().all()
+
+    result = []
+    for r in rows:
+        action = r["action"]
+        new_value = r["new_value"] or {}
+        domain_code = new_value.get("domainCode", "")
+
+        # Build business-friendly label
+        template = _ACTION_LABELS.get(action, action)
+        label = template.replace("{domain}", domain_code) if "{domain}" in template else template
+
+        # Extract reason/notes if present (return reason, outcome notes)
+        # Fallback: use domain_review.outcome_notes only for approve/not_passed actions
+        reason = new_value.get("reason", "") or new_value.get("outcomeNotes", "")
+        if not reason and action in ("approved_with_exception", "not_passed"):
+            reason = r.get("dr_outcome_notes") or ""
+
+        result.append({
+            "id": str(r["id"]),
+            "action": label,
+            "entityType": r["entity_type"],
+            "domainCode": domain_code or None,
+            "performedBy": r["performed_by"],
+            "performerName": r["performer_name"],
+            "performedAt": r["performed_at"].isoformat() if r["performed_at"] else None,
+            "details": reason,
+        })
+
+    return {"data": result}
+
+
 # ═══════════════════════════════════════════════════════
 # Lifecycle status endpoints (Cancel / Archive)
 # ═══════════════════════════════════════════════════════
@@ -903,13 +988,14 @@ async def cancel_request(request_id: str, user: AuthUser = Depends(get_current_u
         "UPDATE governance_request SET lifecycle_status = 'Cancelled', update_by = :user, update_at = NOW() "
         "WHERE id = :id"
     ), {"id": row["id"], "user": user.id})
+    await write_audit(db, "governance_request", str(row["id"]), "cancelled", user.id)
     await db.commit()
     return {"status": "ok", "lifecycleStatus": "Cancelled"}
 
 
 @router.put("/{request_id}/archive", dependencies=[Depends(require_permission("governance_request", "write"))])
 async def archive_request(request_id: str, user: AuthUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """Archive a Completed request. Only admin/governance_lead can archive."""
+    """Archive a Complete request. Only admin/governance_lead can archive."""
     if _is_requestor_only(user) or _is_domain_reviewer_only(user):
         raise HTTPException(status_code=403, detail="Only admin or governance lead can archive requests")
 
@@ -921,13 +1007,14 @@ async def archive_request(request_id: str, user: AuthUser = Depends(get_current_
         raise HTTPException(status_code=404, detail="Not found")
     if row["lifecycle_status"] != "Active":
         raise HTTPException(status_code=400, detail=f"Request is already {row['lifecycle_status']}")
-    if row["status"] != "Completed":
-        raise HTTPException(status_code=400, detail="Only Completed requests can be archived")
+    if row["status"] != "Complete":
+        raise HTTPException(status_code=400, detail="Only Complete requests can be archived")
 
     await db.execute(text(
         "UPDATE governance_request SET lifecycle_status = 'Archived', update_by = :user, update_at = NOW() "
         "WHERE id = :id"
     ), {"id": row["id"], "user": user.id})
+    await write_audit(db, "governance_request", str(row["id"]), "archived", user.id)
     await db.commit()
     return {"status": "ok", "lifecycleStatus": "Archived"}
 

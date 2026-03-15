@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { PageLayout } from '@/components/layout/PageLayout';
-import { FileProtectOutlined, AuditOutlined, ExclamationCircleOutlined, CheckCircleOutlined, PlusOutlined } from '@ant-design/icons';
+import { FileProtectOutlined, AuditOutlined, CheckCircleOutlined, PlusOutlined } from '@ant-design/icons';
 import { Button } from 'antd';
 import Link from 'next/link';
 
@@ -12,7 +12,6 @@ interface HomeStats {
   totalRequests: number;
   inReview: number;
   completed: number;
-  openInfoRequests: number;
 }
 
 function StatsCard({ label, value, icon, color }: { label: string; value: React.ReactNode; icon: React.ReactNode; color: string }) {
@@ -52,11 +51,10 @@ export default function HomePage() {
           </Link>
         </div>
 
-        <div className="grid grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-3 gap-4 mb-8">
           <StatsCard label="Total Requests" value={stats?.totalRequests ?? 0} icon={<FileProtectOutlined />} color="bg-primary-blue" />
           <StatsCard label="In Progress" value={stats?.inReview ?? 0} icon={<AuditOutlined />} color="bg-status-in-progress" />
           <StatsCard label="Completed" value={stats?.completed ?? 0} icon={<CheckCircleOutlined />} color="bg-status-completed" />
-          <StatsCard label="Open Info Requests" value={stats?.openInfoRequests ?? 0} icon={<ExclamationCircleOutlined />} color="bg-status-info-requested" />
         </div>
 
         <div className="bg-white rounded-lg border border-border-light p-6">

@@ -30,14 +30,6 @@
       "api": ["api-tests/test_dispatch.py"],
       "e2e": []
     },
-    "backend/app/routers/dispatcher.py": {
-      "api": ["api-tests/test_dispatch.py"],
-      "e2e": []
-    },
-    "backend/app/routers/info_requests.py": {
-      "api": ["api-tests/test_info_requests.py"],
-      "e2e": []
-    },
     "backend/app/routers/auth.py": {
       "api": ["api-tests/test_auth.py", "api-tests/test_rbac.py"],
       "e2e": []

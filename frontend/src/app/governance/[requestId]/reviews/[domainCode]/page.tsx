@@ -11,17 +11,18 @@ import { SectionCard } from '../../../_components/SectionCard';
 import { DomainQuestionnaires } from '../../../_components/DomainQuestionnaires';
 import { ProcessingLogStepper } from '../../../_components/ProcessingLogStepper';
 import { DomainPreviewChip } from '../../../_components/DomainPreviewChip';
-import { HistoryOutlined } from '@ant-design/icons';
 import { Button } from 'antd';
 import clsx from 'clsx';
 
-interface ChangeEntry {
+interface ActivityLogEntry {
   id: string;
-  fieldName: string;
-  oldValue: unknown;
-  newValue: unknown;
-  changedBy: string;
-  changedAt: string | null;
+  action: string;
+  entityType: string;
+  domainCode: string | null;
+  performedBy: string;
+  performerName: string | null;
+  performedAt: string | null;
+  details: string;
 }
 
 interface DomainReview {
@@ -31,23 +32,14 @@ interface DomainReview {
   domainName: string;
   status: string;
   outcome: string | null;
+  outcomeNotes: string | null;
+  returnReason: string | null;
   reviewer: string | null;
   reviewerName: string | null;
   startedAt: string | null;
   completedAt: string | null;
   notes: string | null;
   commonDataUpdatedAt: string | null;
-}
-
-interface InfoRequest {
-  id: string;
-  category: string;
-  fieldReference: string | null;
-  description: string;
-  status: string;
-  priority: string;
-  resolutionNote: string | null;
-  createAt: string;
 }
 
 interface GovRequest {
@@ -84,13 +76,6 @@ interface MatrixData {
   rules: { ruleCode: string; ruleName: string; parentRuleCode: string | null }[];
   domains: { domainCode: string; domainName: string }[];
   matrix: Record<string, Record<string, string>>;
-}
-
-function formatChangeValue(val: unknown): string {
-  if (val === null || val === undefined) return '(empty)';
-  if (Array.isArray(val)) return val.join(', ');
-  if (typeof val === 'object') return JSON.stringify(val);
-  return String(val);
 }
 
 function InfoField({ label, value }: { label: string; value: string | null | undefined }) {
@@ -224,12 +209,12 @@ export default function DomainReviewDetailPage() {
   const requestId = params.requestId as string;
   const domainCode = params.domainCode as string;
 
-  const [showInfoForm, setShowInfoForm] = useState(false);
-  const [infoCategory, setInfoCategory] = useState('');
-  const [infoDescription, setInfoDescription] = useState('');
-  const [infoPriority, setInfoPriority] = useState('Normal');
   const [showReturnDialog, setShowReturnDialog] = useState(false);
   const [returnReason, setReturnReason] = useState('');
+  const [showExceptionDialog, setShowExceptionDialog] = useState(false);
+  const [exceptionNotes, setExceptionNotes] = useState('');
+  const [showNotPassDialog, setShowNotPassDialog] = useState(false);
+  const [notPassNotes, setNotPassNotes] = useState('');
 
   // Get all reviews for this request, then find the one for this domain
   const { data: reviews } = useQuery<{ data: DomainReview[] }>({
@@ -245,69 +230,22 @@ export default function DomainReviewDetailPage() {
     queryFn: () => api.get(`/governance-requests/${requestId}`),
   });
 
-  const { data: infoRequests } = useQuery<{ data: InfoRequest[] }>({
-    queryKey: ['info-requests', requestId, domainCode, review?.id],
-    queryFn: () => api.get('/info-requests', { request_id: requestId, domainReviewId: review!.id }),
-    enabled: !!review,
-  });
-
-  // Fetch change history for the governance request
-  const { data: changelogData } = useQuery<{ data: ChangeEntry[] }>({
-    queryKey: ['changelog', requestId],
-    queryFn: () => api.get(`/governance-requests/${requestId}/changelog`),
+  // Fetch activity log for the governance request
+  const { data: activityLogData } = useQuery<{ data: ActivityLogEntry[] }>({
+    queryKey: ['activity-log', requestId],
+    queryFn: () => api.get(`/governance-requests/${requestId}/activity-log`),
     enabled: !!govRequest,
   });
 
-  const changelog: ChangeEntry[] = changelogData?.data ?? [];
-
-  const assignMutation = useMutation({
-    mutationFn: () => api.put(`/domain-reviews/${review?.id}/assign`, {}),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['domain-reviews', requestId] });
-      toast('Review assigned', 'success');
-    },
-  });
-
-  const startMutation = useMutation({
-    mutationFn: () => api.put(`/domain-reviews/${review?.id}/start`, {}),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['domain-reviews', requestId] });
-      toast('Review started', 'success');
-    },
-  });
-
-  const completeMutation = useMutation({
-    mutationFn: (outcome: string) => api.put(`/domain-reviews/${review?.id}/complete`, { outcome }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['domain-reviews', requestId] });
-      toast('Review completed', 'success');
-    },
-  });
-
-  const createInfoRequest = useMutation({
-    mutationFn: () =>
-      api.post('/info-requests', {
-        requestId,
-        domainReviewId: review?.id,
-        category: infoCategory,
-        description: infoDescription,
-        priority: infoPriority,
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['info-requests'] });
-      toast('Information request created', 'success');
-      setShowInfoForm(false);
-      setInfoCategory('');
-      setInfoDescription('');
-    },
-    onError: () => toast('Failed to create info request', 'error'),
-  });
+  // Show all request-level and domain-level activity (no domain filtering)
+  const activityLog: ActivityLogEntry[] = activityLogData?.data ?? [];
 
   const returnMutation = useMutation({
     mutationFn: (reason: string) => api.put(`/domain-reviews/${review?.id}/return`, { reason }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['domain-reviews', requestId] });
       queryClient.invalidateQueries({ queryKey: ['governance-request', requestId] });
+      queryClient.invalidateQueries({ queryKey: ['activity-log', requestId] });
       toast('Request returned to requestor', 'success');
       setShowReturnDialog(false);
       setReturnReason('');
@@ -320,9 +258,47 @@ export default function DomainReviewDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['domain-reviews', requestId] });
       queryClient.invalidateQueries({ queryKey: ['governance-request', requestId] });
+      queryClient.invalidateQueries({ queryKey: ['activity-log', requestId] });
       toast('Request accepted', 'success');
     },
     onError: () => toast('Failed to accept request', 'error'),
+  });
+
+  const approveMutation = useMutation({
+    mutationFn: () => api.put(`/domain-reviews/${review?.id}/approve`, {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['domain-reviews', requestId] });
+      queryClient.invalidateQueries({ queryKey: ['governance-request', requestId] });
+      queryClient.invalidateQueries({ queryKey: ['activity-log', requestId] });
+      toast('Review approved', 'success');
+    },
+    onError: () => toast('Failed to approve review', 'error'),
+  });
+
+  const approveWithExceptionMutation = useMutation({
+    mutationFn: (outcomeNotes: string) => api.put(`/domain-reviews/${review?.id}/approve-with-exception`, { outcomeNotes }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['domain-reviews', requestId] });
+      queryClient.invalidateQueries({ queryKey: ['governance-request', requestId] });
+      queryClient.invalidateQueries({ queryKey: ['activity-log', requestId] });
+      toast('Review approved with exception', 'success');
+      setShowExceptionDialog(false);
+      setExceptionNotes('');
+    },
+    onError: () => toast('Failed to approve review', 'error'),
+  });
+
+  const notPassMutation = useMutation({
+    mutationFn: (outcomeNotes: string) => api.put(`/domain-reviews/${review?.id}/not-pass`, { outcomeNotes }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['domain-reviews', requestId] });
+      queryClient.invalidateQueries({ queryKey: ['governance-request', requestId] });
+      queryClient.invalidateQueries({ queryKey: ['activity-log', requestId] });
+      toast('Review marked as not passed', 'success');
+      setShowNotPassDialog(false);
+      setNotPassNotes('');
+    },
+    onError: () => toast('Failed to update review', 'error'),
   });
 
   if (!review) {
@@ -349,11 +325,6 @@ export default function DomainReviewDetailPage() {
               <span className={clsx('px-2 py-0.5 rounded text-xs text-white', statusColors[review.status] || 'bg-gray-400')}>
                 {review.status}
               </span>
-              {review.outcome && (
-                <span className={clsx('px-2 py-0.5 rounded text-xs text-white', statusColors[review.outcome] || 'bg-gray-400')}>
-                  {review.outcome}
-                </span>
-              )}
             </div>
           </div>
           {review.status === 'Waiting for Accept' && (
@@ -421,7 +392,6 @@ export default function DomainReviewDetailPage() {
           <div className="bg-white rounded-lg border border-border-light p-4 mb-4">
             <ProcessingLogStepper
               currentStatus={govRequest.status}
-              infoInquiryDomain={review?.domainName || review?.domainCode}
             />
           </div>
         )}
@@ -515,155 +485,144 @@ export default function DomainReviewDetailPage() {
             <DomainQuestionnaires requestId={requestId} readOnly />
           </SectionCard>
 
-          {/* Change History */}
-          {changelog.length > 0 && (
-            <SectionCard title="Change History" subtitle={`${changelog.length} change(s) recorded`} defaultOpen={false}>
-              <div className="space-y-3 max-h-96 overflow-y-auto">
-                {[...changelog].reverse().map((entry) => {
-                  const isQuestionnaire = entry.fieldName.startsWith('questionnaire:');
-                  let displayField = entry.fieldName;
-                  let category = 'Request Field';
-                  if (isQuestionnaire) {
-                    const parts = entry.fieldName.split(':');
-                    const domain = parts[1] || '';
-                    const question = parts.slice(2).join(':') || '';
-                    displayField = question;
-                    category = `Questionnaire (${domain})`;
-                  }
-
-                  return (
-                    <div key={entry.id} className="border border-border-light rounded-lg p-3">
-                      <div className="flex items-center justify-between mb-1.5">
-                        <div className="flex items-center gap-2">
-                          <HistoryOutlined style={{ fontSize: 14, color: '#d97706' }} />
-                          <span className="text-sm font-medium text-text-primary">{displayField}</span>
-                          <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-text-secondary">{category}</span>
-                        </div>
-                        <span className="text-xs text-text-secondary">
-                          {entry.changedAt ? new Date(entry.changedAt).toLocaleString() : ''}
-                        </span>
-                      </div>
-                      <div className="text-xs text-text-secondary mb-1">by {entry.changedBy}</div>
-                      <div className="flex items-center gap-2 text-sm">
-                        <span className="line-through text-red-500">{formatChangeValue(entry.oldValue)}</span>
-                        <span className="text-text-secondary">→</span>
-                        <span className="text-green-600 font-medium">{formatChangeValue(entry.newValue)}</span>
-                      </div>
-                    </div>
-                  );
-                })}
+          {/* Activity Log */}
+          {activityLog.length > 0 && (
+            <SectionCard title="Activity Log" subtitle={`${activityLog.length} event(s) recorded`} defaultOpen={false}>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border-light text-left text-text-secondary">
+                      <th className="pb-2 pr-4 font-medium">Action</th>
+                      <th className="pb-2 pr-4 font-medium">User</th>
+                      <th className="pb-2 pr-4 font-medium">Time</th>
+                      <th className="pb-2 font-medium">Details</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {activityLog.map((entry) => (
+                      <tr key={entry.id} className="border-b border-border-light last:border-0">
+                        <td className="py-2 pr-4 whitespace-nowrap">
+                          <span className="text-xs px-2 py-0.5 rounded bg-blue-50 text-blue-700">
+                            {entry.action}
+                          </span>
+                        </td>
+                        <td className="py-2 pr-4 whitespace-nowrap">{entry.performerName || entry.performedBy || '-'}</td>
+                        <td className="py-2 pr-4 whitespace-nowrap text-text-secondary">
+                          {entry.performedAt ? new Date(entry.performedAt).toLocaleString() : '-'}
+                        </td>
+                        <td className="py-2 text-text-secondary max-w-xs truncate">
+                          {entry.details || '-'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </SectionCard>
           )}
         </div>
 
-        {/* Review Action Buttons */}
-        {(review.status === 'Pending' || review.status === 'Assigned' || review.status === 'In Progress') && (
+        {/* Review Action Buttons — Accept status: terminal actions */}
+        {review.status === 'Accept' && (
           <div className="bg-white rounded-lg border border-border-light p-6 mt-4">
-            <h2 className="text-base font-semibold mb-3">Review Actions</h2>
+            <h2 className="text-base font-semibold mb-3">Review Decision</h2>
+            <p className="text-sm text-text-secondary mb-4">Select a final outcome for this domain review.</p>
             <div className="flex gap-2">
-              {review.status === 'Pending' && (
-                <Button type="primary" style={{ background: '#13C2C2', borderColor: '#13C2C2' }} onClick={() => assignMutation.mutate()}>
-                  Assign to Me
-                </Button>
-              )}
-              {review.status === 'Assigned' && (
-                <Button type="primary" style={{ background: '#13C2C2', borderColor: '#13C2C2' }} onClick={() => startMutation.mutate()}>
-                  Start Review
-                </Button>
-              )}
-              {review.status === 'In Progress' && (
-                <>
-                  <Button type="primary" style={{ background: '#13C2C2', borderColor: '#13C2C2' }} onClick={() => completeMutation.mutate('Approved')}>
-                    Approve
-                  </Button>
-                  <Button style={{ background: '#f59e0b', borderColor: '#f59e0b', color: '#fff' }} onClick={() => completeMutation.mutate('Approved with Conditions')}>
-                    Approve with Conditions
-                  </Button>
-                  <Button danger type="primary" onClick={() => completeMutation.mutate('Rejected')}>
-                    Reject
-                  </Button>
-                </>
-              )}
+              <Button
+                type="primary"
+                style={{ background: '#52c41a', borderColor: '#52c41a' }}
+                onClick={() => approveMutation.mutate()}
+                disabled={approveMutation.isPending}
+              >
+                {approveMutation.isPending ? 'Approving...' : 'Approve'}
+              </Button>
+              <Button
+                style={{ background: '#f59e0b', borderColor: '#f59e0b', color: '#fff' }}
+                onClick={() => setShowExceptionDialog(true)}
+              >
+                Approve with Exception
+              </Button>
+              <Button
+                danger
+                type="primary"
+                onClick={() => setShowNotPassDialog(true)}
+              >
+                Not Pass
+              </Button>
             </div>
           </div>
         )}
 
-        {/* Info Supplement Requests */}
-        <div className="bg-white rounded-lg border border-border-light p-6 mt-4 mb-4">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-base font-semibold">Information Requests</h2>
-            {review.status === 'In Progress' && (
-              <button className="text-sm text-primary-blue hover:underline" onClick={() => setShowInfoForm(!showInfoForm)}>
-                + Request More Info
-              </button>
-            )}
+        {/* Return for Additional Information banner */}
+        {review.status === 'Return for Additional Information' && review.returnReason && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mt-4">
+            <h3 className="text-sm font-semibold text-amber-800 mb-1">Returned for Additional Information</h3>
+            <p className="text-sm text-amber-700">{review.returnReason}</p>
           </div>
+        )}
 
-          {showInfoForm && (
-            <div className="bg-gray-50 rounded p-4 mb-4 space-y-3">
-              <div>
-                <label className="block text-sm font-medium mb-1">Category</label>
-                <select className="select-field" value={infoCategory} onChange={(e) => setInfoCategory(e.target.value)}>
-                  <option value="">-- Select Section --</option>
-                  <option value="Project Details">Project Details</option>
-                  <option value="Business Scenarios">Business Scenarios</option>
-                  <option value="Data Info">Data Info</option>
-                  <option value="Tech Overview">Tech Overview</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Description</label>
-                <textarea
-                  className="input-field h-20"
-                  value={infoDescription}
-                  onChange={(e) => setInfoDescription(e.target.value)}
-                  placeholder="What information is missing or needs to be updated?"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Priority</label>
-                <select className="select-field" value={infoPriority} onChange={(e) => setInfoPriority(e.target.value)}>
-                  <option value="Normal">Normal</option>
-                  <option value="Urgent">Urgent</option>
-                </select>
-              </div>
-              <div className="flex gap-2">
-                <Button type="primary" style={{ background: '#13C2C2', borderColor: '#13C2C2' }} onClick={() => createInfoRequest.mutate()} disabled={!infoCategory || !infoDescription}>
-                  Submit Request
+        {/* Approve with Exception Dialog */}
+        {showExceptionDialog && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+              <h3 className="text-lg font-semibold mb-2">Approve with Exception</h3>
+              <p className="text-sm text-text-secondary mb-4">
+                Please describe the exception or conditions for this approval.
+              </p>
+              <textarea
+                className="input-field w-full h-28 resize-none"
+                placeholder="Enter exception notes..."
+                value={exceptionNotes}
+                onChange={(e) => setExceptionNotes(e.target.value)}
+                autoFocus
+              />
+              <div className="flex justify-end gap-2 mt-4">
+                <Button type="default" onClick={() => { setShowExceptionDialog(false); setExceptionNotes(''); }}>
+                  Cancel
                 </Button>
-                <Button type="default" onClick={() => setShowInfoForm(false)}>Cancel</Button>
+                <Button
+                  style={{ background: '#f59e0b', borderColor: '#f59e0b', color: '#fff' }}
+                  onClick={() => approveWithExceptionMutation.mutate(exceptionNotes)}
+                  disabled={!exceptionNotes.trim() || approveWithExceptionMutation.isPending}
+                >
+                  {approveWithExceptionMutation.isPending ? 'Submitting...' : 'Confirm'}
+                </Button>
               </div>
             </div>
-          )}
+          </div>
+        )}
 
-          {infoRequests?.data && infoRequests.data.length > 0 ? (
-            <div className="space-y-3">
-              {infoRequests.data.map((ir) => (
-                <div key={ir.id} className="border border-border-light rounded p-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium">{ir.category}</span>
-                      <span className={clsx('px-2 py-0.5 rounded text-xs text-white', statusColors[ir.status] || 'bg-gray-400')}>
-                        {ir.status}
-                      </span>
-                      {ir.priority === 'Urgent' && (
-                        <span className="px-2 py-0.5 rounded text-xs bg-red-500 text-white">Urgent</span>
-                      )}
-                    </div>
-                    <span className="text-xs text-text-secondary">{new Date(ir.createAt).toLocaleDateString()}</span>
-                  </div>
-                  <p className="text-sm text-text-secondary mt-1">{ir.description}</p>
-                  {ir.resolutionNote && (
-                    <p className="text-sm text-green-700 mt-1">Resolution: {ir.resolutionNote}</p>
-                  )}
-                </div>
-              ))}
+        {/* Not Pass Dialog */}
+        {showNotPassDialog && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+              <h3 className="text-lg font-semibold mb-2">Not Pass</h3>
+              <p className="text-sm text-text-secondary mb-4">
+                Please provide the reason for not passing this review.
+              </p>
+              <textarea
+                className="input-field w-full h-28 resize-none"
+                placeholder="Enter reason..."
+                value={notPassNotes}
+                onChange={(e) => setNotPassNotes(e.target.value)}
+                autoFocus
+              />
+              <div className="flex justify-end gap-2 mt-4">
+                <Button type="default" onClick={() => { setShowNotPassDialog(false); setNotPassNotes(''); }}>
+                  Cancel
+                </Button>
+                <Button
+                  danger
+                  type="primary"
+                  onClick={() => notPassMutation.mutate(notPassNotes)}
+                  disabled={notPassMutation.isPending}
+                >
+                  {notPassMutation.isPending ? 'Submitting...' : 'Confirm Not Pass'}
+                </Button>
+              </div>
             </div>
-          ) : (
-            <p className="text-sm text-text-secondary">No information requests.</p>
-          )}
-        </div>
+          </div>
+        )}
 
         <div className="flex justify-between mt-6 pb-8">
           <Button type="default" onClick={() => router.push('/reviews')}>

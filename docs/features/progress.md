@@ -37,6 +37,7 @@ Provides an aggregated view of domain review progress for a single governance re
   "openInfoRequests": 1,
   "domains": [
     {
+      "reviewId": "uuid-here",
       "domainCode": "CYBER",
       "status": "Complete",
       "outcome": "Approved",
@@ -74,5 +75,6 @@ backend/app/routers/progress.py -> api-tests/test_dashboard.py
 
 ## Notes
 
-- Progress is computed dynamically from `domain_review` and `info_supplement_request` tables on each request — no cached or materialized state.
+- Progress is computed dynamically from `domain_review` table on each request — no cached or materialized state.
 - The progress endpoint is in a separate router from dashboard because it operates per-request, not aggregated.
+- Each domain in the response includes `reviewId` (UUID) to support actions like resubmit from the request detail page.

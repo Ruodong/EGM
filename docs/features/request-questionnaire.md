@@ -1,6 +1,6 @@
 # Feature: Pre-Submit Domain Questionnaires
 
-**Status**: Draft
+**Status**: Implemented
 **Date**: 2026-03-13
 **Spec Version**: 1
 
@@ -52,10 +52,12 @@ CREATE TABLE request_questionnaire_response (
 
 1. On the create or edit page, after the requestor selects scope/rules that trigger internal domains, a "Domain Questionnaires" section appears
 2. Each triggered internal domain is shown as an expandable section with its questionnaire questions
-3. The requestor fills in answers for each question (radio, multiselect, dropdown, or textarea depending on template type)
-4. Answers auto-save via POST on change or section blur
-5. If any required question is unanswered, the Submit button is disabled with a tooltip explaining which domains have incomplete questionnaires
-6. On submit, the backend validates that all required questions for triggered internal domains have responses; returns 400 if incomplete
+3. Questions within each domain are grouped by section with collapsible sub-headers (gray bar with arrow, section name, question count); questions without sections render directly
+4. The requestor fills in answers for each question (radio, multiselect, dropdown, or textarea depending on template type)
+5. Answers auto-save via POST on change or section blur
+6. If any required question is unanswered, the Submit button is disabled with a tooltip explaining which domains have incomplete questionnaires
+7. On submit, the backend validates that all required questions for triggered internal domains have responses; returns 400 if incomplete
+8. When any domain review has "Return for Additional Information" status, the Domain Questionnaire section reappears on the request detail page as editable, allowing the requestor to update answers before resubmitting
 
 ## Acceptance Criteria
 
@@ -91,3 +93,5 @@ frontend/src/app/governance/create/          -> e2e-tests/governance-requests.sp
 - The templates endpoint is request-aware: it reads the request's triggered rules/domains to determine which questionnaires apply
 - Only internal domains (integration_type = 'internal') have questionnaire templates; external domains are skipped
 - Submit validation is additive — existing submit checks (required fields, etc.) still apply alongside questionnaire completeness
+- The templates response includes a `section` field for each question, used by the frontend DomainQuestionnaires component to group questions by section with collapsible sub-headers
+- Domain questionnaires become editable again when a domain review is returned for additional information

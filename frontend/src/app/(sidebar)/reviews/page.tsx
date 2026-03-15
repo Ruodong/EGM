@@ -4,11 +4,10 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { statusHex } from '@/lib/constants';
 import Link from 'next/link';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { Tag, Typography } from 'antd';
 import DataTable, { type Column } from '@/components/shared/DataTable';
 import FilterBar, { useFilterState, type FilterBarConfig } from '@/components/shared/FilterBar';
-import { useAuth } from '@/lib/auth-context';
 
 const { Title, Text } = Typography;
 
@@ -39,18 +38,37 @@ interface PaginatedResponse {
   totalPages: number;
 }
 
-const FILTER_CONFIG: FilterBarConfig = {
-  searchPlaceholder: 'Search by Request ID or Project Name...',
-  statusOptions: ['', 'Waiting for Accept', 'Accepted', 'Returned', 'Assigned', 'In Progress', 'Review Complete', 'Waived'],
-};
+interface DomainRegistryItem {
+  domainCode: string;
+  domainName: string;
+  isActive: boolean;
+}
 
 export default function AllReviewsPage() {
-  const { hasRole } = useAuth();
-  const isAdminOrLead = hasRole('admin', 'governance_lead');
-
   const [page, setPage] = useState(1);
   const [sortField, setSortField] = useState('create_at');
   const [sortOrder, setSortOrder] = useState<'ASC' | 'DESC'>('DESC');
+
+  // Fetch domain options for the filter
+  const { data: domains } = useQuery<{ data: DomainRegistryItem[] }>({
+    queryKey: ['domain-registry'],
+    queryFn: () => api.get('/domain-registry'),
+    staleTime: 5 * 60 * 1000, // cache 5 minutes
+  });
+
+  const domainOptions = useMemo(() =>
+    (domains?.data ?? [])
+      .filter((d) => d.isActive)
+      .map((d) => ({ value: d.domainCode, label: d.domainName || d.domainCode })),
+    [domains]
+  );
+
+  const filterConfig: FilterBarConfig = useMemo(() => ({
+    searchPlaceholder: 'Search by Request ID or Project Name...',
+    statusOptions: ['', 'Waiting for Accept', 'Return for Additional Information', 'Accept', 'Approved', 'Approved with Exception', 'Not Passed'],
+    statusMultiSelect: true,
+    domainOptions,
+  }), [domainOptions]);
 
   const { filterValues, uiState } = useFilterState(() => setPage(1));
 
@@ -69,6 +87,7 @@ export default function AllReviewsPage() {
         sortField,
         sortOrder,
         ...(filterValues.status && { status: filterValues.status }),
+        ...(filterValues.domain && { domainCode: filterValues.domain }),
         ...(filterValues.search && { search: filterValues.search }),
         ...(filterValues.requestor && { requestor: filterValues.requestor }),
         ...(filterValues.dateFrom && { dateFrom: filterValues.dateFrom }),
@@ -107,12 +126,12 @@ export default function AllReviewsPage() {
       ) : <Text type="secondary">-</Text>,
       exportValue: (r) => r.govStatus || '',
     },
-    ...(isAdminOrLead ? [{
+    {
       key: 'domain',
       label: 'Domain',
-      render: (r: DomainReview) => <span className="font-medium">{r.domainName || r.domainCode}</span>,
-      exportValue: (r: DomainReview) => r.domainName || r.domainCode,
-    }] : []),
+      render: (r) => <span className="font-medium">{r.domainName || r.domainCode}</span>,
+      exportValue: (r) => r.domainName || r.domainCode,
+    },
     {
       key: 'review_status',
       label: 'Review Status',
@@ -140,7 +159,7 @@ export default function AllReviewsPage() {
     <div>
       <Title level={4} style={{ margin: 0, marginBottom: 24 }}>All Domain Reviews</Title>
 
-      <FilterBar config={FILTER_CONFIG} uiState={uiState} />
+      <FilterBar config={filterConfig} uiState={uiState} />
 
       <DataTable<DomainReview>
         columns={columns}

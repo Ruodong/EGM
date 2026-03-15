@@ -1,4 +1,11 @@
-"""Domain Reviews router — per-request, per-domain review lifecycle."""
+"""Domain Reviews router — per-request, per-domain review lifecycle.
+
+New state machine (2026-03-14):
+  Waiting for Accept → Accept (reviewer accepts)
+  Waiting for Accept → Return for Additional Information (needs more info)
+  Return for Additional Information → Waiting for Accept (requestor resubmits)
+  Accept → Approved | Approved with Exception | Not Passed (terminal verdicts)
+"""
 from __future__ import annotations
 
 from datetime import date as dt_date, timedelta
@@ -13,21 +20,22 @@ from app.auth import require_permission, get_current_user, AuthUser, Role
 
 router = APIRouter()
 
+TERMINAL_STATUSES = ("Approved", "Approved with Exception", "Not Passed")
+
 
 async def _check_domain_write_access(user: AuthUser, review_row: dict, allow_governance_lead: bool = True):
     """Check that the user has write access to this domain review.
 
     - Admin: always allowed
-    - Governance Leader: allowed only if allow_governance_lead=True (e.g. assign/waive but NOT complete)
+    - Governance Leader: allowed only if allow_governance_lead=True
     - Domain Reviewer: allowed only if review's domain_code is in user.domain_codes
-    - Requestor: never allowed (caught by require_permission already)
     """
     if Role.ADMIN in user.roles:
-        return  # Admin has full access
+        return
 
     if Role.GOVERNANCE_LEAD in user.roles:
         if allow_governance_lead:
-            return  # Gov lead can assign/waive
+            return
         raise HTTPException(
             status_code=403,
             detail="Governance leaders cannot modify review outcomes"
@@ -35,13 +43,12 @@ async def _check_domain_write_access(user: AuthUser, review_row: dict, allow_gov
 
     if Role.DOMAIN_REVIEWER in user.roles:
         if review_row["domain_code"] in user.domain_codes:
-            return  # Reviewer has this domain assigned
+            return
         raise HTTPException(
             status_code=403,
             detail=f"Access denied: you are not assigned to domain '{review_row['domain_code']}'"
         )
 
-    # Shouldn't reach here if require_permission is set, but just in case
     raise HTTPException(status_code=403, detail="Insufficient permissions")
 
 
@@ -63,7 +70,6 @@ def _map(r: dict) -> dict:
         "createAt": r["create_at"].isoformat() if r.get("create_at") else None,
     }
     # Optional joined fields
-    # Optional joined fields
     if "domain_name" in r:
         result["domainName"] = r["domain_name"]
     if "gov_request_id" in r:
@@ -81,6 +87,16 @@ def _map(r: dict) -> dict:
     return result
 
 
+def _is_requestor_only(user: AuthUser) -> bool:
+    """True when the user only has the requestor role (no reviewer/lead/admin)."""
+    return (
+        Role.REQUESTOR in user.roles
+        and Role.DOMAIN_REVIEWER not in user.roles
+        and Role.ADMIN not in user.roles
+        and Role.GOVERNANCE_LEAD not in user.roles
+    )
+
+
 def _is_domain_reviewer_only(user: AuthUser) -> bool:
     """True when highest role is domain_reviewer (no admin/lead)."""
     return (
@@ -89,6 +105,38 @@ def _is_domain_reviewer_only(user: AuthUser) -> bool:
         and Role.GOVERNANCE_LEAD not in user.roles
     )
 
+
+async def _check_auto_complete(db: AsyncSession, request_id, user_id: str):
+    """Check if all domain reviews for this request are in terminal states.
+    If so, auto-transition the governance request to 'Complete'.
+    Uses SELECT FOR UPDATE to prevent race conditions.
+    """
+    # Lock the governance request row
+    gr = (await db.execute(text(
+        "SELECT id, status FROM governance_request WHERE id = :rid FOR UPDATE"
+    ), {"rid": str(request_id)})).mappings().first()
+    if not gr or gr["status"] == "Complete":
+        return  # Already complete or not found
+
+    # Check all reviews
+    review_counts = (await db.execute(text(
+        "SELECT COUNT(*) AS total, "
+        "COUNT(*) FILTER (WHERE status IN ('Approved', 'Approved with Exception', 'Not Passed')) AS terminal "
+        "FROM domain_review WHERE request_id = :rid"
+    ), {"rid": str(request_id)})).mappings().first()
+
+    if review_counts["total"] > 0 and review_counts["total"] == review_counts["terminal"]:
+        await db.execute(text(
+            "UPDATE governance_request SET status = 'Complete', "
+            "update_by = :user, update_at = NOW() WHERE id = :rid"
+        ), {"rid": str(request_id), "user": user_id})
+        await write_audit(db, "governance_request", str(request_id), "auto_completed", user_id,
+                          new_value={"status": "Complete", "reason": "All domain reviews finalized"})
+
+
+# ═══════════════════════════════════════════════════════
+# Read endpoints
+# ═══════════════════════════════════════════════════════
 
 @router.get("", dependencies=[Depends(require_permission("domain_review", "read"))])
 async def list_reviews(
@@ -106,24 +154,37 @@ async def list_reviews(
 ):
     conditions, params = [], {}
 
+    # Requestors can only see reviews for their own requests
+    if _is_requestor_only(user):
+        params["requestor_id"] = user.itcode
+        conditions.append("gr.requestor = :requestor_id")
     # Domain reviewers can only see reviews for their assigned domains
-    if _is_domain_reviewer_only(user):
+    elif _is_domain_reviewer_only(user):
         if user.domain_codes:
             params["reviewer_domains"] = user.domain_codes
             conditions.append("dr.domain_code = ANY(:reviewer_domains)")
         else:
             conditions.append("FALSE")
 
-    # Filter by request_id param (supports both UUID and GR-XXXXXX)
     if request_id:
         params["rid"] = request_id
         conditions.append("(dr.request_id::text = :rid OR gr.request_id = :rid)")
     if domainCode:
-        params["dc"] = domainCode
-        conditions.append("dr.domain_code = :dc")
+        dc_list = [d.strip() for d in domainCode.split(",")]
+        if len(dc_list) == 1:
+            params["dc"] = dc_list[0]
+            conditions.append("dr.domain_code = :dc")
+        else:
+            params["dc"] = dc_list
+            conditions.append("dr.domain_code = ANY(:dc)")
     if status:
-        params["st"] = status
-        conditions.append("dr.status = :st")
+        st_list = [s.strip() for s in status.split(",")]
+        if len(st_list) == 1:
+            params["st"] = st_list[0]
+            conditions.append("dr.status = :st")
+        else:
+            params["st"] = st_list
+            conditions.append("dr.status = ANY(:st)")
     if reviewer:
         params["rev"] = reviewer
         conditions.append("dr.reviewer = :rev")
@@ -172,82 +233,58 @@ async def get_review(review_id: str, db: AsyncSession = Depends(get_db)):
     return _map(dict(row))
 
 
-@router.put("/{review_id}/assign", dependencies=[Depends(require_permission("domain_review", "assign"))])
-async def assign_reviewer(review_id: str, body: dict = {}, user: AuthUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    # Fetch review first for domain-scoped access check
+# ═══════════════════════════════════════════════════════
+# State transition endpoints
+# ═══════════════════════════════════════════════════════
+
+@router.put("/{review_id}/accept", dependencies=[Depends(require_permission("domain_review", "write"))])
+async def accept_review(review_id: str, body: dict = {}, user: AuthUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Accept a domain review: Waiting for Accept → Accept.
+    Side effect: if request is Submitted, transitions to In Progress.
+    """
     existing = (await db.execute(text(
         "SELECT * FROM domain_review WHERE id = :id"
     ), {"id": review_id})).mappings().first()
     if not existing:
         raise HTTPException(status_code=404, detail="Not found")
+    if existing["status"] != "Waiting for Accept":
+        raise HTTPException(status_code=400, detail="Review must be in 'Waiting for Accept' status to accept")
     await _check_domain_write_access(user, dict(existing), allow_governance_lead=True)
 
-    reviewer = body.get("reviewer", user.id)
-    reviewer_name = body.get("reviewerName", user.name)
     row = (await db.execute(text(
-        "UPDATE domain_review SET reviewer = :reviewer, reviewer_name = :name, "
-        "status = 'Assigned', update_by = :user, update_at = NOW() "
+        "UPDATE domain_review SET status = 'Accept', "
+        "reviewer = :reviewer, reviewer_name = :reviewer_name, "
+        "started_at = NOW(), update_by = :user, update_at = NOW() "
         "WHERE id = :id RETURNING *"
     ), {
         "id": review_id,
-        "reviewer": reviewer,
-        "name": reviewer_name,
+        "reviewer": user.id, "reviewer_name": user.name,
         "user": user.id,
     })).mappings().first()
-    await db.commit()
-    return _map(dict(row))
 
+    # Transition request from Submitted → In Progress on first Accept
+    gr = (await db.execute(text(
+        "SELECT status FROM governance_request WHERE id = :rid"
+    ), {"rid": existing["request_id"]})).mappings().first()
+    if gr and gr["status"] == "Submitted":
+        await db.execute(text(
+            "UPDATE governance_request SET status = 'In Progress', "
+            "update_by = :user, update_at = NOW() WHERE id = :rid"
+        ), {"rid": existing["request_id"], "user": user.id})
+        await write_audit(db, "governance_request", str(existing["request_id"]),
+                          "status_in_progress", user.id)
 
-@router.put("/{review_id}/start", dependencies=[Depends(require_permission("domain_review", "write"))])
-async def start_review(review_id: str, user: AuthUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    # Fetch review first for domain-scoped access check
-    existing = (await db.execute(text(
-        "SELECT * FROM domain_review WHERE id = :id"
-    ), {"id": review_id})).mappings().first()
-    if not existing:
-        raise HTTPException(status_code=404, detail="Not found")
-    await _check_domain_write_access(user, dict(existing), allow_governance_lead=False)
-
-    row = (await db.execute(text(
-        "UPDATE domain_review SET status = 'In Progress', started_at = NOW(), "
-        "update_by = :user, update_at = NOW() WHERE id = :id RETURNING *"
-    ), {"id": review_id, "user": user.id})).mappings().first()
-    await db.commit()
-    return _map(dict(row))
-
-
-@router.put("/{review_id}/complete", dependencies=[Depends(require_permission("domain_review", "write"))])
-async def complete_review(review_id: str, body: dict, user: AuthUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    outcome = body.get("outcome")
-    if outcome not in ("Approved", "Approved with Conditions", "Rejected", "Deferred"):
-        raise HTTPException(status_code=400, detail="Invalid outcome")
-
-    # Fetch review first for domain-scoped access check
-    # Governance Leader CANNOT complete reviews (allow_governance_lead=False)
-    existing = (await db.execute(text(
-        "SELECT * FROM domain_review WHERE id = :id"
-    ), {"id": review_id})).mappings().first()
-    if not existing:
-        raise HTTPException(status_code=404, detail="Not found")
-    await _check_domain_write_access(user, dict(existing), allow_governance_lead=False)
-
-    row = (await db.execute(text(
-        "UPDATE domain_review SET status = 'Review Complete', outcome = :outcome, "
-        "outcome_notes = :notes, completed_at = NOW(), update_by = :user, update_at = NOW() "
-        "WHERE id = :id RETURNING *"
-    ), {
-        "id": review_id, "outcome": outcome,
-        "notes": body.get("outcomeNotes"), "user": user.id,
-    })).mappings().first()
-    await write_audit(db, "domain_review", review_id, "completed", user.id,
-                      new_value={"outcome": outcome, "domainCode": row["domain_code"]})
+    await write_audit(db, "domain_review", review_id, "accepted", user.id,
+                      new_value={"domainCode": row["domain_code"]})
     await db.commit()
     return _map(dict(row))
 
 
 @router.put("/{review_id}/return", dependencies=[Depends(require_permission("domain_review", "write"))])
-async def return_to_requestor(review_id: str, body: dict, user: AuthUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """Return a domain review to the requestor for more information."""
+async def return_review(review_id: str, body: dict, user: AuthUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Return a review for additional information: Waiting for Accept → Return for Additional Information.
+    Does NOT change governance request status.
+    """
     existing = (await db.execute(text(
         "SELECT * FROM domain_review WHERE id = :id"
     ), {"id": review_id})).mappings().first()
@@ -261,10 +298,9 @@ async def return_to_requestor(review_id: str, body: dict, user: AuthUser = Depen
     if not reason:
         raise HTTPException(status_code=400, detail="Return reason is required")
 
-    # Update domain review status to Returned
     row = (await db.execute(text(
-        "UPDATE domain_review SET status = 'Returned', return_reason = :reason, "
-        "reviewer = :reviewer, reviewer_name = :reviewer_name, "
+        "UPDATE domain_review SET status = 'Return for Additional Information', "
+        "return_reason = :reason, reviewer = :reviewer, reviewer_name = :reviewer_name, "
         "update_by = :user, update_at = NOW() "
         "WHERE id = :id RETURNING *"
     ), {
@@ -273,73 +309,107 @@ async def return_to_requestor(review_id: str, body: dict, user: AuthUser = Depen
         "user": user.id,
     })).mappings().first()
 
-    # Update governance request status to Information Inquiry
-    await db.execute(text(
-        "UPDATE governance_request SET status = 'Information Inquiry', "
-        "update_by = :user, update_at = NOW() "
-        "WHERE id = :request_id"
-    ), {"request_id": existing["request_id"], "user": user.id})
-
     await write_audit(db, "domain_review", review_id, "returned", user.id,
                       new_value={"reason": reason, "domainCode": row["domain_code"]})
-
-    # TODO: Send email notification to requestor
-
     await db.commit()
     return _map(dict(row))
 
 
-@router.put("/{review_id}/accept", dependencies=[Depends(require_permission("domain_review", "write"))])
-async def accept_request(review_id: str, body: dict = {}, user: AuthUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """Accept a domain review, moving it and the governance request forward."""
+@router.put("/{review_id}/resubmit", dependencies=[Depends(require_permission("governance_request", "write"))])
+async def resubmit_review(review_id: str, body: dict = {}, user: AuthUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Resubmit after return: Return for Additional Information → Waiting for Accept.
+    Called by the requestor after providing additional information.
+    """
     existing = (await db.execute(text(
         "SELECT * FROM domain_review WHERE id = :id"
     ), {"id": review_id})).mappings().first()
     if not existing:
         raise HTTPException(status_code=404, detail="Not found")
-    if existing["status"] != "Waiting for Accept":
-        raise HTTPException(status_code=400, detail="Review must be in 'Waiting for Accept' status to accept")
-    await _check_domain_write_access(user, dict(existing), allow_governance_lead=True)
-
-    # Update domain review status to Accepted
-    row = (await db.execute(text(
-        "UPDATE domain_review SET status = 'Accepted', "
-        "reviewer = :reviewer, reviewer_name = :reviewer_name, "
-        "update_by = :user, update_at = NOW() "
-        "WHERE id = :id RETURNING *"
-    ), {
-        "id": review_id,
-        "reviewer": user.id, "reviewer_name": user.name,
-        "user": user.id,
-    })).mappings().first()
-
-    # Update governance request status to In Progress
-    await db.execute(text(
-        "UPDATE governance_request SET status = 'In Progress', "
-        "update_by = :user, update_at = NOW() "
-        "WHERE id = :request_id"
-    ), {"request_id": existing["request_id"], "user": user.id})
-
-    await write_audit(db, "domain_review", review_id, "accepted", user.id,
-                      new_value={"domainCode": row["domain_code"]})
-
-    await db.commit()
-    return _map(dict(row))
-
-
-@router.put("/{review_id}/waive", dependencies=[Depends(require_permission("domain_review", "write"))])
-async def waive_review(review_id: str, user: AuthUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    # Fetch review first for domain-scoped access check
-    existing = (await db.execute(text(
-        "SELECT * FROM domain_review WHERE id = :id"
-    ), {"id": review_id})).mappings().first()
-    if not existing:
-        raise HTTPException(status_code=404, detail="Not found")
-    await _check_domain_write_access(user, dict(existing), allow_governance_lead=True)
+    if existing["status"] != "Return for Additional Information":
+        raise HTTPException(status_code=400, detail="Review must be in 'Return for Additional Information' status to resubmit")
 
     row = (await db.execute(text(
-        "UPDATE domain_review SET status = 'Waived', update_by = :user, update_at = NOW() "
+        "UPDATE domain_review SET status = 'Waiting for Accept', "
+        "return_reason = NULL, update_by = :user, update_at = NOW() "
         "WHERE id = :id RETURNING *"
     ), {"id": review_id, "user": user.id})).mappings().first()
+
+    await write_audit(db, "domain_review", review_id, "resubmitted", user.id,
+                      new_value={"domainCode": row["domain_code"]})
+    await db.commit()
+    return _map(dict(row))
+
+
+@router.put("/{review_id}/approve", dependencies=[Depends(require_permission("domain_review", "write"))])
+async def approve_review(review_id: str, body: dict = {}, user: AuthUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Approve a review: Accept → Approved (terminal)."""
+    existing = (await db.execute(text(
+        "SELECT * FROM domain_review WHERE id = :id"
+    ), {"id": review_id})).mappings().first()
+    if not existing:
+        raise HTTPException(status_code=404, detail="Not found")
+    if existing["status"] != "Accept":
+        raise HTTPException(status_code=400, detail="Review must be in 'Accept' status to approve")
+    await _check_domain_write_access(user, dict(existing), allow_governance_lead=False)
+
+    row = (await db.execute(text(
+        "UPDATE domain_review SET status = 'Approved', "
+        "completed_at = NOW(), update_by = :user, update_at = NOW() "
+        "WHERE id = :id RETURNING *"
+    ), {"id": review_id, "user": user.id})).mappings().first()
+
+    await write_audit(db, "domain_review", review_id, "approved", user.id,
+                      new_value={"domainCode": row["domain_code"]})
+    await _check_auto_complete(db, existing["request_id"], user.id)
+    await db.commit()
+    return _map(dict(row))
+
+
+@router.put("/{review_id}/approve-with-exception", dependencies=[Depends(require_permission("domain_review", "write"))])
+async def approve_with_exception(review_id: str, body: dict = {}, user: AuthUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Approve with exception: Accept → Approved with Exception (terminal)."""
+    existing = (await db.execute(text(
+        "SELECT * FROM domain_review WHERE id = :id"
+    ), {"id": review_id})).mappings().first()
+    if not existing:
+        raise HTTPException(status_code=404, detail="Not found")
+    if existing["status"] != "Accept":
+        raise HTTPException(status_code=400, detail="Review must be in 'Accept' status to approve with exception")
+    await _check_domain_write_access(user, dict(existing), allow_governance_lead=False)
+
+    row = (await db.execute(text(
+        "UPDATE domain_review SET status = 'Approved with Exception', "
+        "outcome_notes = :notes, completed_at = NOW(), update_by = :user, update_at = NOW() "
+        "WHERE id = :id RETURNING *"
+    ), {"id": review_id, "notes": body.get("outcomeNotes"), "user": user.id})).mappings().first()
+
+    await write_audit(db, "domain_review", review_id, "approved_with_exception", user.id,
+                      new_value={"domainCode": row["domain_code"], "outcomeNotes": body.get("outcomeNotes", "")})
+    await _check_auto_complete(db, existing["request_id"], user.id)
+    await db.commit()
+    return _map(dict(row))
+
+
+@router.put("/{review_id}/not-pass", dependencies=[Depends(require_permission("domain_review", "write"))])
+async def not_pass_review(review_id: str, body: dict = {}, user: AuthUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Not pass a review: Accept → Not Passed (terminal)."""
+    existing = (await db.execute(text(
+        "SELECT * FROM domain_review WHERE id = :id"
+    ), {"id": review_id})).mappings().first()
+    if not existing:
+        raise HTTPException(status_code=404, detail="Not found")
+    if existing["status"] != "Accept":
+        raise HTTPException(status_code=400, detail="Review must be in 'Accept' status to mark as not passed")
+    await _check_domain_write_access(user, dict(existing), allow_governance_lead=False)
+
+    row = (await db.execute(text(
+        "UPDATE domain_review SET status = 'Not Passed', "
+        "outcome_notes = :notes, completed_at = NOW(), update_by = :user, update_at = NOW() "
+        "WHERE id = :id RETURNING *"
+    ), {"id": review_id, "notes": body.get("outcomeNotes"), "user": user.id})).mappings().first()
+
+    await write_audit(db, "domain_review", review_id, "not_passed", user.id,
+                      new_value={"domainCode": row["domain_code"], "outcomeNotes": body.get("outcomeNotes", "")})
+    await _check_auto_complete(db, existing["request_id"], user.id)
     await db.commit()
     return _map(dict(row))

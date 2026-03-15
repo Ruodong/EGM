@@ -6,7 +6,7 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { useToast } from '@/components/ui/Toast';
 import clsx from 'clsx';
-import { Button, Input, Select, Switch } from 'antd';
+import { AutoComplete, Button, Input, Select, Switch } from 'antd';
 import { PlusCircleOutlined, EditOutlined, DownOutlined, RightOutlined, CloseOutlined, PlusOutlined, ArrowUpOutlined, ArrowDownOutlined } from '@ant-design/icons';
 import { getDomainIcon } from '@/lib/domain-icons';
 
@@ -195,6 +195,15 @@ export default function QuestionnaireTemplatesPage() {
   const groups = data?.data || [];
   const needsOptions = ['radio', 'multiselect', 'dropdown'].includes(form.answerType);
 
+  // Existing sections for the selected domain (for autocomplete)
+  const existingSections = form.domainCode
+    ? [...new Set(
+        (groups.find(g => g.domainCode === form.domainCode)?.templates || [])
+          .map(t => t.section)
+          .filter((s): s is string => !!s)
+      )].map(s => ({ value: s, label: s }))
+    : [];
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -220,7 +229,7 @@ export default function QuestionnaireTemplatesPage() {
         <div className="bg-white rounded-lg border border-border-light p-6 mb-6">
           <h2 className="font-medium mb-4">{editing ? 'Edit Question' : 'New Question'}</h2>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-4 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium mb-1">Domain *</label>
                 <Select
@@ -238,19 +247,15 @@ export default function QuestionnaireTemplatesPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">Section</label>
-                <Input
+                <AutoComplete
+                  className="w-full"
                   value={form.section}
-                  onChange={(e) => setForm({ ...form, section: e.target.value })}
-                  placeholder="e.g. General"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Question #</label>
-                <Input
-                  type="number"
-                  value={form.questionNo}
-                  onChange={(e) => setForm({ ...form, questionNo: Number(e.target.value) })}
-                  min={1}
+                  onChange={(value) => setForm({ ...form, section: value })}
+                  options={existingSections}
+                  placeholder="Select or type a new section"
+                  filterOption={(input, option) =>
+                    (option?.label as string)?.toLowerCase().includes(input.toLowerCase()) ?? false
+                  }
                 />
               </div>
               <div>
@@ -380,7 +385,7 @@ export default function QuestionnaireTemplatesPage() {
         </div>
       ) : (
         groups.map((group) => {
-          const isCollapsed = collapsed[group.domainCode];
+          const isCollapsed = collapsed[group.domainCode] ?? true;
           const { Icon, colors } = getDomainIcon(group.domainCode);
           return (
             <div key={group.domainCode} className="mb-4">
@@ -410,7 +415,7 @@ export default function QuestionnaireTemplatesPage() {
                     <table className="w-full text-sm">
                       <thead className="bg-bg-gray border-b border-border-light">
                         <tr>
-                          <th className="text-left px-4 py-2 font-medium w-12">#</th>
+                          <th className="text-left px-4 py-2 font-medium w-28">Section</th>
                           <th className="text-left px-4 py-2 font-medium">Question</th>
                           <th className="text-center px-4 py-2 font-medium w-28 whitespace-nowrap">Type</th>
                           <th className="text-left px-4 py-2 font-medium w-20">Required</th>
@@ -423,13 +428,10 @@ export default function QuestionnaireTemplatesPage() {
                           const sorted = [...group.templates].sort((a, b) => a.sortOrder - b.sortOrder);
                           return sorted.map((t, idx) => (
                             <tr key={t.id} className={clsx('border-b border-border-light last:border-0', !t.isActive && 'opacity-50')}>
-                              <td className="px-4 py-2">{t.questionNo}</td>
+                              <td className="px-4 py-2 text-text-secondary text-xs">{t.section || '—'}</td>
                               <td className="px-4 py-2">
                                 <div>
                                   <span>{t.questionText}</span>
-                                  {t.section && (
-                                    <span className="ml-2 text-xs text-text-secondary bg-gray-100 px-1.5 py-0.5 rounded">{t.section}</span>
-                                  )}
                                   {t.questionDescription && (
                                     <p className="text-xs text-text-secondary mt-0.5">{t.questionDescription}</p>
                                   )}

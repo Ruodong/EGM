@@ -19,11 +19,11 @@ def test_home_stats(client: httpx.Client):
     assert "totalRequests" in data
     assert "inReview" in data
     assert "completed" in data
-    assert "openInfoRequests" in data
+    # openInfoRequests removed (ISR deprecated)
 
 
-def test_progress(client: httpx.Client, dispatched_request):
-    rid = dispatched_request["request"]["requestId"]
+def test_progress(client: httpx.Client, submitted_request_with_reviews):
+    rid = submitted_request_with_reviews["request"]["requestId"]
     resp = client.get(f"/progress/{rid}")
     assert resp.status_code == 200
     data = resp.json()
