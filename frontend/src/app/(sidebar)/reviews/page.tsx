@@ -176,6 +176,7 @@ export default function AllReviewsPage() {
                 page,
                 totalPages: data.totalPages,
                 total: data.total,
+                pageSize: 20,
                 onPageChange: setPage,
               }
             : undefined

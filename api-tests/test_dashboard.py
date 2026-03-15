@@ -39,6 +39,29 @@ def test_progress_not_found(client: httpx.Client):
     assert resp.status_code == 404
 
 
+def test_pending_tasks_reviewer_fields(client: httpx.Client):
+    """Pending tasks response includes reviewer arrays."""
+    resp = client.get("/dashboard/pending-tasks")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "returnForAdditional" in data
+    assert "assignedActions" in data
+    assert "reviewerResubmitted" in data
+    assert "reviewerPendingActions" in data
+    assert isinstance(data["reviewerResubmitted"], list)
+    assert isinstance(data["reviewerPendingActions"], list)
+
+
+def test_pending_tasks_my_only_param(client: httpx.Client):
+    """myOnly query param is accepted and doesn't error."""
+    for val in ["true", "false"]:
+        resp = client.get(f"/dashboard/pending-tasks?myOnly={val}")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "reviewerResubmitted" in data
+        assert "reviewerPendingActions" in data
+
+
 def test_audit_log(client: httpx.Client):
     resp = client.get("/audit-log")
     assert resp.status_code == 200

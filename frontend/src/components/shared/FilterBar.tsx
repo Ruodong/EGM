@@ -31,6 +31,8 @@ export interface FilterBarConfig {
   statusMultiSelect?: boolean;
   /** Domain dropdown options for multi-select domain filter. If provided, domain filter is shown. */
   domainOptions?: { value: string; label: string }[];
+  /** Hide the Requestor filter (e.g. for requestor-role users who only see own requests) */
+  hideRequestor?: boolean;
 }
 
 /* ─── Hook: manages all filter state + debounce ────────────────── */
@@ -145,44 +147,47 @@ export default function FilterBar({
   /** Slot for page-specific extra filters (rendered after Period) */
   children?: ReactNode;
 }) {
-  const { searchPlaceholder = 'Search by ID or Name...', statusOptions, statusMultiSelect, domainOptions } = config;
+  const { searchPlaceholder = 'Search by ID or Name...', statusOptions, statusMultiSelect, domainOptions, hideRequestor } = config;
 
   return (
-    <div style={{ marginBottom: 16 }}>
-      <Space wrap size="middle" style={{ width: '100%' }}>
+    <div style={{ marginBottom: 8 }}>
+      <Space wrap size="small" style={{ width: '100%' }}>
         {/* Search */}
         <Input.Search
           placeholder={searchPlaceholder}
           value={uiState.search}
           onChange={(e) => uiState.handleSearchChange(e.target.value)}
           allowClear
-          style={{ width: 360 }}
+          size="small"
+          style={{ width: 240 }}
           data-testid="search-input"
         />
 
         {/* Status */}
         {statusOptions.length > 0 && (
-          <Space size="small">
-            <Text type="secondary">Status</Text>
+          <Space size={4}>
+            <Text type="secondary" style={{ fontSize: 12 }}>Status</Text>
             {statusMultiSelect ? (
               <Select
                 mode="multiple"
+                size="small"
                 value={Array.isArray(uiState.status) ? uiState.status : (uiState.status ? [uiState.status] : [])}
                 onChange={(v: string[]) => uiState.handleStatusChange(v)}
                 placeholder="All"
                 allowClear
-                style={{ minWidth: 200 }}
+                style={{ minWidth: 160 }}
                 maxTagCount="responsive"
                 data-testid="status-filter"
                 options={statusOptions.filter(Boolean).map((s) => ({ value: s, label: s }))}
               />
             ) : (
               <Select
+                size="small"
                 value={(uiState.status as string) || undefined}
                 onChange={(v) => uiState.handleStatusChange(v ?? '')}
                 placeholder="All"
                 allowClear
-                style={{ minWidth: 140 }}
+                style={{ minWidth: 120 }}
                 data-testid="status-filter"
                 options={statusOptions.filter(Boolean).map((s) => ({ value: s, label: s }))}
               />
@@ -192,15 +197,16 @@ export default function FilterBar({
 
         {/* Domain (only shown when domainOptions provided) */}
         {domainOptions && domainOptions.length > 0 && (
-          <Space size="small">
-            <Text type="secondary">Domain</Text>
+          <Space size={4}>
+            <Text type="secondary" style={{ fontSize: 12 }}>Domain</Text>
             <Select
               mode="multiple"
+              size="small"
               value={uiState.domain}
               onChange={(v: string[]) => uiState.handleDomainChange(v)}
               placeholder="All"
               allowClear
-              style={{ minWidth: 200 }}
+              style={{ minWidth: 160 }}
               maxTagCount="responsive"
               data-testid="domain-filter"
               options={domainOptions}
@@ -209,33 +215,38 @@ export default function FilterBar({
         )}
 
         {/* Requestor */}
-        <Space size="small">
-          <Text type="secondary">Requestor</Text>
-          <Input
-            placeholder="Name or ID..."
-            value={uiState.requestor}
-            onChange={(e) => uiState.handleRequestorChange(e.target.value)}
-            allowClear
-            style={{ width: 150 }}
-            data-testid="requestor-filter"
-          />
-        </Space>
+        {!hideRequestor && (
+          <Space size={4}>
+            <Text type="secondary" style={{ fontSize: 12 }}>Requestor</Text>
+            <Input
+              placeholder="Name or ID..."
+              size="small"
+              value={uiState.requestor}
+              onChange={(e) => uiState.handleRequestorChange(e.target.value)}
+              allowClear
+              style={{ width: 130 }}
+              data-testid="requestor-filter"
+            />
+          </Space>
+        )}
 
         {/* Period */}
-        <Space size="small">
-          <Text type="secondary">Period</Text>
+        <Space size={4}>
+          <Text type="secondary" style={{ fontSize: 12 }}>Period</Text>
           <div data-testid="date-filter">
             <Select
+              size="small"
               value={uiState.datePreset || undefined}
               onChange={(v) => uiState.handleDatePresetChange(v ?? '')}
               placeholder="All Time"
               allowClear
-              style={{ minWidth: 120 }}
+              style={{ minWidth: 100 }}
               options={DATE_PRESETS.map((p) => ({ value: p.value || 'all', label: p.label }))}
             />
           </div>
           {uiState.datePreset === 'custom' && (
             <DatePicker.RangePicker
+              size="small"
               value={[
                 uiState.customDateFrom ? dayjs(uiState.customDateFrom) : null,
                 uiState.customDateTo ? dayjs(uiState.customDateTo) : null,

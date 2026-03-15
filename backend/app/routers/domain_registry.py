@@ -26,7 +26,7 @@ def _map(r: dict) -> dict:
     }
 
 
-@router.get("", dependencies=[Depends(require_permission("domain_registry", "read"))])
+@router.get("")
 async def list_domains(
     includeInactive: bool = Query(False, description="Include inactive domains"),
     db: AsyncSession = Depends(get_db),

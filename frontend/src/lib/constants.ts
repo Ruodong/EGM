@@ -54,6 +54,9 @@ export const sidebarNavItems: NavItem[] = [
   { label: 'Help', href: '/help', icon: 'HelpCircle' },
 ];
 
+/** Default due date offset in days from creation date */
+export const DEFAULT_DUE_DATE_OFFSET_DAYS = 3;
+
 /** Maps status/verdict labels → hex background colours. Use with inline style. */
 export const statusHex: Record<string, string> = {
   Draft: '#8C8C8C',

@@ -12,6 +12,7 @@ interface MultiSelectProps {
   selected: string[];
   onChange: (selected: string[]) => void;
   placeholder?: string;
+  size?: 'small' | 'middle' | 'large';
   'data-testid'?: string;
 }
 
@@ -20,18 +21,20 @@ export default function MultiSelect({
   selected,
   onChange,
   placeholder = 'All',
+  size,
   ...props
 }: MultiSelectProps) {
   return (
     <div data-testid={props['data-testid']}>
       <Select
         mode="multiple"
+        size={size}
         value={selected}
         onChange={onChange}
         placeholder={placeholder}
         allowClear
         maxTagCount="responsive"
-        style={{ minWidth: 160 }}
+        style={{ minWidth: 140 }}
         options={options}
       />
     </div>

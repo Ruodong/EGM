@@ -166,7 +166,7 @@ export default function DispatchRulesPage() {
     resetForm();
     const existingChildren = rules.filter((r) => r.parentRuleCode === parentCode);
     const maxSort = existingChildren.reduce((max, r) => Math.max(max, r.sortOrder), 0);
-    setFormData({ ruleCode: '', ruleName: '', description: '', sortOrder: maxSort + 1, parentRuleCode: parentCode });
+    setFormData({ ruleCode: '', ruleName: '', description: '', sortOrder: maxSort + 1, parentRuleCode: parentCode, isMandatory: false });
     setShowForm(true);
   }
 
@@ -364,7 +364,7 @@ export default function DispatchRulesPage() {
 
   // ── Exclusion groups: Level-1 rules + Level-2 grouped by parent ──
   const exclusionGroups = useMemo(() => {
-    if (!matrixData) return [];
+    if (!matrixData) return { level1: [] as MatrixRule[], childMap: {} as Record<string, MatrixRule[]> };
     const level1 = matrixData.rules.filter((r) => !r.parentRuleCode);
     const childMap: Record<string, MatrixRule[]> = {};
     for (const r of matrixData.rules) {

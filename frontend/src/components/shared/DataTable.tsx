@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useMemo } from 'react';
-import { Table, Button, Space } from 'antd';
+import { Table, Button, Space, Tooltip } from 'antd';
 import { DownloadOutlined } from '@ant-design/icons';
 import type { TableProps } from 'antd';
 import { exportToCsv } from '@/lib/csv';
@@ -25,6 +25,7 @@ export interface PaginationConfig {
   page: number;
   totalPages: number;
   total: number;
+  pageSize?: number;
   onPageChange: (page: number) => void;
 }
 
@@ -119,12 +120,14 @@ export default function DataTable<T extends object>({
   return (
     <div>
       {exportFilename && data.length > 0 && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 4 }}>
           <Button
-            icon={<DownloadOutlined />}
+            icon={<DownloadOutlined style={{ fontSize: 11 }} />}
             onClick={handleExport}
             data-testid="export-csv-btn"
             size="small"
+            type="text"
+            style={{ padding: '0 6px', height: 20, fontSize: 11, lineHeight: '20px' }}
           >
             Export CSV
           </Button>
@@ -142,7 +145,7 @@ export default function DataTable<T extends object>({
             ? {
                 current: pagination.page,
                 total: pagination.total,
-                pageSize: Math.ceil(pagination.total / pagination.totalPages) || 20,
+                pageSize: pagination.pageSize || Math.ceil(pagination.total / pagination.totalPages) || 20,
                 onChange: pagination.onPageChange,
                 showTotal: (total) => `Total ${total} items`,
                 size: 'small',

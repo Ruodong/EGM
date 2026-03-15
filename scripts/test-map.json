@@ -125,6 +125,22 @@
     "frontend/src/app/(sidebar)/settings/questionnaire-templates/": {
       "api": [],
       "e2e": []
+    },
+    "backend/app/routers/review_actions.py": {
+      "api": ["api-tests/test_review_actions.py"],
+      "e2e": []
+    },
+    "frontend/src/app/governance/_components/ActionItemsSection.tsx": {
+      "api": [],
+      "e2e": ["e2e-tests/governance-requests.spec.ts"]
+    },
+    "frontend/src/app/governance/_components/ActionFeedbackPanel.tsx": {
+      "api": [],
+      "e2e": ["e2e-tests/governance-requests.spec.ts"]
+    },
+    "frontend/src/app/governance/_components/GovernanceDomainActions.tsx": {
+      "api": [],
+      "e2e": ["e2e-tests/governance-requests.spec.ts"]
     }
   },
   "wildcards": {

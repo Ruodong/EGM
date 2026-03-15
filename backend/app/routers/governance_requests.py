@@ -397,10 +397,11 @@ async def create_request(body: dict, user: AuthUser = Depends(get_current_user),
 
     # Generate request_id with daily reset: EGQyymmdd0001, EGQyymmdd0002, ...
     today_str = dt_date.today().strftime('%y%m%d')
-    egq_count = (await db.execute(text(
-        "SELECT COUNT(*) FROM governance_request WHERE request_id LIKE :prefix"
+    max_seq = (await db.execute(text(
+        "SELECT COALESCE(MAX(CAST(SUBSTRING(request_id, 10) AS INT)), 0) "
+        "FROM governance_request WHERE request_id LIKE :prefix"
     ), {"prefix": f"EGQ{today_str}%"})).scalar() or 0
-    new_id = f"EGQ{today_str}{egq_count + 1:04d}"
+    new_id = f"EGQ{today_str}{max_seq + 1:04d}"
 
     gov_project_type = body.get("govProjectType") or None
     business_unit = body.get("businessUnit") or None
@@ -1034,10 +1035,11 @@ async def copy_request(request_id: str, user: AuthUser = Depends(get_current_use
 
     # Generate new request_id
     today_str = dt_date.today().strftime('%y%m%d')
-    egq_count = (await db.execute(text(
-        "SELECT COUNT(*) FROM governance_request WHERE request_id LIKE :prefix"
+    max_seq = (await db.execute(text(
+        "SELECT COALESCE(MAX(CAST(SUBSTRING(request_id, 10) AS INT)), 0) "
+        "FROM governance_request WHERE request_id LIKE :prefix"
     ), {"prefix": f"EGQ{today_str}%"})).scalar() or 0
-    new_id = f"EGQ{today_str}{egq_count + 1:04d}"
+    new_id = f"EGQ{today_str}{max_seq + 1:04d}"
 
     proj_col_str = ", ".join(_PROJECT_COLS)
     proj_param_str = ", ".join(f":{c}" for c in _PROJECT_COLS)

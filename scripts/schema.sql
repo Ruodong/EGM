@@ -206,20 +206,60 @@ CREATE TABLE IF NOT EXISTS request_questionnaire_response (
 -- ═══════════════════════════════════════════════════════
 
 CREATE TABLE IF NOT EXISTS review_action (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     domain_review_id UUID NOT NULL REFERENCES domain_review(id) ON DELETE CASCADE,
-    action_no       VARCHAR,
-    title           VARCHAR NOT NULL,
-    description     TEXT,
-    assignee        VARCHAR,
-    assignee_name   VARCHAR,
-    status          VARCHAR NOT NULL DEFAULT 'Open',
-    due_date        TIMESTAMP,
-    closed_at       TIMESTAMP,
-    create_by       VARCHAR,
-    create_at       TIMESTAMP DEFAULT NOW(),
-    update_by       VARCHAR,
-    update_at       TIMESTAMP DEFAULT NOW()
+    action_no        INT,
+    title            VARCHAR NOT NULL,
+    description      TEXT,
+    priority         VARCHAR NOT NULL DEFAULT 'Medium',
+    action_type      VARCHAR NOT NULL DEFAULT 'Mandatory',
+    status           VARCHAR NOT NULL DEFAULT 'Created',
+    assignee         VARCHAR,
+    assignee_name    VARCHAR,
+    due_date         DATE,
+    closed_at        TIMESTAMP,
+    cancelled_at     TIMESTAMP,
+    create_by        VARCHAR NOT NULL,
+    create_by_name   VARCHAR,
+    create_at        TIMESTAMP DEFAULT NOW(),
+    update_by        VARCHAR,
+    update_by_name   VARCHAR,
+    update_at        TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS review_action_feedback (
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    action_id        UUID NOT NULL REFERENCES review_action(id) ON DELETE CASCADE,
+    round_no         INT NOT NULL DEFAULT 1,
+    feedback_type    VARCHAR NOT NULL,
+    content          TEXT NOT NULL,
+    created_by       VARCHAR NOT NULL,
+    created_by_name  VARCHAR,
+    create_at        TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS review_action_attachment (
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    action_id        UUID NOT NULL REFERENCES review_action(id) ON DELETE CASCADE,
+    file_name        VARCHAR NOT NULL,
+    file_size        INT NOT NULL,
+    content_type     VARCHAR NOT NULL DEFAULT 'application/octet-stream',
+    file_data        BYTEA NOT NULL,
+    create_by        VARCHAR,
+    create_by_name   VARCHAR,
+    create_at        TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS review_action_email_log (
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    action_id        UUID NOT NULL REFERENCES review_action(id) ON DELETE CASCADE,
+    email_type       VARCHAR NOT NULL,
+    recipient        VARCHAR NOT NULL,
+    recipient_email  VARCHAR,
+    subject          VARCHAR,
+    sent_at          TIMESTAMP DEFAULT NOW(),
+    status           VARCHAR NOT NULL DEFAULT 'skipped',
+    error_message    TEXT
 );
 
 CREATE TABLE IF NOT EXISTS review_comment (

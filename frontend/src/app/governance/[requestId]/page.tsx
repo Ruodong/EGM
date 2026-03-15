@@ -17,6 +17,7 @@ import { FileUpload } from '../_components/FileUpload';
 import { ProcessingLogStepper } from '../_components/ProcessingLogStepper';
 import { ChangeHighlight, ChangeEntry } from '../_components/ChangeHighlight';
 import { DomainQuestionnaires, DomainQuestionnairesRef } from '../_components/DomainQuestionnaires';
+import { GovernanceDomainActions } from '../_components/GovernanceDomainActions';
 import projectTypes from '@/config/project-types.json';
 import businessUnits from '@/config/business-units.json';
 import clsx from 'clsx';
@@ -86,6 +87,10 @@ interface GovRequest {
   projectGoLiveDate: string | null;
   projectEndDate: string | null;
   projectAiRelated: string | null;
+  requestorEmail: string | null;
+  requestorManagerName: string | null;
+  requestorTier1Org: string | null;
+  requestorTier2Org: string | null;
   createAt: string;
   ruleCodes: string[];
 }
@@ -344,8 +349,8 @@ export default function RequestDetailPage() {
 
   // --- Copy ---
   const copyMutation = useMutation({
-    mutationFn: () => api.post(`/governance-requests/${requestId}/copy`),
-    onSuccess: (res: { requestId: string }) => {
+    mutationFn: () => api.post<{ requestId: string }>(`/governance-requests/${requestId}/copy`, {}),
+    onSuccess: (res) => {
       toast(`Request copied — new Draft ${res.requestId}`, 'success');
       router.push(`/governance/${res.requestId}`);
     },
@@ -421,9 +426,9 @@ export default function RequestDetailPage() {
       if (productSoftwareType === 'Other' && !productSoftwareTypeOther.trim()) errors.productSoftwareTypeOther = 'Please specify the type';
       if (productEndUser.length === 0) errors.productEndUser = 'At least one end user must be selected';
       if (userRegion.length === 0) errors.userRegion = 'At least one region must be selected';
-      if (request.status === 'Draft' && triggeredDomainsRef.current.length === 0 && selectedRules.length === 0) errors.domains = 'At least one governance domain must be triggered by the selected rules';
+      if (request?.status === 'Draft' && triggeredDomainsRef.current.length === 0 && selectedRules.length === 0) errors.domains = 'At least one governance domain must be triggered by the selected rules';
       // Validate domain questionnaires completion
-      if (request.status === 'Draft' && questionnaireRef.current) {
+      if (request?.status === 'Draft' && questionnaireRef.current) {
         const incomplete = questionnaireRef.current.getIncompleteDomains();
         if (incomplete.length > 0) errors.questionnaires = `Incomplete domain questionnaires: ${incomplete.join(', ')}`;
       }
@@ -434,7 +439,7 @@ export default function RequestDetailPage() {
     setSaving(true);
     try {
       const payload: Record<string, unknown> = {
-        ...(request.status === 'Draft' ? { ruleCodes: selectedRules } : {}),
+        ...(request?.status === 'Draft' ? { ruleCodes: selectedRules } : {}),
         govProjectType: govProjectType || undefined,
         businessUnit: businessUnit || undefined,
         productSoftwareType,
@@ -1071,6 +1076,13 @@ export default function RequestDetailPage() {
               <DomainQuestionnaires
                 requestId={requestId}
               />
+            </SectionCard>
+          )}
+
+          {/* Governance Domain Actions — action items grouped by domain */}
+          {request.status !== 'Draft' && (
+            <SectionCard title="Governance Domain Actions" subtitle="Action items assigned by domain reviewers" defaultOpen>
+              <GovernanceDomainActions requestId={requestId} />
             </SectionCard>
           )}
 

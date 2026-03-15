@@ -54,7 +54,7 @@ ROLE_PERMISSIONS: dict[Role, dict[str, list[str]]] = {
         "intake": ["read", "write"],
         "domain_registry": ["read"],
         "domain_review": ["read"],
-        "review_action": ["read"],
+        "review_action": ["read", "feedback"],
         "shared_artifact": ["read"],
         "progress": ["read"],
         "dashboard": ["read"],

@@ -103,6 +103,24 @@
         "frontend/src/app/governance/create/"
       ]
     },
+    "review-action-items": {
+      "doc": "docs/features/review-action-items.md",
+      "tables": ["review_action", "review_action_feedback", "review_action_email_log"],
+      "routers": ["review_actions.py"],
+      "frontendPaths": [
+        "frontend/src/app/governance/_components/ActionItemsSection.tsx",
+        "frontend/src/app/governance/_components/GovernanceDomainActions.tsx",
+        "frontend/src/app/governance/[requestId]/reviews/[domainCode]/"
+      ]
+    },
+    "reviewer-portal-tasks": {
+      "doc": "docs/features/reviewer-portal-tasks.md",
+      "tables": [],
+      "routers": ["dashboard.py"],
+      "frontendPaths": [
+        "frontend/src/app/page.tsx"
+      ]
+    },
     "antd-migration": {
       "doc": "docs/features/antd-migration.md",
       "tables": [],
@@ -184,11 +202,24 @@
       "to": "domain-dispatch",
       "type": "data_read",
       "detail": "reads domain_registry to identify triggered internal domains for the request"
+    },
+    {
+      "from": "review-action-items",
+      "to": "domain-dispatch",
+      "type": "FK+guard",
+      "detail": "review_action.domain_review_id FK; actions can only be created when domain_review.status='Accept'"
+    },
+    {
+      "from": "review-action-items",
+      "to": "governance-requests",
+      "type": "data_read+UI",
+      "detail": "reads governance_request.requestor for default assignee; 'Governance Domain Actions' section on request detail page"
     }
   ],
   "sharedTables": {
     "governance_request": ["governance-requests", "intake-scoping", "domain-dispatch", "project-linking", "request-questionnaire"],
-    "audit_log": ["governance-requests", "domain-dispatch", "audit-log"]
+    "audit_log": ["governance-requests", "domain-dispatch", "audit-log"],
+    "review_action": ["domain-dispatch", "review-action-items"]
   },
   "globalFiles": [
     "backend/app/database.py",

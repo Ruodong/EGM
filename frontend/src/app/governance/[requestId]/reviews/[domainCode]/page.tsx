@@ -11,6 +11,7 @@ import { SectionCard } from '../../../_components/SectionCard';
 import { DomainQuestionnaires } from '../../../_components/DomainQuestionnaires';
 import { ProcessingLogStepper } from '../../../_components/ProcessingLogStepper';
 import { DomainPreviewChip } from '../../../_components/DomainPreviewChip';
+import { ActionItemsSection } from '../../../_components/ActionItemsSection';
 import { Button } from 'antd';
 import clsx from 'clsx';
 
@@ -325,6 +326,11 @@ export default function DomainReviewDetailPage() {
               <span className={clsx('px-2 py-0.5 rounded text-xs text-white', statusColors[review.status] || 'bg-gray-400')}>
                 {review.status}
               </span>
+              {govRequest?.govProjectType && (
+                <span className="px-2 py-0.5 rounded text-xs text-white bg-purple-500">
+                  {govRequest.govProjectType}
+                </span>
+              )}
             </div>
           </div>
           {review.status === 'Waiting for Accept' && (
@@ -521,6 +527,17 @@ export default function DomainReviewDetailPage() {
             </SectionCard>
           )}
         </div>
+
+        {/* Action Items Section — visible when review is Accepted or actions exist */}
+        {review && (
+          <ActionItemsSection
+            domainReviewId={review.id}
+            requestId={requestId}
+            reviewStatus={review.status}
+            requestorItcode={govRequest?.requestor}
+            requestorName={govRequest?.requestorName}
+          />
+        )}
 
         {/* Review Action Buttons — Accept status: terminal actions */}
         {review.status === 'Accept' && (

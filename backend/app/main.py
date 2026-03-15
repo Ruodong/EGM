@@ -19,6 +19,7 @@ from app.routers import (
     employees,
     questionnaire_templates,
     request_questionnaire,
+    review_actions,
     dev,
 )
 
@@ -50,6 +51,7 @@ app.include_router(user_authorization.router, prefix="/api/user-authorization", 
 app.include_router(employees.router, prefix="/api/employees", tags=["Employees"])
 app.include_router(questionnaire_templates.router, prefix="/api/questionnaire-templates", tags=["Questionnaire Templates"])
 app.include_router(request_questionnaire.router, prefix="/api/request-questionnaire", tags=["Request Questionnaire"])
+app.include_router(review_actions.router, prefix="/api/review-actions", tags=["Review Actions"])
 app.include_router(dev.router, prefix="/api/dev", tags=["Dev"])
 
 

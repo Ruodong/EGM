@@ -376,6 +376,169 @@ The `/progress/{requestId}` endpoint calculates review progress:
 
 ---
 
+## 7. Review Action Item — Status Lifecycle
+
+Each domain review (in "Accept" status) can have multiple action items. Actions track follow-up tasks assigned to the requestor or other stakeholders. Actions can only be **created** while the parent domain review is in "Accept" status.
+
+```mermaid
+flowchart TB
+    START(("Create")) -->|"POST /review-actions\n(review must be Accept)"| CRE
+
+    CRE["<b>Created</b>\n\nAction created.\nCan assign or cancel."]
+
+    CRE -->|"PUT /assign\nor auto on create\n(assignee provided)"| PA
+    CRE -->|"PUT /cancel"| CAN
+
+    subgraph ASG ["<b>Assigned</b>"]
+        direction TB
+        PA["<b>Pending Assignee</b>\n\nWaiting for assignee\nto respond."]
+        PR["<b>Pending Reviewer</b>\n\nAssignee has responded.\nWaiting for reviewer to\nclose, cancel, or follow up."]
+
+        PA -->|"POST /feedback\n(response by assignee)"| PR
+        PR -->|"POST /feedback\n(follow_up by reviewer)"| PA
+    end
+
+    PA -->|"PUT /close"| CLO
+    PA -->|"PUT /cancel"| CAN
+    PR -->|"PUT /close"| CLO
+    PR -->|"PUT /cancel"| CAN
+
+    CLO["<b>Closed</b>\n\nAction completed.\nNo further state changes."]
+    CAN["<b>Cancelled</b>\n\nAction cancelled.\nNo further state changes."]
+
+    CRE -->|"POST /copy"| CRE2(("New Copy\n→ Created"))
+
+    style CRE fill:#e6f3ff,stroke:#1890ff,stroke-width:2px,color:#000
+    style PA fill:#fff7e6,stroke:#fa8c16,stroke-width:2px,color:#000
+    style PR fill:#e6fffb,stroke:#13c2c2,stroke-width:2px,color:#000
+    style ASG fill:#f0f0f0,stroke:#8c8c8c,stroke-width:1px,color:#000
+    style CLO fill:#f6ffed,stroke:#52c41a,stroke-width:2px,color:#000
+    style CAN fill:#fff1f0,stroke:#ff4d4f,stroke-width:2px,color:#000
+    style START fill:#d9d9d9,stroke:#595959,color:#000
+    style CRE2 fill:#d9d9d9,stroke:#595959,color:#000
+```
+
+### Pending Side (within Assigned)
+
+The DB status remains `Assigned` throughout. The **pending side** is derived at query time from the last feedback entry — no additional status column required.
+
+| Last Feedback | Pending Side | Who Needs to Act | Portal Shows? |
+|---|---|---|---|
+| *(none — just assigned)* | **Assignee** | Assignee responds | Yes |
+| `follow_up` (reviewer) | **Assignee** | Assignee responds | Yes |
+| `response` (assignee) | **Reviewer** | Reviewer closes / follows up | No |
+
+**Derivation logic** (SQL):
+```sql
+LEFT JOIN LATERAL (
+    SELECT feedback_type FROM review_action_feedback
+    WHERE action_id = ra.id ORDER BY create_at DESC LIMIT 1
+) lf ON true
+-- Pending assignee when: no feedback, or last is follow_up
+WHERE lf.last_feedback_type IS NULL OR lf.last_feedback_type != 'response'
+```
+
+The `pendingSide` field (`"assignee"` | `"reviewer"` | `null`) is returned in the `GET /review-actions` and `GET /review-actions/by-request/{id}` responses.
+
+### Transition Details
+
+| # | From | To | Endpoint | Who | Conditions | Side Effects |
+|---|------|----|----------|-----|------------|--------------|
+| 1 | *(new)* | **Created** | `POST /review-actions` | Reviewer / Lead | `domain_review.status = 'Accept'` | If assignee provided → auto-transition to Assigned (Pending Assignee) |
+| 2 | **Created** | **Assigned** (Pending Assignee) | `PUT /{id}/assign` or auto | Reviewer / Lead | — | Sets assignee; sends email notification |
+| 3 | **Assigned** (Pending Assignee) | **Assigned** (Pending Reviewer) | `POST /{id}/feedback` | Assignee | — | Adds `response` feedback; bumps `update_at`; notifies reviewer; action disappears from assignee's portal |
+| 4 | **Assigned** (Pending Reviewer) | **Assigned** (Pending Assignee) | `POST /{id}/feedback` | Reviewer | — | Adds `follow_up` feedback; bumps `update_at`; notifies assignee; action reappears on assignee's portal |
+| 5 | **Assigned** | **Closed** | `PUT /{id}/close` | Reviewer / Lead | — | Sets `closed_at`; sends email |
+| 6 | **Created \| Assigned** | **Cancelled** | `PUT /{id}/cancel` | Reviewer / Lead | — | Sets `cancelled_at` |
+| 7 | any | *(new copy)* | `POST /{id}/copy` | Reviewer / Lead | — | Creates duplicate (status=Created, no feedback) |
+
+### Key Rules
+
+- **Creation guard**: Actions can only be created when `domain_review.status = 'Accept'`. If the review is in any other status (Waiting for Accept, Return, Approved, etc.), creation returns 400.
+- **Default assignee**: If no assignee specified, defaults to the governance request's requestor and auto-assigns.
+- **Cannot close Created**: An action must be Assigned before it can be Closed. Cancel is allowed from either state.
+- **Terminal actions are immutable**: Closed and Cancelled actions cannot have further state changes.
+- **Feedback on terminal reviews**: After a domain review reaches terminal status (Approved/Exception/Not Passed), existing actions remain but no new actions can be created. Feedback submission on open actions is still allowed.
+- **Multi-round feedback**: Assignee submits `response`, reviewer submits `follow_up`. Each assignee response increments `round_no`.
+- **Pending side derived, not stored**: The pending side is computed from the most recent feedback entry at query time. This avoids schema changes and ensures consistency with the feedback history.
+- **Interaction timestamps**: Every feedback submission bumps `review_action.update_at`, enabling time-consumption analytics (response latency, turnaround time per round).
+
+### Feedback Flow
+
+```mermaid
+sequenceDiagram
+    participant DR as Domain Reviewer
+    participant S as System
+    participant A as Assignee
+    participant P as Portal (Home)
+
+    DR->>S: Create Action (assign to Requestor)
+    S->>A: Email: Action Assigned
+    Note over P: Action appears on<br/>assignee's portal<br/>(Pending Assignee)
+
+    A->>S: Submit Feedback (response)
+    S->>DR: Email: Feedback Received
+    Note over P: Action disappears<br/>(Pending Reviewer)
+
+    alt Satisfied
+        DR->>S: Close Action
+        S->>A: Email: Action Closed
+    else Need More Info
+        DR->>S: Submit Follow-up (follow_up)
+        S->>A: Email: Follow-up Required
+        Note over P: Action reappears on<br/>assignee's portal<br/>(Pending Assignee)
+        A->>S: Submit Feedback (response, round 2)
+        S->>DR: Email: Feedback Received
+        Note over P: Action disappears<br/>(Pending Reviewer)
+        DR->>S: Close Action
+        S->>A: Email: Action Closed
+    end
+```
+
+### Time Tracking
+
+Each feedback interaction updates `review_action.update_at`, and each feedback entry has its own `create_at` timestamp. This enables future analytics:
+
+| Metric | Calculation |
+|--------|-------------|
+| **Assignee response time** | `response.create_at` − `MAX(assign_time, previous follow_up.create_at)` |
+| **Reviewer turnaround** | `follow_up.create_at` − `previous response.create_at` |
+| **Total action duration** | `closed_at` − `create_at` |
+| **Rounds to resolution** | `MAX(round_no)` from feedback entries |
+
+### Permission Matrix
+
+| Action | Requestor (Assignee) | Domain Reviewer | Governance Lead | Admin |
+|--------|:-:|:-:|:-:|:-:|
+| Create Action | — | Own domains | Yes | Yes |
+| Assign | — | Own domains | Yes | Yes |
+| Submit Feedback (response) | Yes (if assignee) | — | — | — |
+| Submit Feedback (follow_up) | — | Own domains | Yes | Yes |
+| Close | — | Own domains | Yes | Yes |
+| Cancel | — | Own domains | Yes | Yes |
+| Copy | — | Own domains | Yes | Yes |
+| View Actions | Yes | Yes | Yes | Yes |
+
+### Integration with Domain Review Lifecycle
+
+```mermaid
+flowchart LR
+    WFA["Waiting\nfor Accept"] --> ACC["Accept"]
+    ACC --> |"Actions can be\ncreated here"| ACC
+    ACC --> APR["Approved"]
+    ACC --> EXC["Approved with\nException"]
+    ACC --> NP["Not Passed"]
+
+    APR --> RO["Actions: read-only\n(no new creation)"]
+    EXC --> RO
+    NP --> RO
+
+    style ACC fill:#e6fffb,stroke:#13c2c2,stroke-width:2px,color:#000
+    style RO fill:#f5f5f5,stroke:#d9d9d9,stroke-width:1px,color:#666
+```
+
+---
+
 ## Source Files
 
 | File | Role |
@@ -384,4 +547,5 @@ The `/progress/{requestId}` endpoint calculates review progress:
 | `backend/app/routers/domain_reviews.py` | Accept, return, resubmit, approve, approve-with-exception, not-pass |
 | `backend/app/routers/progress.py` | Progress calculation |
 | `scripts/schema.sql` | Table definitions |
+| `backend/app/routers/review_actions.py` | Action item CRUD, state transitions, feedback |
 | `frontend/src/lib/constants.ts` | Status color mappings |
