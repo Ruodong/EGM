@@ -337,6 +337,24 @@ async def resubmit_review(review_id: str, body: dict = {}, user: AuthUser = Depe
     await write_audit(db, "domain_review", review_id, "resubmitted", user.id,
                       new_value={"domainCode": row["domain_code"]})
     await db.commit()
+
+    # Schedule AI review analysis as background task (non-blocking)
+    import asyncio
+    try:
+        from app.services.ai_review_analysis import run_analysis
+        from app.database import AsyncSessionLocal
+
+        async def _run_bg_resubmit(rid: str, trigger_by: str):
+            async with AsyncSessionLocal() as bg_db:
+                try:
+                    await run_analysis(bg_db, rid, "resubmit", trigger_by)
+                except Exception:
+                    pass
+
+        asyncio.create_task(_run_bg_resubmit(review_id, user.id))
+    except Exception:
+        pass  # LLM not configured or import failure
+
     return _map(dict(row))
 
 
@@ -413,3 +431,4 @@ async def not_pass_review(review_id: str, body: dict = {}, user: AuthUser = Depe
     await _check_auto_complete(db, existing["request_id"], user.id)
     await db.commit()
     return _map(dict(row))
+

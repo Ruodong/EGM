@@ -143,6 +143,15 @@
         "frontend/src/app/governance/_components/AskEgmFloating.tsx",
         "frontend/src/app/governance/[requestId]/reviews/[domainCode]/"
       ]
+    },
+    "ai-review-analysis": {
+      "doc": "docs/features/ai-review-analysis.md",
+      "tables": ["ai_review_analysis"],
+      "routers": ["review_analysis.py"],
+      "frontendPaths": [
+        "frontend/src/app/governance/_components/AIAnalysisSection.tsx",
+        "frontend/src/app/governance/[requestId]/reviews/[domainCode]/"
+      ]
     }
   },
   "edges": [
@@ -247,6 +256,30 @@
       "to": "review-action-items",
       "type": "data_read",
       "detail": "reads review_action + review_action_feedback for LLM context"
+    },
+    {
+      "from": "ai-review-analysis",
+      "to": "domain-dispatch",
+      "type": "FK+data_read",
+      "detail": "ai_review_analysis.domain_review_id FK; reads domain_review status/outcome for reference cases"
+    },
+    {
+      "from": "ai-review-analysis",
+      "to": "governance-requests",
+      "type": "trigger+data_read",
+      "detail": "submit_request auto-triggers analysis; reads governance_request fields for all 5 dimensions"
+    },
+    {
+      "from": "ai-review-analysis",
+      "to": "request-questionnaire",
+      "type": "data_read",
+      "detail": "reads request_questionnaire_response + domain_questionnaire_template for consistency/completeness/accuracy"
+    },
+    {
+      "from": "ai-review-analysis",
+      "to": "ask-egm",
+      "type": "data_read",
+      "detail": "reuses find_similar_reviews() from embeddings.py for reference case analysis"
     }
   ],
   "sharedTables": {

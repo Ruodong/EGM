@@ -157,6 +157,18 @@
     "frontend/src/app/governance/_components/AskEgmFloating.tsx": {
       "api": [],
       "e2e": []
+    },
+    "backend/app/routers/review_analysis.py": {
+      "api": ["api-tests/test_review_analysis.py"],
+      "e2e": []
+    },
+    "backend/app/services/ai_review_analysis.py": {
+      "api": ["api-tests/test_review_analysis.py"],
+      "e2e": []
+    },
+    "frontend/src/app/governance/_components/AIAnalysisSection.tsx": {
+      "api": [],
+      "e2e": []
     }
   },
   "wildcards": {

@@ -13,6 +13,7 @@ import { ProcessingLogStepper } from '../../../_components/ProcessingLogStepper'
 import { DomainPreviewChip } from '../../../_components/DomainPreviewChip';
 import { ActionItemsSection } from '../../../_components/ActionItemsSection';
 import { AskEgmFloating } from '../../../_components/AskEgmFloating';
+import { AIAnalysisSection } from '../../../_components/AIAnalysisSection';
 import { Button } from 'antd';
 import clsx from 'clsx';
 
@@ -491,6 +492,11 @@ export default function DomainReviewDetailPage() {
           <SectionCard title="Domain Questionnaire" subtitle={`Answers submitted by the requestor for ${review.domainName || review.domainCode}`} defaultOpen>
             <DomainQuestionnaires requestId={requestId} readOnly />
           </SectionCard>
+
+          {/* AI Analysis — between Questionnaire and Activity Log */}
+          {review && (
+            <AIAnalysisSection domainReviewId={review.id} />
+          )}
 
           {/* Activity Log */}
           {activityLog.length > 0 && (

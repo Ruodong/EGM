@@ -841,6 +841,30 @@ async def submit_request(request_id: str, user: AuthUser = Depends(get_current_u
     await write_audit(db, "governance_request", str(row["id"]), "submitted", user.id,
                       old_value={"status": "Draft"}, new_value={"status": "Submitted"})
     await db.commit()
+
+    # Schedule AI review analysis as background task (non-blocking)
+    import asyncio
+    try:
+        from app.services.ai_review_analysis import run_analysis
+        from app.database import AsyncSessionLocal
+        dr_rows = (await db.execute(text(
+            "SELECT id FROM domain_review WHERE request_id = :rid"
+        ), {"rid": lookup["id"]})).scalars().all()
+
+        async def _run_bg_analysis(review_ids: list, trigger_by: str):
+            """Run analysis in background with a separate DB session."""
+            async with AsyncSessionLocal() as bg_db:
+                for dr_id in review_ids:
+                    try:
+                        await run_analysis(bg_db, str(dr_id), "submit", trigger_by)
+                    except Exception:
+                        pass
+
+        if dr_rows:
+            asyncio.create_task(_run_bg_analysis(list(dr_rows), user.id))
+    except Exception:
+        pass  # LLM not configured or import failure
+
     return _map(dict(row))
 
 
