@@ -1,7 +1,12 @@
 """Governance Intake router — unified scoping + common questionnaire.
 
-Combines Module B: scoping questions and common information collection
-into a single intake flow backed by intake_template and intake_response tables.
+DEPRECATED: This module is superseded by:
+  - Dispatch Rules (dispatch_rules.py) — domain triggering replaces scoping
+  - Domain Questionnaire Templates (questionnaire_templates.py) — per-domain questionnaires replace common questionnaire
+  - Request Questionnaire (request_questionnaire.py) — requestor answers per-domain questions
+
+The router is kept for backward compatibility and existing test coverage.
+Tables: intake_template, intake_response, intake_change_log — no longer used in main flow.
 """
 from __future__ import annotations
 

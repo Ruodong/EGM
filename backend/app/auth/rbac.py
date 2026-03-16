@@ -18,8 +18,8 @@ ROLE_PERMISSIONS: dict[Role, dict[str, list[str]]] = {
     },
     Role.GOVERNANCE_LEAD: {
         "governance_request": ["read", "write"],
-        "intake": ["read", "write"],
-        "intake_template": ["read", "write"],
+        "intake": ["read", "write"],  # deprecated — kept for backward compat
+        "intake_template": ["read", "write"],  # deprecated
         "domain_registry": ["read", "write"],
         "domain_review": ["read", "write", "assign"],
         "domain_questionnaire": ["read", "write"],
@@ -36,8 +36,8 @@ ROLE_PERMISSIONS: dict[Role, dict[str, list[str]]] = {
     },
     Role.DOMAIN_REVIEWER: {
         "governance_request": ["read"],
-        "intake": ["read"],
-        "intake_template": ["read"],
+        "intake": ["read"],  # deprecated
+        "intake_template": ["read"],  # deprecated
         "domain_review": ["read", "write", "assign"],
         "domain_questionnaire": ["read", "write"],
         "dispatch_rule": ["read"],
@@ -51,7 +51,7 @@ ROLE_PERMISSIONS: dict[Role, dict[str, list[str]]] = {
     },
     Role.REQUESTOR: {
         "governance_request": ["read", "write"],
-        "intake": ["read", "write"],
+        "intake": ["read", "write"],  # deprecated
         "domain_registry": ["read"],
         "domain_review": ["read"],
         "review_action": ["read", "feedback"],

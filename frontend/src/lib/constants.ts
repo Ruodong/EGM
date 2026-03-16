@@ -43,7 +43,6 @@ export const sidebarNavItems: NavItem[] = [
     href: '/settings',
     icon: 'Settings',
     children: [
-      { label: 'Scoping Templates', href: '/settings/scoping-templates', icon: 'Settings', requiredResource: 'intake_template', requiredScope: 'write' },
       { label: 'Questionnaire Templates', href: '/settings/questionnaire-templates', icon: 'Settings', requiredResource: 'domain_questionnaire', requiredScope: 'read' },
       { label: 'Dispatch Rules', href: '/settings/dispatch-rules', icon: 'Settings', requiredResource: 'dispatch_rule', requiredScope: 'read' },
       { label: 'Domain Management', href: '/settings/domains', icon: 'Puzzle', requiredResource: 'domain_registry', requiredScope: 'write' },
