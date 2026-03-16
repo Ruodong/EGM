@@ -12,22 +12,9 @@ from app.utils.pagination import PaginationParams, paginated_response
 from app.utils.filters import multi_value_condition
 from app.utils.audit import write_audit
 from app.auth import require_permission, get_current_user, AuthUser, Role
+from app.utils.access import is_requestor_only as _is_requestor_only, is_domain_reviewer_only as _is_domain_reviewer_only
 
 router = APIRouter()
-
-
-def _is_requestor_only(user: AuthUser) -> bool:
-    """True if user has ONLY the Requestor role (no admin/lead/reviewer)."""
-    return all(r == Role.REQUESTOR for r in user.roles)
-
-
-def _is_domain_reviewer_only(user: AuthUser) -> bool:
-    """True when highest role is domain_reviewer (no admin/lead)."""
-    return (
-        Role.DOMAIN_REVIEWER in user.roles
-        and Role.ADMIN not in user.roles
-        and Role.GOVERNANCE_LEAD not in user.roles
-    )
 
 ALLOWED_SORT = {"request_id", "title", "status", "create_at", "update_at", "requestor", "project_name"}
 
@@ -405,7 +392,10 @@ async def create_request(body: dict, user: AuthUser = Depends(get_current_user),
             project_snapshot = {col: None for col in _PROJECT_COLS}
 
     # Generate request_id with daily reset: EGQyymmdd0001, EGQyymmdd0002, ...
+    # Use advisory lock to prevent concurrent collision on the same sequence number
     today_str = dt_date.today().strftime('%y%m%d')
+    lock_key = int(today_str)  # unique per day
+    await db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": lock_key})
     max_seq = (await db.execute(text(
         "SELECT COALESCE(MAX(CAST(SUBSTRING(request_id, 10) AS INT)), 0) "
         "FROM governance_request WHERE request_id LIKE :prefix"

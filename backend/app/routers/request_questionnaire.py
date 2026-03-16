@@ -8,6 +8,7 @@ from sqlalchemy import text
 
 from app.database import get_db
 from app.auth import require_permission, get_current_user, AuthUser
+from app.utils.access import assert_request_access
 
 router = APIRouter()
 
@@ -35,10 +36,12 @@ def _map_response(r: dict) -> dict:
 @router.get("/templates/{request_id}", dependencies=[Depends(require_permission("governance_request", "read"))])
 async def get_templates_for_request(
     request_id: str,
+    user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get active questionnaire templates for internal triggered domains of a request."""
     rid = await _resolve_request_uuid(db, request_id)
+    await assert_request_access(db, user, str(rid))
 
     # Find internal domains triggered by this request's rules
     domain_rows = (await db.execute(text("""
@@ -104,10 +107,12 @@ async def get_templates_for_request(
 @router.get("/{request_id}", dependencies=[Depends(require_permission("governance_request", "read"))])
 async def get_responses(
     request_id: str,
+    user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get saved questionnaire responses for a request."""
     rid = await _resolve_request_uuid(db, request_id)
+    await assert_request_access(db, user, str(rid))
 
     rows = (await db.execute(text(
         "SELECT * FROM request_questionnaire_response WHERE request_id = :rid ORDER BY domain_code"
@@ -125,6 +130,7 @@ async def save_responses(
 ):
     """Batch upsert questionnaire responses for a request."""
     rid = await _resolve_request_uuid(db, request_id)
+    await assert_request_access(db, user, str(rid))
     responses = body.get("responses", [])
     if not responses:
         raise HTTPException(status_code=400, detail="responses array is required")

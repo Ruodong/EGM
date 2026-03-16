@@ -20,6 +20,7 @@ from app.database import get_db
 from app.utils.audit import write_audit
 from app.utils.email import send_action_notification
 from app.auth import require_permission, get_current_user, AuthUser, Role
+from app.utils.access import assert_request_access
 
 router = APIRouter()
 
@@ -275,6 +276,9 @@ async def actions_by_request(
     ), {"rid": request_id})).mappings().first()
     if not gr:
         raise HTTPException(status_code=404, detail="Request not found")
+
+    # Row-level access control
+    await assert_request_access(db, user, str(gr["id"]))
 
     rows = (await db.execute(text("""
         SELECT ra.*, dr.domain_code, dreg.domain_name,

@@ -6,19 +6,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
 from app.database import get_db
-from app.auth import require_permission
+from app.auth import require_permission, get_current_user, AuthUser
+from app.utils.access import assert_request_access
 
 router = APIRouter()
 
 
 @router.get("/{request_id}", dependencies=[Depends(require_permission("progress", "read"))])
-async def get_progress(request_id: str, db: AsyncSession = Depends(get_db)):
+async def get_progress(request_id: str, user: AuthUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     # Resolve governance request
     gr = (await db.execute(text(
         "SELECT * FROM governance_request WHERE request_id = :id OR id::text = :id"
     ), {"id": request_id})).mappings().first()
     if not gr:
         raise HTTPException(status_code=404, detail="Governance request not found")
+
+    # Row-level access control
+    await assert_request_access(db, user, str(gr["id"]), requestor=gr["requestor"], status=gr["status"])
 
     # Get all domain reviews
     reviews = (await db.execute(text(

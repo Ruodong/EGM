@@ -407,6 +407,10 @@ export default function RequestDetailPage() {
 
   // --- Save ---
   const handleSave = async (validate = true): Promise<boolean> => {
+    // Flush any pending questionnaire saves before validation/submit
+    if (questionnaireRef.current) {
+      await questionnaireRef.current.flushPendingSaves();
+    }
     // Validate required fields only when explicitly requested (Submit / Save Changes)
     if (validate) {
       const errors: Record<string, string> = {};

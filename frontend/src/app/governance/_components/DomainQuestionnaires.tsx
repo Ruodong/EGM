@@ -37,6 +37,8 @@ interface SavedResponse {
 export interface DomainQuestionnairesRef {
   /** Returns list of domain codes with incomplete required questions */
   getIncompleteDomains: () => string[];
+  /** Flush all pending debounced saves immediately */
+  flushPendingSaves: () => Promise<void>;
 }
 
 interface DomainQuestionnairesProps {
@@ -150,7 +152,7 @@ export const DomainQuestionnaires = forwardRef<DomainQuestionnairesRef, DomainQu
       [readOnly, saveAnswer],
     );
 
-    // Expose validation method to parent — skip hidden (dependency not met) questions
+    // Expose validation + flush methods to parent
     useImperativeHandle(ref, () => ({
       getIncompleteDomains: () => {
         if (!templatesData?.data) return [];
@@ -162,6 +164,31 @@ export const DomainQuestionnaires = forwardRef<DomainQuestionnairesRef, DomainQu
           if (hasIncomplete) incomplete.push(g.domainCode);
         }
         return incomplete;
+      },
+      /** Flush all pending debounced saves immediately. Returns a promise that resolves when saves complete. */
+      flushPendingSaves: () => {
+        const pending = Object.entries(pendingSaves.current);
+        if (pending.length === 0) return Promise.resolve();
+        // Clear all timers and fire saves immediately
+        for (const [tid, timer] of pending) {
+          clearTimeout(timer);
+          delete pendingSaves.current[tid];
+        }
+        // Collect all unsaved answers and batch-save them
+        const toSave: { templateId: string; domainCode: string; answer: SavedResponse['answer'] }[] = [];
+        if (templatesData?.data) {
+          for (const g of templatesData.data) {
+            for (const q of g.questions) {
+              if (answers[q.id] !== undefined) {
+                toSave.push({ templateId: q.id, domainCode: g.domainCode, answer: answers[q.id] });
+              }
+            }
+          }
+        }
+        if (toSave.length === 0) return Promise.resolve();
+        return new Promise<void>((resolve) => {
+          saveMutation.mutate({ responses: toSave }, { onSettled: () => resolve() });
+        });
       },
     }));
 

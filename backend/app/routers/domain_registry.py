@@ -62,7 +62,7 @@ async def create_domain(body: dict, user: AuthUser = Depends(get_current_user), 
         "type": body.get("integrationType", "internal"),
         "url": body.get("externalBaseUrl"),
         "icon": body.get("icon"),
-        "config": str(body.get("config", "{}")) if body.get("config") else "{}",
+        "config": json.dumps(body["config"]) if body.get("config") else "{}",
     })).mappings().first()
     await db.commit()
     return _map(dict(row))
@@ -79,6 +79,10 @@ async def update_domain(code: str, body: dict, db: AsyncSession = Depends(get_db
         if field in body:
             sets.append(f"{col} = :{col}")
             params[col] = body[field]
+    # config needs special handling (jsonb cast)
+    if "config" in body:
+        sets.append("config = CAST(:config AS jsonb)")
+        params["config"] = json.dumps(body["config"]) if body["config"] else "{}"
     if not sets:
         raise HTTPException(status_code=400, detail="No fields to update")
 

@@ -70,6 +70,19 @@ async def list_isrs(
 @router.post("", dependencies=[Depends(require_permission("info_supplement_request", "write"))])
 async def create_isr(body: dict, user: AuthUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     rid = await _resolve_request_uuid(db, body["requestId"])
+
+    # Validate that domainReviewId actually belongs to this request
+    drid = body.get("domainReviewId")
+    if drid:
+        belongs = (await db.execute(text(
+            "SELECT 1 FROM domain_review WHERE id = :drid AND request_id = :rid"
+        ), {"drid": drid, "rid": rid})).scalar()
+        if not belongs:
+            raise HTTPException(
+                status_code=400,
+                detail="Domain review does not belong to this governance request",
+            )
+
     row = (await db.execute(text("""
         INSERT INTO info_supplement_request (request_id, domain_review_id, requester,
             category, field_reference, description, priority, status, create_by, update_by)
@@ -118,10 +131,10 @@ async def resolve_isr(isr_id: str, body: dict, user: AuthUser = Depends(get_curr
     if not row:
         raise HTTPException(status_code=404, detail="ISR not found")
 
-    # Notify domain reviews by updating common_data_updated_at
+    # Notify domain reviews by updating common_data_updated_at (skip terminal reviews)
     await db.execute(text(
         "UPDATE domain_review SET common_data_updated_at = NOW() "
-        "WHERE request_id = :rid AND status NOT IN ('Review Complete', 'Waived')"
+        "WHERE request_id = :rid AND status NOT IN ('Approved', 'Approved with Exception', 'Not Passed')"
     ), {"rid": str(row["request_id"])})
 
     # NOTE: Status is no longer toggled between "Info Requested" and "In Review".

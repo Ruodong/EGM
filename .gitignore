@@ -13,3 +13,5 @@ test-results/
 .pytest_cache/
 .claude/settings.local.json
 backups/
+scripts/db-backups/
+*.dump
