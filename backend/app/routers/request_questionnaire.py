@@ -64,6 +64,12 @@ async def get_templates_for_request(
         ORDER BY domain_code, sort_order, question_no
     """), {"codes": codes})).mappings().all()
 
+    # Get default description box title from system_config
+    default_title_row = (await db.execute(text(
+        "SELECT value FROM system_config WHERE key = 'questionnaire.descriptionBoxDefaultTitle'"
+    ))).scalars().first()
+    default_desc_title = default_title_row or "Justify your answer below"
+
     # Group by domain
     by_domain: dict[str, list[dict]] = {c: [] for c in codes}
     for r in tmpl_rows:
@@ -77,6 +83,9 @@ async def get_templates_for_request(
             "options": r.get("options"),
             "isRequired": r.get("is_required", False),
             "sortOrder": r.get("sort_order", 0),
+            "dependency": r.get("dependency"),
+            "hasDescriptionBox": r.get("has_description_box", False),
+            "descriptionBoxTitle": r.get("description_box_title") or default_desc_title,
         })
 
     domain_map = {d["domain_code"]: d["domain_name"] for d in domain_rows}

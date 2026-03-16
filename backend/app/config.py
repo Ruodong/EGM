@@ -24,6 +24,19 @@ class Settings(BaseSettings):
     KEYCLOAK_CLIENT_SECRET: str = ""
     KEYCLOAK_ALGORITHMS: str = "RS256"
 
+    # LLM (OpenAI-compatible endpoint)
+    LLM_BASE_URL: str = ""
+    LLM_API_KEY: str = ""
+    LLM_MODEL: str = "gpt-4.1-dev"
+    LLM_TEMPERATURE: float = 0.7
+    LLM_TOP_P: float = 0.8
+
+    # Embedding (for Ask EGM RAG — similar case retrieval)
+    EMBEDDING_BASE_URL: str = ""
+    EMBEDDING_API_KEY: str = ""
+    EMBEDDING_MODEL: str = "text-embedding-3-small"
+    EMBEDDING_DIMENSIONS: int = 256
+
     class Config:
         env_file = ".env"
 

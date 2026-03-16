@@ -17,6 +17,9 @@ interface Question {
   options: string[] | null;
   isRequired: boolean;
   sortOrder: number;
+  dependency: { questionId: string; answer: string } | null;
+  hasDescriptionBox: boolean;
+  descriptionBoxTitle: string | null;
 }
 
 interface DomainGroup {
@@ -28,7 +31,7 @@ interface DomainGroup {
 interface SavedResponse {
   templateId: string;
   domainCode: string;
-  answer: { value?: string | string[]; otherText?: string } | null;
+  answer: { value?: string | string[]; otherText?: string; descriptionText?: string } | null;
 }
 
 export interface DomainQuestionnairesRef {
@@ -45,6 +48,20 @@ function isAnswerComplete(answer: SavedResponse['answer']): boolean {
   if (!answer || answer.value === undefined || answer.value === null) return false;
   if (typeof answer.value === 'string') return answer.value.trim().length > 0;
   if (Array.isArray(answer.value)) return answer.value.length > 0;
+  return false;
+}
+
+/** Check if a question's dependency condition is met */
+function isDependencyMet(
+  question: Question,
+  answers: Record<string, SavedResponse['answer']>,
+): boolean {
+  if (!question.dependency) return true; // No dependency — always visible
+  const depAnswer = answers[question.dependency.questionId];
+  if (!depAnswer || depAnswer.value === undefined || depAnswer.value === null) return false;
+  const val = depAnswer.value;
+  if (typeof val === 'string') return val === question.dependency.answer;
+  if (Array.isArray(val)) return val.includes(question.dependency.answer);
   return false;
 }
 
@@ -92,28 +109,24 @@ export const DomainQuestionnaires = forwardRef<DomainQuestionnairesRef, DomainQu
     useEffect(() => {
       if (!templatesData?.data) return;
       const groups = templatesData.data;
-      // Default: collapse all, then expand first incomplete
       const newCollapsed: Record<string, boolean> = {};
       let foundIncomplete = false;
       for (const g of groups) {
         const hasIncomplete = g.questions.some(
-          (q) => q.isRequired && !isAnswerComplete(answers[q.id]),
+          (q) => q.isRequired && isDependencyMet(q, answers) && !isAnswerComplete(answers[q.id]),
         );
         newCollapsed[g.domainCode] = !hasIncomplete || foundIncomplete;
         if (hasIncomplete && !foundIncomplete) foundIncomplete = true;
       }
-      // If all complete, expand first
       if (!foundIncomplete && groups.length > 0) {
         newCollapsed[groups[0].domainCode] = false;
       }
       setCollapsed(newCollapsed);
-      // Only run on initial load
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [templatesData]);
 
     const saveAnswer = useCallback(
       (templateId: string, domainCode: string, answer: SavedResponse['answer']) => {
-        // Debounce saves per template
         if (pendingSaves.current[templateId]) {
           clearTimeout(pendingSaves.current[templateId]);
         }
@@ -137,14 +150,14 @@ export const DomainQuestionnaires = forwardRef<DomainQuestionnairesRef, DomainQu
       [readOnly, saveAnswer],
     );
 
-    // Expose validation method to parent
+    // Expose validation method to parent — skip hidden (dependency not met) questions
     useImperativeHandle(ref, () => ({
       getIncompleteDomains: () => {
         if (!templatesData?.data) return [];
         const incomplete: string[] = [];
         for (const g of templatesData.data) {
           const hasIncomplete = g.questions.some(
-            (q) => q.isRequired && !isAnswerComplete(answers[q.id]),
+            (q) => q.isRequired && isDependencyMet(q, answers) && !isAnswerComplete(answers[q.id]),
           );
           if (hasIncomplete) incomplete.push(g.domainCode);
         }
@@ -161,9 +174,13 @@ export const DomainQuestionnaires = forwardRef<DomainQuestionnairesRef, DomainQu
         {groups.map((group) => {
           const isCollapsed = collapsed[group.domainCode] ?? false;
           const { Icon, colors } = getDomainIcon(group.domainCode);
-          const total = group.questions.filter((q) => q.isRequired).length;
-          const answered = group.questions.filter(
-            (q) => q.isRequired && isAnswerComplete(answers[q.id]),
+          // Only count visible (dependency-met) required questions
+          const visibleRequired = group.questions.filter(
+            (q) => q.isRequired && isDependencyMet(q, answers),
+          );
+          const total = visibleRequired.length;
+          const answered = visibleRequired.filter(
+            (q) => isAnswerComplete(answers[q.id]),
           ).length;
           const isComplete = total > 0 && answered === total;
 
@@ -200,7 +217,6 @@ export const DomainQuestionnaires = forwardRef<DomainQuestionnairesRef, DomainQu
               {!isCollapsed && (
                 <div className="border-t border-border-light">
                   {(() => {
-                    // Group questions by section (preserve order)
                     const sections: { name: string | null; questions: Question[] }[] = [];
                     for (const q of group.questions) {
                       const sName = q.section || null;
@@ -217,25 +233,30 @@ export const DomainQuestionnaires = forwardRef<DomainQuestionnairesRef, DomainQu
                       const sectionKey = `${group.domainCode}::${sec.name ?? si}`;
                       const isSectionCollapsed = sectionCollapsed[sectionKey] ?? false;
 
+                      const renderQuestions = (questions: Question[]) =>
+                        questions.map((q) => {
+                          // Check dependency — hide if not met
+                          if (!isDependencyMet(q, answers)) return null;
+                          return (
+                            <QuestionInput
+                              key={q.id}
+                              question={q}
+                              domainCode={group.domainCode}
+                              answer={answers[q.id] || null}
+                              onChange={(answer) => updateAnswer(q.id, group.domainCode, answer)}
+                              readOnly={readOnly}
+                            />
+                          );
+                        });
+
                       if (!hasSections || !sec.name) {
-                        // No section header — render questions directly
                         return (
                           <div key={sectionKey} className="px-4 pb-4 pt-3 space-y-4">
-                            {sec.questions.map((q) => (
-                              <QuestionInput
-                                key={q.id}
-                                question={q}
-                                domainCode={group.domainCode}
-                                answer={answers[q.id] || null}
-                                onChange={(answer) => updateAnswer(q.id, group.domainCode, answer)}
-                                readOnly={readOnly}
-                              />
-                            ))}
+                            {renderQuestions(sec.questions)}
                           </div>
                         );
                       }
 
-                      // Section with collapsible header
                       return (
                         <div key={sectionKey}>
                           <button
@@ -249,16 +270,7 @@ export const DomainQuestionnaires = forwardRef<DomainQuestionnairesRef, DomainQu
                           </button>
                           {!isSectionCollapsed && (
                             <div className="px-4 pb-4 pt-3 space-y-4">
-                              {sec.questions.map((q) => (
-                                <QuestionInput
-                                  key={q.id}
-                                  question={q}
-                                  domainCode={group.domainCode}
-                                  answer={answers[q.id] || null}
-                                  onChange={(answer) => updateAnswer(q.id, group.domainCode, answer)}
-                                  readOnly={readOnly}
-                                />
-                              ))}
+                              {renderQuestions(sec.questions)}
                             </div>
                           )}
                         </div>
@@ -290,9 +302,10 @@ function QuestionInput({
 }) {
   const value = answer?.value ?? '';
   const otherText = answer?.otherText ?? '';
+  const descriptionText = answer?.descriptionText ?? '';
 
   const handleRadioChange = (val: string) => {
-    onChange({ value: val });
+    onChange({ value: val, ...(descriptionText ? { descriptionText } : {}) });
   };
 
   const handleMultiselectChange = (option: string, checked: boolean) => {
@@ -303,11 +316,19 @@ function QuestionInput({
       const idx = current.indexOf(option);
       if (idx >= 0) current.splice(idx, 1);
     }
-    onChange({ value: current, ...(current.includes('Other') ? { otherText } : {}) });
+    onChange({
+      value: current,
+      ...(current.includes('Other') ? { otherText } : {}),
+      ...(descriptionText ? { descriptionText } : {}),
+    });
   };
 
   const handleOtherText = (text: string) => {
-    onChange({ value: value, otherText: text });
+    onChange({ value: value, otherText: text, ...(descriptionText ? { descriptionText } : {}) });
+  };
+
+  const handleDescriptionText = (text: string) => {
+    onChange({ ...answer, value, descriptionText: text });
   };
 
   return (
@@ -376,7 +397,7 @@ function QuestionInput({
           <select
             className="input-field w-full max-w-sm"
             value={typeof value === 'string' ? value : ''}
-            onChange={(e) => onChange({ value: e.target.value })}
+            onChange={(e) => onChange({ value: e.target.value, ...(descriptionText ? { descriptionText } : {}) })}
             disabled={readOnly}
           >
             <option value="">Select...</option>
@@ -402,10 +423,27 @@ function QuestionInput({
           className="input-field w-full"
           rows={3}
           value={typeof value === 'string' ? value : ''}
-          onChange={(e) => onChange({ value: e.target.value })}
+          onChange={(e) => onChange({ value: e.target.value, ...(descriptionText ? { descriptionText } : {}) })}
           disabled={readOnly}
           placeholder="Enter your answer..."
         />
+      )}
+
+      {/* Description Box — additional justification/details text area */}
+      {question.hasDescriptionBox && (
+        <div className="mt-3 border-l-2 border-amber-300 pl-3">
+          <label className="block text-xs font-medium text-text-secondary mb-1">
+            {question.descriptionBoxTitle || 'Justify your answer below'}
+          </label>
+          <textarea
+            className="input-field w-full"
+            rows={2}
+            value={descriptionText}
+            onChange={(e) => handleDescriptionText(e.target.value)}
+            disabled={readOnly}
+            placeholder="Provide additional details..."
+          />
+        </div>
       )}
     </div>
   );

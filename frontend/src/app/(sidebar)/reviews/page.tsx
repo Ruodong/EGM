@@ -5,11 +5,31 @@ import { api } from '@/lib/api';
 import { statusHex } from '@/lib/constants';
 import Link from 'next/link';
 import { useState, useCallback, useMemo } from 'react';
-import { Tag, Typography } from 'antd';
+import { Button, Input, Select, Tag, Typography, DatePicker } from 'antd';
+import { SearchOutlined, UndoOutlined } from '@ant-design/icons';
 import DataTable, { type Column } from '@/components/shared/DataTable';
-import FilterBar, { useFilterState, type FilterBarConfig } from '@/components/shared/FilterBar';
+import MultiSelect, { type MultiSelectOption } from '@/components/shared/MultiSelect';
+import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
+
+const DATE_PRESETS = [
+  { label: 'All Time', value: 'all' },
+  { label: '1 Day', value: '1d' },
+  { label: '7 Days', value: '7d' },
+  { label: '1 Month', value: '1m' },
+  { label: '3 Months', value: '3m' },
+  { label: 'Custom', value: 'custom' },
+];
+
+const STATUS_OPTIONS: MultiSelectOption[] = [
+  { value: 'Waiting for Accept', label: 'Waiting for Accept' },
+  { value: 'Return for Additional Information', label: 'Return for Additional Information' },
+  { value: 'Accept', label: 'Accept' },
+  { value: 'Approved', label: 'Approved' },
+  { value: 'Approved with Exception', label: 'Approved with Exception' },
+  { value: 'Not Passed', label: 'Not Passed' },
+];
 
 interface DomainReview {
   id: string;
@@ -44,33 +64,95 @@ interface DomainRegistryItem {
   isActive: boolean;
 }
 
+interface AppliedFilters {
+  search: string;
+  requestor: string;
+  status: string;
+  domain: string;
+  dateFrom: string;
+  dateTo: string;
+}
+
+const INITIAL_FILTERS: AppliedFilters = {
+  search: '',
+  requestor: '',
+  status: '',
+  domain: '',
+  dateFrom: '',
+  dateTo: '',
+};
+
+function computeDateRange(preset: string, customFrom: string, customTo: string) {
+  if (preset === 'custom') return { dateFrom: customFrom, dateTo: customTo };
+  if (!preset || preset === 'all') return { dateFrom: '', dateTo: '' };
+  const now = new Date();
+  const to = now.toISOString().slice(0, 10);
+  let from: Date;
+  switch (preset) {
+    case '1d': from = new Date(now.getTime() - 1 * 86400000); break;
+    case '7d': from = new Date(now.getTime() - 7 * 86400000); break;
+    case '1m': from = new Date(now); from.setMonth(from.getMonth() - 1); break;
+    case '3m': from = new Date(now); from.setMonth(from.getMonth() - 3); break;
+    default: return { dateFrom: '', dateTo: '' };
+  }
+  return { dateFrom: from.toISOString().slice(0, 10), dateTo: to };
+}
+
 export default function AllReviewsPage() {
   const [page, setPage] = useState(1);
   const [sortField, setSortField] = useState('create_at');
   const [sortOrder, setSortOrder] = useState<'ASC' | 'DESC'>('DESC');
 
+  // Draft filter state
+  const [search, setSearch] = useState('');
+  const [requestor, setRequestor] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [domainFilter, setDomainFilter] = useState<string[]>([]);
+  const [datePreset, setDatePreset] = useState('');
+  const [customDateFrom, setCustomDateFrom] = useState('');
+  const [customDateTo, setCustomDateTo] = useState('');
+
+  // Applied filters
+  const [applied, setApplied] = useState<AppliedFilters>(INITIAL_FILTERS);
+
+  const handleSearch = useCallback(() => {
+    const { dateFrom, dateTo } = computeDateRange(datePreset, customDateFrom, customDateTo);
+    setApplied({
+      search,
+      requestor,
+      status: statusFilter.join(','),
+      domain: domainFilter.join(','),
+      dateFrom,
+      dateTo,
+    });
+    setPage(1);
+  }, [search, requestor, statusFilter, domainFilter, datePreset, customDateFrom, customDateTo]);
+
+  const handleReset = useCallback(() => {
+    setSearch('');
+    setRequestor('');
+    setStatusFilter([]);
+    setDomainFilter([]);
+    setDatePreset('');
+    setCustomDateFrom('');
+    setCustomDateTo('');
+    setApplied(INITIAL_FILTERS);
+    setPage(1);
+  }, []);
+
   // Fetch domain options for the filter
   const { data: domains } = useQuery<{ data: DomainRegistryItem[] }>({
     queryKey: ['domain-registry'],
     queryFn: () => api.get('/domain-registry'),
-    staleTime: 5 * 60 * 1000, // cache 5 minutes
+    staleTime: 5 * 60 * 1000,
   });
 
-  const domainOptions = useMemo(() =>
+  const domainOptions: MultiSelectOption[] = useMemo(() =>
     (domains?.data ?? [])
       .filter((d) => d.isActive)
-      .map((d) => ({ value: d.domainCode, label: d.domainName || d.domainCode })),
+      .map((d) => ({ value: d.domainCode, label: `${d.domainName || d.domainCode} (${d.domainCode})` })),
     [domains]
   );
-
-  const filterConfig: FilterBarConfig = useMemo(() => ({
-    searchPlaceholder: 'Search by Request ID or Project Name...',
-    statusOptions: ['', 'Waiting for Accept', 'Return for Additional Information', 'Accept', 'Approved', 'Approved with Exception', 'Not Passed'],
-    statusMultiSelect: true,
-    domainOptions,
-  }), [domainOptions]);
-
-  const { filterValues, uiState } = useFilterState(() => setPage(1));
 
   const handleSort = useCallback((field: string, order: 'ASC' | 'DESC') => {
     setSortField(field);
@@ -79,19 +161,19 @@ export default function AllReviewsPage() {
   }, []);
 
   const { data, isLoading } = useQuery<PaginatedResponse>({
-    queryKey: ['all-domain-reviews', page, filterValues, sortField, sortOrder],
+    queryKey: ['all-domain-reviews', page, applied, sortField, sortOrder],
     queryFn: () =>
       api.get('/domain-reviews', {
         page,
         pageSize: 20,
         sortField,
         sortOrder,
-        ...(filterValues.status && { status: filterValues.status }),
-        ...(filterValues.domain && { domainCode: filterValues.domain }),
-        ...(filterValues.search && { search: filterValues.search }),
-        ...(filterValues.requestor && { requestor: filterValues.requestor }),
-        ...(filterValues.dateFrom && { dateFrom: filterValues.dateFrom }),
-        ...(filterValues.dateTo && { dateTo: filterValues.dateTo }),
+        ...(applied.status && { status: applied.status }),
+        ...(applied.domain && { domainCode: applied.domain }),
+        ...(applied.search && { search: applied.search }),
+        ...(applied.requestor && { requestor: applied.requestor }),
+        ...(applied.dateFrom && { dateFrom: applied.dateFrom }),
+        ...(applied.dateTo && { dateTo: applied.dateTo }),
       }),
   });
 
@@ -157,9 +239,76 @@ export default function AllReviewsPage() {
 
   return (
     <div>
-      <Title level={4} style={{ margin: 0, marginBottom: 24 }}>All Domain Reviews</Title>
+      <Title level={4} style={{ margin: 0, marginBottom: 16 }}>All Domain Reviews</Title>
 
-      <FilterBar config={filterConfig} uiState={uiState} />
+      <div className="border border-border-light rounded-lg px-3 py-2.5 mb-3">
+        {/* Row 1 */}
+        <div className="flex flex-wrap items-center gap-2 mb-2">
+          <Input
+            placeholder="Request ID / Project Name"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onPressEnter={handleSearch}
+            allowClear
+            size="small"
+            style={{ width: 220 }}
+          />
+          <MultiSelect
+            options={STATUS_OPTIONS}
+            selected={statusFilter}
+            onChange={setStatusFilter}
+            placeholder="Review Status"
+            size="small"
+          />
+          <Select
+            size="small"
+            value={datePreset || undefined}
+            onChange={(v) => setDatePreset(v ?? '')}
+            placeholder="Period"
+            allowClear
+            style={{ minWidth: 110 }}
+            options={DATE_PRESETS.map((p) => ({ value: p.value, label: p.label }))}
+          />
+          {datePreset === 'custom' && (
+            <DatePicker.RangePicker
+              size="small"
+              value={[
+                customDateFrom ? dayjs(customDateFrom) : null,
+                customDateTo ? dayjs(customDateTo) : null,
+              ]}
+              onChange={(dates) => {
+                setCustomDateFrom(dates?.[0]?.format('YYYY-MM-DD') ?? '');
+                setCustomDateTo(dates?.[1]?.format('YYYY-MM-DD') ?? '');
+              }}
+            />
+          )}
+        </div>
+        {/* Row 2 */}
+        <div className="flex flex-wrap items-center gap-2">
+          <MultiSelect
+            options={domainOptions}
+            selected={domainFilter}
+            onChange={setDomainFilter}
+            placeholder="Domain"
+            size="small"
+          />
+          <Input
+            placeholder="Requestor"
+            size="small"
+            value={requestor}
+            onChange={(e) => setRequestor(e.target.value)}
+            onPressEnter={handleSearch}
+            allowClear
+            style={{ width: 150 }}
+          />
+          <Button type="primary" size="small" icon={<SearchOutlined />} onClick={handleSearch}>
+            Search
+          </Button>
+          <Button size="small" icon={<UndoOutlined />} onClick={handleReset}>
+            Reset
+          </Button>
+        </div>
+      </div>
 
       <DataTable<DomainReview>
         columns={columns}

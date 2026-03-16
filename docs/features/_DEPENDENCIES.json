@@ -134,6 +134,15 @@
         "frontend/src/lib/domain-icons.ts",
         "frontend/src/styles/globals.css"
       ]
+    },
+    "ask-egm": {
+      "doc": "docs/features/ask-egm.md",
+      "tables": ["ask_egm_conversation", "ask_egm_review_embedding"],
+      "routers": ["ask_egm.py"],
+      "frontendPaths": [
+        "frontend/src/app/governance/_components/AskEgmFloating.tsx",
+        "frontend/src/app/governance/[requestId]/reviews/[domainCode]/"
+      ]
     }
   },
   "edges": [
@@ -214,6 +223,30 @@
       "to": "governance-requests",
       "type": "data_read+UI",
       "detail": "reads governance_request.requestor for default assignee; 'Governance Domain Actions' section on request detail page"
+    },
+    {
+      "from": "ask-egm",
+      "to": "domain-dispatch",
+      "type": "FK+data_read",
+      "detail": "ask_egm_conversation.domain_review_id FK → domain_review; reads domain_review + domain_registry for context"
+    },
+    {
+      "from": "ask-egm",
+      "to": "governance-requests",
+      "type": "data_read",
+      "detail": "reads governance_request fields (title, project info, requestor) for LLM system prompt context"
+    },
+    {
+      "from": "ask-egm",
+      "to": "request-questionnaire",
+      "type": "data_read",
+      "detail": "reads request_questionnaire_response + domain_questionnaire_template for LLM context"
+    },
+    {
+      "from": "ask-egm",
+      "to": "review-action-items",
+      "type": "data_read",
+      "detail": "reads review_action + review_action_feedback for LLM context"
     }
   ],
   "sharedTables": {

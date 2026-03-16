@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/lib/auth-context';
-import { Button, DatePicker } from 'antd';
+import { Button, DatePicker, Image } from 'antd';
 import dayjs from 'dayjs';
 import { DEFAULT_DUE_DATE_OFFSET_DAYS } from '@/lib/constants';
 import {
@@ -53,6 +53,7 @@ interface FeedbackEntry {
   createdBy: string;
   createdByName: string | null;
   createAt: string | null;
+  attachments?: { id: string; feedbackId: string; actionId: string; fileName: string; fileSize: number; contentType: string; createBy: string; createByName: string | null; createAt: string | null }[];
 }
 
 interface ActionAttachment {
@@ -401,40 +402,50 @@ function ActionRow({
             </div>
             {attachments.length > 0 ? (
               <div className="space-y-1">
-                {attachments.map((att) => (
-                  <div key={att.id} className="flex items-center gap-2 text-xs py-1 px-2 rounded hover:bg-gray-50">
-                    <PaperClipOutlined style={{ fontSize: 11, color: '#8C8C8C' }} />
-                    <a
-                      href={`${API_BASE}/review-actions/${action.id}/attachments/${att.id}`}
-                      download={att.fileName}
-                      className="text-primary-blue hover:underline flex-1 truncate"
-                      title={att.fileName}
-                    >
-                      {att.fileName}
-                    </a>
-                    <span className="text-text-secondary whitespace-nowrap">{formatFileSize(att.fileSize)}</span>
-                    {att.createByName && (
-                      <span className="text-text-secondary whitespace-nowrap">{att.createByName}</span>
-                    )}
-                    <a
-                      href={`${API_BASE}/review-actions/${action.id}/attachments/${att.id}`}
-                      download={att.fileName}
-                      title="Download"
-                    >
-                      <DownloadOutlined style={{ fontSize: 12, color: '#1890FF' }} />
-                    </a>
-                    {att.createBy === currentUser && (
-                      <button
-                        type="button"
-                        onClick={() => deleteMutation.mutate(att.id)}
-                        className="text-red-400 hover:text-red-600"
-                        title="Delete"
-                      >
-                        <DeleteOutlined style={{ fontSize: 12 }} />
-                      </button>
-                    )}
-                  </div>
-                ))}
+                {attachments.map((att) => {
+                  const attUrl = `${API_BASE}/review-actions/${action.id}/attachments/${att.id}`;
+                  const isImg = att.contentType?.startsWith('image/');
+                  return (
+                    <div key={att.id} className="py-1 px-2 rounded hover:bg-gray-50">
+                      {isImg && (
+                        <Image
+                          src={attUrl}
+                          alt={att.fileName}
+                          style={{ maxHeight: 160, borderRadius: 6, objectFit: 'contain' }}
+                          preview={{ mask: 'Click to preview' }}
+                        />
+                      )}
+                      <div className="flex items-center gap-2 text-xs mt-1">
+                        <PaperClipOutlined style={{ fontSize: 11, color: '#8C8C8C' }} />
+                        <a
+                          href={attUrl}
+                          download={att.fileName}
+                          className="text-primary-blue hover:underline flex-1 truncate"
+                          title={att.fileName}
+                        >
+                          {att.fileName}
+                        </a>
+                        <span className="text-text-secondary whitespace-nowrap">{formatFileSize(att.fileSize)}</span>
+                        {att.createByName && (
+                          <span className="text-text-secondary whitespace-nowrap">{att.createByName}</span>
+                        )}
+                        <a href={attUrl} download={att.fileName} title="Download">
+                          <DownloadOutlined style={{ fontSize: 12, color: '#1890FF' }} />
+                        </a>
+                        {att.createBy === currentUser && (
+                          <button
+                            type="button"
+                            onClick={() => deleteMutation.mutate(att.id)}
+                            className="text-red-400 hover:text-red-600"
+                            title="Delete"
+                          >
+                            <DeleteOutlined style={{ fontSize: 12 }} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             ) : (
               <p className="text-xs text-text-secondary italic">No attachments</p>

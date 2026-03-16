@@ -46,8 +46,10 @@ def test_pending_tasks_reviewer_fields(client: httpx.Client):
     data = resp.json()
     assert "returnForAdditional" in data
     assert "assignedActions" in data
+    assert "reviewerFirstSubmit" in data
     assert "reviewerResubmitted" in data
     assert "reviewerPendingActions" in data
+    assert isinstance(data["reviewerFirstSubmit"], list)
     assert isinstance(data["reviewerResubmitted"], list)
     assert isinstance(data["reviewerPendingActions"], list)
 
@@ -60,6 +62,16 @@ def test_pending_tasks_my_only_param(client: httpx.Client):
         data = resp.json()
         assert "reviewerResubmitted" in data
         assert "reviewerPendingActions" in data
+
+
+def test_pending_tasks_first_submit_not_affected_by_my_only(client: httpx.Client):
+    """reviewerFirstSubmit returns same results regardless of myOnly."""
+    resp_true = client.get("/dashboard/pending-tasks?myOnly=true")
+    resp_false = client.get("/dashboard/pending-tasks?myOnly=false")
+    assert resp_true.status_code == 200
+    assert resp_false.status_code == 200
+    # firstSubmit should be same count regardless of myOnly
+    assert len(resp_true.json()["reviewerFirstSubmit"]) == len(resp_false.json()["reviewerFirstSubmit"])
 
 
 def test_audit_log(client: httpx.Client):

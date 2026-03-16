@@ -157,6 +157,7 @@ async def list_requests(
     requestor: str | None = Query(None),
     search: str | None = Query(None),
     domain: str | None = Query(None),
+    reviewStatus: str | None = Query(None),
     dateFrom: str | None = Query(None),
     dateTo: str | None = Query(None),
     pg: PaginationParams = Depends(),
@@ -200,13 +201,21 @@ async def list_requests(
         params["search"] = f"%{search}%"
         conditions.append("(gr.request_id ILIKE :search OR gr.project_name ILIKE :search OR gr.title ILIKE :search)")
     if domain:
-        params["domain_filter"] = domain
+        domain_list = [d.strip() for d in domain.split(",") if d.strip()]
+        params["domain_filter"] = domain_list
         conditions.append("""EXISTS (
             SELECT 1
             FROM governance_request_rule grr
             JOIN dispatch_rule cr ON cr.rule_code = grr.rule_code AND cr.is_active = true
             JOIN dispatch_rule_domain crd ON crd.rule_id = cr.id AND crd.relationship = 'in'
-            WHERE grr.request_id = gr.id AND crd.domain_code = :domain_filter
+            WHERE grr.request_id = gr.id AND crd.domain_code = ANY(:domain_filter)
+        )""")
+    if reviewStatus:
+        rs_list = [s.strip() for s in reviewStatus.split(",") if s.strip()]
+        params["review_status_filter"] = rs_list
+        conditions.append("""EXISTS (
+            SELECT 1 FROM domain_review dr
+            WHERE dr.request_id = gr.id AND dr.status = ANY(:review_status_filter)
         )""")
     if dateFrom:
         params["date_from"] = dt_date.fromisoformat(dateFrom)

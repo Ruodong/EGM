@@ -1,17 +1,20 @@
 'use client';
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { PageLayout } from '@/components/layout/PageLayout';
 import {
   FileProtectOutlined, AuditOutlined, CheckCircleOutlined, PlusOutlined,
   ExclamationCircleOutlined, CarryOutOutlined, RightOutlined,
-  CloseOutlined, SendOutlined, UserOutlined, CommentOutlined,
+  CloseOutlined, PaperClipOutlined, UploadOutlined, DownloadOutlined, DeleteOutlined,
 } from '@ant-design/icons';
-import { Button, Tag, Switch } from 'antd';
+import { Button, Tag, Switch, Pagination, Image } from 'antd';
 import Link from 'next/link';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
+import { ActionFeedbackPanel } from '@/app/governance/_components/ActionFeedbackPanel';
+
+const PAGE_SIZE = 10;
 
 interface HomeStats {
   totalRequests: number;
@@ -77,18 +80,19 @@ interface ResubmittedItem {
 interface PendingTasks {
   returnForAdditional: ReturnItem[];
   assignedActions: AssignedAction[];
+  reviewerFirstSubmit: ResubmittedItem[];
   reviewerResubmitted: ResubmittedItem[];
   reviewerPendingActions: ReviewerPendingAction[];
 }
 
-interface FeedbackEntry {
+interface ActionAttachment {
   id: string;
   actionId: string;
-  roundNo: number;
-  feedbackType: 'response' | 'follow_up';
-  content: string;
-  createdBy: string;
-  createdByName: string | null;
+  fileName: string;
+  fileSize: number;
+  contentType: string;
+  createBy: string;
+  createByName: string | null;
   createAt: string | null;
 }
 
@@ -122,33 +126,58 @@ function StatsCard({ label, value, icon, color }: { label: string; value: React.
 function ActionDetailModal({
   action,
   currentUser,
+  role,
   onClose,
 }: {
   action: AssignedAction;
   currentUser: string;
+  role: 'requestor' | 'reviewer';
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
-  const [content, setContent] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { data: feedbackData } = useQuery<{ data: FeedbackEntry[] }>({
+  const { data: feedbackData } = useQuery<{ data: any[] }>({
     queryKey: ['action-feedback', action.id],
     queryFn: () => api.get(`/review-actions/${action.id}/feedback`),
   });
 
-  const feedbackMutation = useMutation({
-    mutationFn: (text: string) =>
-      api.post(`/review-actions/${action.id}/feedback`, { content: text }),
+  // Action-level attachments
+  const { data: attachmentsData } = useQuery<{ data: ActionAttachment[] }>({
+    queryKey: ['action-attachments', action.id],
+    queryFn: () => api.get(`/review-actions/${action.id}/attachments`),
+  });
+  const attachments = attachmentsData?.data || [];
+
+  const uploadMutation = useMutation({
+    mutationFn: (file: File) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      return api.upload(`/review-actions/${action.id}/attachments`, formData);
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['action-feedback', action.id] });
-      queryClient.invalidateQueries({ queryKey: ['pending-tasks'] });
-      setContent('');
-      // After assignee responds, action moves to reviewer side — close modal
-      onClose();
+      queryClient.invalidateQueries({ queryKey: ['action-attachments', action.id] });
     },
   });
 
-  const feedback = feedbackData?.data || [];
+  const deleteAttMutation = useMutation({
+    mutationFn: (attId: string) => api.delete(`/review-actions/${action.id}/attachments/${attId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['action-attachments', action.id] });
+    },
+  });
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      uploadMutation.mutate(file);
+      e.target.value = '';
+    }
+  };
+
+  const isTerminal = action.status === 'Closed' || action.status === 'Cancelled';
+  const canSubmitFeedback = !isTerminal && action.status === 'Assigned';
+  const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
@@ -176,7 +205,9 @@ function ActionDetailModal({
               <span className="text-text-secondary">Request ID</span>
               <div className="mt-0.5">
                 <Link
-                  href={`/governance/${action.govUuid}/reviews/${action.domainCode}`}
+                  href={role === 'reviewer'
+                    ? `/governance/${action.govUuid}/reviews/${action.domainCode}`
+                    : `/governance/${action.govUuid}`}
                   className="text-primary-blue hover:underline"
                   onClick={onClose}
                 >
@@ -226,68 +257,84 @@ function ActionDetailModal({
             </div>
           )}
 
-          {/* Feedback timeline */}
-          <div>
-            <span className="text-sm text-text-secondary font-medium">Feedback History</span>
-            {feedback.length > 0 ? (
-              <div className="space-y-2 mt-2">
-                {feedback.map((f) => {
-                  const isResponse = f.feedbackType === 'response';
+          {/* Action-level attachments */}
+          <div className="border border-border-light rounded-lg p-3">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-medium text-text-secondary flex items-center gap-1">
+                <PaperClipOutlined /> Attachments{attachments.length > 0 ? ` (${attachments.length})` : ''}
+              </span>
+              {!isTerminal && (
+                <>
+                  <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileChange} />
+                  <Button
+                    size="small"
+                    type="text"
+                    icon={<UploadOutlined />}
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploadMutation.isPending}
+                    style={{ fontSize: 11, height: 22, padding: '0 6px' }}
+                  >
+                    {uploadMutation.isPending ? 'Uploading...' : 'Upload'}
+                  </Button>
+                </>
+              )}
+            </div>
+            {attachments.length > 0 ? (
+              <div className="space-y-1">
+                {attachments.map((att) => {
+                  const attUrl = `${API_BASE}/review-actions/${action.id}/attachments/${att.id}`;
+                  const isImg = att.contentType?.startsWith('image/');
                   return (
-                    <div key={f.id} className={`flex gap-2 ${isResponse ? '' : 'flex-row-reverse'}`}>
-                      <div
-                        className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs ${
-                          isResponse ? 'bg-blue-100 text-blue-600' : 'bg-purple-100 text-purple-600'
-                        }`}
-                      >
-                        {isResponse ? <UserOutlined /> : <CommentOutlined />}
-                      </div>
-                      <div
-                        className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
-                          isResponse ? 'bg-blue-50 text-blue-900' : 'bg-purple-50 text-purple-900'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="font-medium text-xs">{f.createdByName || f.createdBy}</span>
-                          <span className="text-xs opacity-60">
-                            Round {f.roundNo} · {isResponse ? 'Response' : 'Follow-up'}
-                          </span>
-                          {f.createAt && (
-                            <span className="text-xs opacity-50">{new Date(f.createAt).toLocaleString()}</span>
-                          )}
-                        </div>
-                        <p className="whitespace-pre-wrap">{f.content}</p>
+                    <div key={att.id} className="py-1 px-2 rounded hover:bg-gray-50">
+                      {isImg && (
+                        <Image
+                          src={attUrl}
+                          alt={att.fileName}
+                          style={{ maxHeight: 160, borderRadius: 6, objectFit: 'contain' }}
+                          preview={{ mask: 'Click to preview' }}
+                        />
+                      )}
+                      <div className="flex items-center gap-2 text-xs mt-1">
+                        <PaperClipOutlined style={{ fontSize: 11, color: '#8C8C8C' }} />
+                        <a
+                          href={attUrl}
+                          download={att.fileName}
+                          className="text-primary-blue hover:underline flex-1 truncate"
+                          title={att.fileName}
+                        >
+                          {att.fileName}
+                        </a>
+                        <span className="text-text-secondary whitespace-nowrap">
+                          {att.fileSize < 1024 ? `${att.fileSize} B` : att.fileSize < 1048576 ? `${(att.fileSize / 1024).toFixed(1)} KB` : `${(att.fileSize / 1048576).toFixed(1)} MB`}
+                        </span>
+                        {att.createByName && <span className="text-text-secondary whitespace-nowrap">{att.createByName}</span>}
+                        <a href={attUrl} download={att.fileName} title="Download">
+                          <DownloadOutlined style={{ fontSize: 12, color: '#1890FF' }} />
+                        </a>
+                        {att.createBy === currentUser && (
+                          <button type="button" onClick={() => deleteAttMutation.mutate(att.id)} className="text-red-400 hover:text-red-600" title="Delete">
+                            <DeleteOutlined style={{ fontSize: 12 }} />
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
                 })}
               </div>
             ) : (
-              <p className="text-xs text-text-secondary italic mt-2">No feedback yet</p>
+              <p className="text-xs text-text-secondary italic">No attachments</p>
             )}
           </div>
-        </div>
 
-        {/* Footer — feedback input */}
-        <div className="border-t border-border-light px-6 py-4">
-          <div className="flex gap-2">
-            <textarea
-              className="input-field flex-1 resize-none"
-              rows={2}
-              placeholder="Type your feedback response..."
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-            />
-            <Button
-              type="primary"
-              icon={<SendOutlined />}
-              disabled={!content.trim() || feedbackMutation.isPending}
-              onClick={() => feedbackMutation.mutate(content.trim())}
-              style={{ alignSelf: 'flex-end' }}
-            >
-              {feedbackMutation.isPending ? 'Sending...' : 'Send'}
-            </Button>
-          </div>
+          {/* Feedback panel with attachment support */}
+          <ActionFeedbackPanel
+            actionId={action.id}
+            feedback={feedbackData?.data || []}
+            currentUser={currentUser}
+            canSubmit={canSubmitFeedback}
+            domainReviewId={action.domainReviewId}
+            requestId={action.govRequestId}
+          />
         </div>
       </div>
     </div>
@@ -299,7 +346,15 @@ function ActionDetailModal({
 export default function HomePage() {
   const { user, hasRole, loading: authLoading } = useAuth();
   const [selectedAction, setSelectedAction] = useState<AssignedAction | null>(null);
+  const [selectedActionRole, setSelectedActionRole] = useState<'requestor' | 'reviewer'>('requestor');
   const [myOnly, setMyOnly] = useState(true);
+
+  // Pagination state for all 5 tables
+  const [firstSubmitPage, setFirstSubmitPage] = useState(1);
+  const [returnPage, setReturnPage] = useState(1);
+  const [actionPage, setActionPage] = useState(1);
+  const [resubmittedPage, setResubmittedPage] = useState(1);
+  const [pendingActionsPage, setPendingActionsPage] = useState(1);
 
   const isReviewer = hasRole('admin', 'governance_lead', 'domain_reviewer');
 
@@ -319,13 +374,31 @@ export default function HomePage() {
   const hasAssignedActions = (pending?.assignedActions?.length ?? 0) > 0;
   const hasPendingTasks = hasReturnItems || hasAssignedActions;
 
+  const hasReviewerFirstSubmit = (pending?.reviewerFirstSubmit?.length ?? 0) > 0;
   const hasReviewerResubmitted = (pending?.reviewerResubmitted?.length ?? 0) > 0;
   const hasReviewerPendingActions = (pending?.reviewerPendingActions?.length ?? 0) > 0;
   const hasReviewerTasks = hasReviewerResubmitted || hasReviewerPendingActions;
 
-  const handleActionClick = useCallback((action: AssignedAction) => {
+  const handleActionClick = useCallback((action: AssignedAction, role: 'requestor' | 'reviewer' = 'requestor') => {
     setSelectedAction(action);
+    setSelectedActionRole(role);
   }, []);
+
+  // Paginated slices
+  const firstSubmitItems = pending?.reviewerFirstSubmit ?? [];
+  const paginatedFirstSubmit = firstSubmitItems.slice((firstSubmitPage - 1) * PAGE_SIZE, firstSubmitPage * PAGE_SIZE);
+
+  const returnItems = pending?.returnForAdditional ?? [];
+  const paginatedReturn = returnItems.slice((returnPage - 1) * PAGE_SIZE, returnPage * PAGE_SIZE);
+
+  const actionItems = pending?.assignedActions ?? [];
+  const paginatedActions = actionItems.slice((actionPage - 1) * PAGE_SIZE, actionPage * PAGE_SIZE);
+
+  const resubmittedItems = pending?.reviewerResubmitted ?? [];
+  const paginatedResubmitted = resubmittedItems.slice((resubmittedPage - 1) * PAGE_SIZE, resubmittedPage * PAGE_SIZE);
+
+  const pendingActionItems = pending?.reviewerPendingActions ?? [];
+  const paginatedPendingActions = pendingActionItems.slice((pendingActionsPage - 1) * PAGE_SIZE, pendingActionsPage * PAGE_SIZE);
 
   return (
     <PageLayout>
@@ -348,6 +421,76 @@ export default function HomePage() {
           <StatsCard label="Completed" value={stats?.completed ?? 0} icon={<CheckCircleOutlined />} color="bg-status-completed" />
         </div>
 
+        {/* ── Reviews Waiting for Accept (first-time submissions) ── */}
+        {/* Not controlled by myOnly — always shows all domain reviews for the reviewer */}
+        {isReviewer && hasReviewerFirstSubmit && (
+          <div className="space-y-4 mb-8">
+            <div className="bg-white rounded-lg border border-border-light overflow-hidden">
+              <div className="flex items-center gap-2 px-5 py-3 border-b border-border-light bg-green-50">
+                <CheckCircleOutlined style={{ color: '#52C41A', fontSize: 16 }} />
+                <h2 className="text-sm font-semibold text-green-700">
+                  Reviews Waiting for Accept
+                </h2>
+                <span className="ml-1 text-xs text-green-500">
+                  ({firstSubmitItems.length})
+                </span>
+              </div>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 text-left text-xs text-text-secondary uppercase tracking-wider">
+                    <th className="px-5 py-2.5 font-medium">Request ID</th>
+                    <th className="px-5 py-2.5 font-medium">Project Name</th>
+                    <th className="px-5 py-2.5 font-medium">Domain</th>
+                    <th className="px-5 py-2.5 font-medium">Requestor</th>
+                    <th className="px-5 py-2.5 font-medium">Submit Time</th>
+                    <th className="px-5 py-2.5 font-medium"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border-light">
+                  {paginatedFirstSubmit.map((item) => (
+                    <tr key={item.reviewId} className="hover:bg-green-50/50 transition-colors">
+                      <td className="px-5 py-3">
+                        <Link
+                          href={`/governance/${item.govUuid}/reviews/${item.domainCode}`}
+                          className="text-primary-blue hover:underline font-medium whitespace-nowrap"
+                        >
+                          {item.govRequestId}
+                        </Link>
+                      </td>
+                      <td className="px-5 py-3">{item.projectName || '-'}</td>
+                      <td className="px-5 py-3 whitespace-nowrap">{item.domainName || item.domainCode}</td>
+                      <td className="px-5 py-3 whitespace-nowrap">{item.requestorName || '-'}</td>
+                      <td className="px-5 py-3 text-text-secondary whitespace-nowrap">
+                        {item.sendTime ? new Date(item.sendTime).toLocaleString() : '-'}
+                      </td>
+                      <td className="px-5 py-3">
+                        <Link
+                          href={`/governance/${item.govUuid}/reviews/${item.domainCode}`}
+                          className="text-green-600 hover:text-green-800 text-xs font-medium"
+                        >
+                          Review <RightOutlined className="text-[10px]" />
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {firstSubmitItems.length > PAGE_SIZE && (
+                <div className="flex justify-end px-5 py-3 border-t border-border-light">
+                  <Pagination
+                    size="small"
+                    current={firstSubmitPage}
+                    pageSize={PAGE_SIZE}
+                    total={firstSubmitItems.length}
+                    onChange={(p) => setFirstSubmitPage(p)}
+                    showSizeChanger={false}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Pending tasks — show only when there are items needing attention */}
         {hasPendingTasks && (
           <div className="space-y-4 mb-8">
@@ -360,7 +503,7 @@ export default function HomePage() {
                     Return for Additional Information
                   </h2>
                   <span className="ml-1 text-xs text-pink-500">
-                    ({pending!.returnForAdditional.length})
+                    ({returnItems.length})
                   </span>
                 </div>
                 <table className="w-full text-sm">
@@ -375,7 +518,7 @@ export default function HomePage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border-light">
-                    {pending!.returnForAdditional.map((item) => (
+                    {paginatedReturn.map((item) => (
                       <tr key={item.reviewId} className="hover:bg-pink-50/50 transition-colors">
                         <td className="px-5 py-3">
                           <Link
@@ -409,6 +552,18 @@ export default function HomePage() {
                     ))}
                   </tbody>
                 </table>
+                {returnItems.length > PAGE_SIZE && (
+                  <div className="flex justify-end px-5 py-3 border-t border-border-light">
+                    <Pagination
+                      size="small"
+                      current={returnPage}
+                      pageSize={PAGE_SIZE}
+                      total={returnItems.length}
+                      onChange={(p) => setReturnPage(p)}
+                      showSizeChanger={false}
+                    />
+                  </div>
+                )}
               </div>
             )}
 
@@ -421,7 +576,7 @@ export default function HomePage() {
                     Action Items Assigned to You
                   </h2>
                   <span className="ml-1 text-xs text-blue-500">
-                    ({pending!.assignedActions.length})
+                    ({actionItems.length})
                   </span>
                 </div>
                 <table className="w-full text-sm">
@@ -440,7 +595,7 @@ export default function HomePage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border-light">
-                    {pending!.assignedActions.map((action) => (
+                    {paginatedActions.map((action) => (
                       <tr
                         key={action.id}
                         className="hover:bg-blue-50/50 cursor-pointer transition-colors"
@@ -482,6 +637,18 @@ export default function HomePage() {
                     ))}
                   </tbody>
                 </table>
+                {actionItems.length > PAGE_SIZE && (
+                  <div className="flex justify-end px-5 py-3 border-t border-border-light">
+                    <Pagination
+                      size="small"
+                      current={actionPage}
+                      pageSize={PAGE_SIZE}
+                      total={actionItems.length}
+                      onChange={(p) => setActionPage(p)}
+                      showSizeChanger={false}
+                    />
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -504,16 +671,16 @@ export default function HomePage() {
               </div>
             )}
 
-            {/* Resubmitted Reviews */}
+            {/* Waiting for Accept with Additional Information */}
             {hasReviewerResubmitted && (
               <div className="bg-white rounded-lg border border-border-light overflow-hidden">
                 <div className="flex items-center gap-2 px-5 py-3 border-b border-border-light bg-green-50">
                   <CheckCircleOutlined style={{ color: '#52C41A', fontSize: 16 }} />
                   <h2 className="text-sm font-semibold text-green-700">
-                    Reviews Waiting for Accept
+                    Waiting for Accept with Additional Information
                   </h2>
                   <span className="ml-1 text-xs text-green-500">
-                    ({pending!.reviewerResubmitted.length})
+                    ({resubmittedItems.length})
                   </span>
                 </div>
                 <table className="w-full text-sm">
@@ -528,7 +695,7 @@ export default function HomePage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border-light">
-                    {pending!.reviewerResubmitted.map((item) => (
+                    {paginatedResubmitted.map((item) => (
                       <tr key={item.reviewId} className="hover:bg-green-50/50 transition-colors">
                         <td className="px-5 py-3">
                           <Link
@@ -556,6 +723,18 @@ export default function HomePage() {
                     ))}
                   </tbody>
                 </table>
+                {resubmittedItems.length > PAGE_SIZE && (
+                  <div className="flex justify-end px-5 py-3 border-t border-border-light">
+                    <Pagination
+                      size="small"
+                      current={resubmittedPage}
+                      pageSize={PAGE_SIZE}
+                      total={resubmittedItems.length}
+                      onChange={(p) => setResubmittedPage(p)}
+                      showSizeChanger={false}
+                    />
+                  </div>
+                )}
               </div>
             )}
 
@@ -568,7 +747,7 @@ export default function HomePage() {
                     Action Responses — Pending Your Review
                   </h2>
                   <span className="ml-1 text-xs text-orange-500">
-                    ({pending!.reviewerPendingActions.length})
+                    ({pendingActionItems.length})
                   </span>
                 </div>
                 <table className="w-full text-sm">
@@ -585,11 +764,11 @@ export default function HomePage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border-light">
-                    {pending!.reviewerPendingActions.map((action) => (
+                    {paginatedPendingActions.map((action) => (
                       <tr
                         key={action.id}
                         className="hover:bg-orange-50/50 cursor-pointer transition-colors"
-                        onClick={() => handleActionClick(action)}
+                        onClick={() => handleActionClick(action, 'reviewer')}
                       >
                         <td className="px-5 py-3 text-primary-blue font-medium whitespace-nowrap">
                           {action.govRequestId}
@@ -613,6 +792,18 @@ export default function HomePage() {
                     ))}
                   </tbody>
                 </table>
+                {pendingActionItems.length > PAGE_SIZE && (
+                  <div className="flex justify-end px-5 py-3 border-t border-border-light">
+                    <Pagination
+                      size="small"
+                      current={pendingActionsPage}
+                      pageSize={PAGE_SIZE}
+                      total={pendingActionItems.length}
+                      onChange={(p) => setPendingActionsPage(p)}
+                      showSizeChanger={false}
+                    />
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -642,6 +833,7 @@ export default function HomePage() {
         <ActionDetailModal
           action={selectedAction}
           currentUser={user?.id || ''}
+          role={selectedActionRole}
           onClose={() => setSelectedAction(null)}
         />
       )}

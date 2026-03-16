@@ -4,9 +4,10 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import Link from 'next/link';
 import { useState, useCallback, useMemo } from 'react';
-import { Tag, Typography } from 'antd';
+import { Button, Input, Tag, Typography } from 'antd';
+import { SearchOutlined, UndoOutlined } from '@ant-design/icons';
 import DataTable, { type Column } from '@/components/shared/DataTable';
-import FilterBar, { useFilterState, type FilterBarConfig } from '@/components/shared/FilterBar';
+import MultiSelect, { type MultiSelectOption } from '@/components/shared/MultiSelect';
 
 const { Title, Text } = Typography;
 
@@ -56,9 +57,51 @@ const ACTION_TYPE_HEX: Record<string, string> = {
   'Long Term': '#13C2C2',
 };
 
+const STATUS_OPTIONS: MultiSelectOption[] = [
+  { value: 'Created', label: 'Created' },
+  { value: 'Assigned', label: 'Assigned' },
+  { value: 'Closed', label: 'Closed' },
+  { value: 'Cancelled', label: 'Cancelled' },
+];
+
+interface AppliedFilters {
+  search: string;
+  status: string;
+  domain: string;
+}
+
+const INITIAL_FILTERS: AppliedFilters = {
+  search: '',
+  status: '',
+  domain: '',
+};
+
 export default function ActionsPage() {
   const [sortField, setSortField] = useState('create_at');
   const [sortOrder, setSortOrder] = useState<'ASC' | 'DESC'>('DESC');
+
+  // Draft filter state
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [domainFilter, setDomainFilter] = useState<string[]>([]);
+
+  // Applied filters
+  const [applied, setApplied] = useState<AppliedFilters>(INITIAL_FILTERS);
+
+  const handleSearch = useCallback(() => {
+    setApplied({
+      search,
+      status: statusFilter.join(','),
+      domain: domainFilter.join(','),
+    });
+  }, [search, statusFilter, domainFilter]);
+
+  const handleReset = useCallback(() => {
+    setSearch('');
+    setStatusFilter([]);
+    setDomainFilter([]);
+    setApplied(INITIAL_FILTERS);
+  }, []);
 
   // Fetch domain options for the filter
   const { data: domains } = useQuery<{ data: DomainRegistryItem[] }>({
@@ -67,21 +110,12 @@ export default function ActionsPage() {
     staleTime: 5 * 60 * 1000,
   });
 
-  const domainOptions = useMemo(() =>
+  const domainOptions: MultiSelectOption[] = useMemo(() =>
     (domains?.data ?? [])
       .filter((d) => d.isActive)
-      .map((d) => ({ value: d.domainCode, label: d.domainName || d.domainCode })),
+      .map((d) => ({ value: d.domainCode, label: `${d.domainName || d.domainCode} (${d.domainCode})` })),
     [domains]
   );
-
-  const filterConfig: FilterBarConfig = useMemo(() => ({
-    searchPlaceholder: 'Search by title, request ID, or assignee...',
-    statusOptions: ['', 'Created', 'Assigned', 'Closed', 'Cancelled'],
-    statusMultiSelect: true,
-    domainOptions,
-  }), [domainOptions]);
-
-  const { filterValues, uiState } = useFilterState(() => {});
 
   const handleSort = useCallback((field: string, order: 'ASC' | 'DESC') => {
     setSortField(field);
@@ -89,12 +123,12 @@ export default function ActionsPage() {
   }, []);
 
   const { data, isLoading } = useQuery<{ data: ActionItem[] }>({
-    queryKey: ['review-actions-list', filterValues],
+    queryKey: ['review-actions-list', applied],
     queryFn: () =>
       api.get('/review-actions', {
-        ...(filterValues.status && { status: filterValues.status }),
-        ...(filterValues.domain && { domainCode: filterValues.domain }),
-        ...(filterValues.search && { search: filterValues.search }),
+        ...(applied.status && { status: applied.status }),
+        ...(applied.domain && { domainCode: applied.domain }),
+        ...(applied.search && { search: applied.search }),
       }),
   });
 
@@ -204,9 +238,45 @@ export default function ActionsPage() {
 
   return (
     <div>
-      <Title level={4} style={{ margin: 0, marginBottom: 24 }}>Review Actions</Title>
+      <Title level={4} style={{ margin: 0, marginBottom: 16 }}>Review Actions</Title>
 
-      <FilterBar config={filterConfig} uiState={uiState} />
+      <div className="border border-border-light rounded-lg px-3 py-2.5 mb-3">
+        {/* Row 1 */}
+        <div className="flex flex-wrap items-center gap-2 mb-2">
+          <Input
+            placeholder="Action Title / Request ID / Assignee"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onPressEnter={handleSearch}
+            allowClear
+            size="small"
+            style={{ width: 260 }}
+          />
+          <MultiSelect
+            options={STATUS_OPTIONS}
+            selected={statusFilter}
+            onChange={setStatusFilter}
+            placeholder="Status"
+            size="small"
+          />
+        </div>
+        {/* Row 2 */}
+        <div className="flex flex-wrap items-center gap-2">
+          <MultiSelect
+            options={domainOptions}
+            selected={domainFilter}
+            onChange={setDomainFilter}
+            placeholder="Domain"
+            size="small"
+          />
+          <Button type="primary" size="small" icon={<SearchOutlined />} onClick={handleSearch}>
+            Search
+          </Button>
+          <Button size="small" icon={<UndoOutlined />} onClick={handleReset}>
+            Reset
+          </Button>
+        </div>
+      </div>
 
       <DataTable<ActionItem>
         columns={columns}

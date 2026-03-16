@@ -309,3 +309,180 @@ class TestReorder:
         # Cleanup
         with httpx.Client(base_url=BASE_URL, timeout=30) as c:
             c.post("/dev/delete", json={"questionnaireTemplates": ids})
+
+
+# ---------------------------------------------------------------------------
+# AC-13: Dependency — question depends on another question's answer
+# ---------------------------------------------------------------------------
+class TestDependency:
+    def test_create_with_dependency(self, client, internal_domain):
+        """Create a question that depends on another question's answer."""
+        # Create parent question
+        resp1 = client.post("/questionnaire-templates", json={
+            "domainCode": internal_domain["domainCode"],
+            "section": "Dep Section",
+            "questionText": "Is this a vendor project?",
+            "answerType": "radio",
+            "options": ["Yes", "No"],
+            "sortOrder": 0,
+        })
+        assert resp1.status_code == 200
+        parent_id = resp1.json()["id"]
+
+        # Create dependent question
+        resp2 = client.post("/questionnaire-templates", json={
+            "domainCode": internal_domain["domainCode"],
+            "section": "Dep Section",
+            "questionText": "Provide vendor details",
+            "answerType": "textarea",
+            "sortOrder": 1,
+            "dependency": {"questionId": parent_id, "answer": "Yes"},
+        })
+        assert resp2.status_code == 200
+        data = resp2.json()
+        assert data["dependency"] is not None
+        assert data["dependency"]["questionId"] == parent_id
+        assert data["dependency"]["answer"] == "Yes"
+
+        # Cleanup
+        with httpx.Client(base_url=BASE_URL, timeout=30) as c:
+            c.post("/dev/delete", json={"questionnaireTemplates": [parent_id, data["id"]]})
+
+    def test_update_dependency(self, client, template):
+        """Update a question to add/change dependency."""
+        resp = client.put(f"/questionnaire-templates/{template['id']}", json={
+            "dependency": {"questionId": "00000000-0000-0000-0000-000000000001", "answer": "No"},
+        })
+        assert resp.status_code == 200
+        assert resp.json()["dependency"]["answer"] == "No"
+
+        # Clear dependency
+        resp = client.put(f"/questionnaire-templates/{template['id']}", json={
+            "dependency": None,
+        })
+        assert resp.status_code == 200
+        assert resp.json()["dependency"] is None
+
+    def test_dependency_returned_in_list(self, client, internal_domain):
+        """Dependency field is returned when listing templates."""
+        resp1 = client.post("/questionnaire-templates", json={
+            "domainCode": internal_domain["domainCode"],
+            "questionText": "Parent Q?",
+            "answerType": "radio",
+            "options": ["A", "B"],
+            "sortOrder": 0,
+        })
+        parent_id = resp1.json()["id"]
+
+        resp2 = client.post("/questionnaire-templates", json={
+            "domainCode": internal_domain["domainCode"],
+            "questionText": "Child Q?",
+            "answerType": "textarea",
+            "sortOrder": 1,
+            "dependency": {"questionId": parent_id, "answer": "A"},
+        })
+        child_id = resp2.json()["id"]
+
+        resp = client.get(f"/questionnaire-templates/{internal_domain['domainCode']}")
+        assert resp.status_code == 200
+        templates = resp.json()["data"]
+        child = next(t for t in templates if t["id"] == child_id)
+        assert child["dependency"]["questionId"] == parent_id
+
+        with httpx.Client(base_url=BASE_URL, timeout=30) as c:
+            c.post("/dev/delete", json={"questionnaireTemplates": [parent_id, child_id]})
+
+
+# ---------------------------------------------------------------------------
+# AC-14: Description Box — additional text box for any question type
+# ---------------------------------------------------------------------------
+class TestDescriptionBox:
+    def test_create_with_description_box(self, client, internal_domain):
+        """Create a question with description box enabled."""
+        resp = client.post("/questionnaire-templates", json={
+            "domainCode": internal_domain["domainCode"],
+            "questionText": "Rate the risk?",
+            "answerType": "radio",
+            "options": ["Low", "Medium", "High"],
+            "hasDescriptionBox": True,
+            "descriptionBoxTitle": "Explain your rating",
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["hasDescriptionBox"] is True
+        assert data["descriptionBoxTitle"] == "Explain your rating"
+
+        with httpx.Client(base_url=BASE_URL, timeout=30) as c:
+            c.post("/dev/delete", json={"questionnaireTemplates": [data["id"]]})
+
+    def test_create_with_default_title(self, client, internal_domain):
+        """Create question with description box but no custom title — uses None."""
+        resp = client.post("/questionnaire-templates", json={
+            "domainCode": internal_domain["domainCode"],
+            "questionText": "Approve?",
+            "answerType": "radio",
+            "options": ["Yes", "No"],
+            "hasDescriptionBox": True,
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["hasDescriptionBox"] is True
+        assert data["descriptionBoxTitle"] is None  # NULL — frontend uses default
+
+        with httpx.Client(base_url=BASE_URL, timeout=30) as c:
+            c.post("/dev/delete", json={"questionnaireTemplates": [data["id"]]})
+
+    def test_update_description_box(self, client, template):
+        """Update template to enable/disable description box."""
+        resp = client.put(f"/questionnaire-templates/{template['id']}", json={
+            "hasDescriptionBox": True,
+            "descriptionBoxTitle": "Custom title",
+        })
+        assert resp.status_code == 200
+        assert resp.json()["hasDescriptionBox"] is True
+        assert resp.json()["descriptionBoxTitle"] == "Custom title"
+
+        # Disable
+        resp = client.put(f"/questionnaire-templates/{template['id']}", json={
+            "hasDescriptionBox": False,
+        })
+        assert resp.status_code == 200
+        assert resp.json()["hasDescriptionBox"] is False
+
+
+# ---------------------------------------------------------------------------
+# AC-15: System Config — default description box title
+# ---------------------------------------------------------------------------
+class TestSystemConfig:
+    def test_get_default_title(self, client):
+        """Read the default description box title from system config."""
+        resp = client.get("/system-config/questionnaire.descriptionBoxDefaultTitle")
+        assert resp.status_code == 200
+        assert resp.json()["value"] == "Justify your answer below"
+
+    def test_update_default_title(self, client):
+        """Admin can update the default title."""
+        original = client.get("/system-config/questionnaire.descriptionBoxDefaultTitle").json()["value"]
+        resp = client.put("/system-config/questionnaire.descriptionBoxDefaultTitle", json={
+            "value": "Please explain",
+        })
+        assert resp.status_code == 200
+        assert resp.json()["value"] == "Please explain"
+
+        # Restore
+        client.put("/system-config/questionnaire.descriptionBoxDefaultTitle", json={
+            "value": original,
+        })
+
+    def test_list_config(self, client):
+        """List all config keys."""
+        resp = client.get("/system-config")
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        keys = [d["key"] for d in data]
+        assert "questionnaire.descriptionBoxDefaultTitle" in keys
+
+    def test_get_nonexistent_key(self, client):
+        """Nonexistent key returns 404."""
+        resp = client.get("/system-config/nonexistent.key")
+        assert resp.status_code == 404

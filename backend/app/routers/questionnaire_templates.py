@@ -25,6 +25,9 @@ def _map(r: dict) -> dict:
         "isRequired": r.get("is_required", False),
         "sortOrder": r.get("sort_order", 0),
         "isActive": r.get("is_active", True),
+        "dependency": r.get("dependency"),
+        "hasDescriptionBox": r.get("has_description_box", False),
+        "descriptionBoxTitle": r.get("description_box_title"),
     }
 
 
@@ -143,11 +146,17 @@ async def create_template(
     if answer_type in ("radio", "multiselect", "dropdown") and not options:
         raise HTTPException(status_code=400, detail="options are required for radio/multiselect/dropdown types")
 
+    dependency = body.get("dependency")
+    has_description_box = body.get("hasDescriptionBox", False)
+    description_box_title = body.get("descriptionBoxTitle")
+
     row = (await db.execute(text("""
         INSERT INTO domain_questionnaire_template
-            (domain_code, section, question_no, question_text, question_description, answer_type, options, is_required, sort_order)
+            (domain_code, section, question_no, question_text, question_description, answer_type, options,
+             is_required, sort_order, dependency, has_description_box, description_box_title)
         VALUES (:domain_code, :section, :question_no, :question_text, :question_description, :answer_type,
-                CAST(:options AS jsonb), :is_required, :sort_order)
+                CAST(:options AS jsonb), :is_required, :sort_order,
+                CAST(:dependency AS jsonb), :has_description_box, :description_box_title)
         RETURNING *
     """), {
         "domain_code": domain_code,
@@ -159,6 +168,9 @@ async def create_template(
         "options": json.dumps(options) if options else None,
         "is_required": body.get("isRequired", False),
         "sort_order": body.get("sortOrder", 0),
+        "dependency": json.dumps(dependency) if dependency else None,
+        "has_description_box": has_description_box,
+        "description_box_title": description_box_title or None,
     })).mappings().first()
     await db.commit()
     return _map(dict(row))
@@ -212,6 +224,8 @@ async def update_template(
         ("answerType", "answer_type"),
         ("isRequired", "is_required"),
         ("sortOrder", "sort_order"),
+        ("hasDescriptionBox", "has_description_box"),
+        ("descriptionBoxTitle", "description_box_title"),
     ]:
         if field in body:
             sets.append(f"{col} = :{col}")
@@ -220,6 +234,10 @@ async def update_template(
     if "options" in body:
         sets.append("options = CAST(:options AS jsonb)")
         params["options"] = json.dumps(body["options"]) if body["options"] else None
+
+    if "dependency" in body:
+        sets.append("dependency = CAST(:dependency AS jsonb)")
+        params["dependency"] = json.dumps(body["dependency"]) if body["dependency"] else None
 
     if not sets:
         raise HTTPException(status_code=400, detail="No fields to update")

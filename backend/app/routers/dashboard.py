@@ -115,28 +115,47 @@ async def pending_tasks(
 
     # ── Reviewer section (only for reviewer / admin / GL) ──
 
+    reviewer_first_submit_rows: list = []
     reviewer_resubmitted_rows: list = []
     reviewer_pending_action_rows: list = []
 
     if is_reviewer:
+        # Compute domain codes (used by first-submit and optionally by myOnly=false)
+        domain_codes = user.domain_codes if user.domain_codes else []
+        if Role.ADMIN in user.roles or Role.GOVERNANCE_LEAD in user.roles:
+            all_dc = (await db.execute(text(
+                "SELECT domain_code FROM domain_registry"
+            ))).scalars().all()
+            domain_codes = list(all_dc)
+
         # Determine reviewer filter: myOnly → dr.reviewer = uid, else → domain_codes
         if my_only:
             rev_filter = "dr.reviewer = :uid"
             rev_params: dict = {"uid": user.id}
         else:
             rev_filter = "dr.domain_code = ANY(:domain_codes)"
-            # admin/GL see all domains — pass all domain codes if empty
-            dc = user.domain_codes if user.domain_codes else []
-            if Role.ADMIN in user.roles or Role.GOVERNANCE_LEAD in user.roles:
-                # Fetch all domain codes for admin/GL
-                all_dc = (await db.execute(text(
-                    "SELECT domain_code FROM domain_registry"
-                ))).scalars().all()
-                dc = list(all_dc)
-            rev_params = {"domain_codes": dc}
+            rev_params = {"domain_codes": domain_codes}
 
-        # 3) Reviewer: resubmitted reviews waiting for acceptance
-        #    started_at IS NOT NULL → previously accepted then returned, now resubmitted
+        # 3a) Reviewer: first-time submissions waiting for acceptance
+        #     return_reason IS NULL → never returned, first-time submit
+        #     Always filtered by domain (not affected by myOnly)
+        reviewer_first_submit_rows = (await db.execute(text(
+            "SELECT dr.id AS review_id, gr.id AS gov_uuid, gr.request_id AS gov_request_id, "
+            "       dr.domain_code, dg.domain_name, "
+            "       dr.reviewer, dr.reviewer_name, "
+            "       gr.requestor, gr.requestor_name, "
+            "       gr.project_name, gr.title AS gov_title, dr.update_at "
+            "FROM domain_review dr "
+            "JOIN governance_request gr ON dr.request_id = gr.id "
+            "LEFT JOIN domain_registry dg ON dr.domain_code = dg.domain_code "
+            "WHERE dr.status = 'Waiting for Accept' "
+            "  AND dr.return_reason IS NULL "
+            "  AND dr.domain_code = ANY(:domain_codes) "
+            "ORDER BY dr.update_at DESC"
+        ), {"domain_codes": domain_codes})).mappings().all()
+
+        # 3b) Reviewer: resubmitted reviews waiting for re-acceptance
+        #     return_reason IS NOT NULL → previously returned, now resubmitted
         reviewer_resubmitted_rows = (await db.execute(text(
             "SELECT dr.id AS review_id, gr.id AS gov_uuid, gr.request_id AS gov_request_id, "
             "       dr.domain_code, dg.domain_name, "
@@ -146,7 +165,9 @@ async def pending_tasks(
             "FROM domain_review dr "
             "JOIN governance_request gr ON dr.request_id = gr.id "
             "LEFT JOIN domain_registry dg ON dr.domain_code = dg.domain_code "
-            f"WHERE dr.status = 'Waiting for Accept' AND {rev_filter} "
+            f"WHERE dr.status = 'Waiting for Accept' "
+            f"  AND dr.return_reason IS NOT NULL "
+            f"  AND {rev_filter} "
             "ORDER BY dr.update_at DESC"
         ), rev_params)).mappings().all()
 
@@ -222,6 +243,21 @@ async def pending_tasks(
             for r in returned_rows
         ],
         "assignedActions": [_map_action_row(dict(r)) for r in action_rows],
+        "reviewerFirstSubmit": [
+            {
+                "reviewId": r["review_id"],
+                "govUuid": r["gov_uuid"],
+                "govRequestId": r["gov_request_id"],
+                "domainCode": r["domain_code"],
+                "domainName": r["domain_name"],
+                "reviewerName": r["reviewer_name"] or r["reviewer"],
+                "requestorName": r["requestor_name"] or r["requestor"],
+                "projectName": r["project_name"],
+                "govTitle": r["gov_title"],
+                "sendTime": r["update_at"].isoformat() if r["update_at"] else None,
+            }
+            for r in reviewer_first_submit_rows
+        ],
         "reviewerResubmitted": [
             {
                 "reviewId": r["review_id"],

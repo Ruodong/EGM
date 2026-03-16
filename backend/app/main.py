@@ -20,6 +20,8 @@ from app.routers import (
     questionnaire_templates,
     request_questionnaire,
     review_actions,
+    system_config,
+    ask_egm,
     dev,
 )
 
@@ -52,6 +54,8 @@ app.include_router(employees.router, prefix="/api/employees", tags=["Employees"]
 app.include_router(questionnaire_templates.router, prefix="/api/questionnaire-templates", tags=["Questionnaire Templates"])
 app.include_router(request_questionnaire.router, prefix="/api/request-questionnaire", tags=["Request Questionnaire"])
 app.include_router(review_actions.router, prefix="/api/review-actions", tags=["Review Actions"])
+app.include_router(system_config.router, prefix="/api/system-config", tags=["System Config"])
+app.include_router(ask_egm.router, prefix="/api/ask-egm", tags=["Ask EGM"])
 app.include_router(dev.router, prefix="/api/dev", tags=["Dev"])
 
 

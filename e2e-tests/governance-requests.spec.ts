@@ -117,12 +117,16 @@ test.describe('Governance Requests', () => {
     // Wait for the portal-rendered dropdown to appear
     const dropdown = page.locator('.ant-select-dropdown').last();
     await expect(dropdown).toBeVisible({ timeout: 5000 });
+    // Select Draft option and close dropdown
+    await dropdown.locator('.ant-select-item-option').filter({ hasText: 'Draft' }).click();
+    await page.getByRole('heading', { name: 'Governance Requests' }).click();
+    // Click Search button to apply filter
     const [response] = await Promise.all([
       page.waitForResponse(
         (resp) => resp.url().includes('/governance-requests') && resp.url().includes('status=Draft') && resp.request().method() === 'GET',
         { timeout: 10000 },
       ),
-      dropdown.locator('.ant-select-item-option').filter({ hasText: 'Draft' }).click(),
+      page.getByTestId('search-button').click(),
     ]);
     expect(response.status()).toBe(200);
     const body = await response.json();
@@ -136,12 +140,11 @@ test.describe('Governance Requests', () => {
     await page.goto('/requests');
     await expect(page.getByRole('heading', { name: 'Governance Requests' })).toBeVisible();
     // Search input should be visible
-    const searchInput = page.getByPlaceholder('Search by Request ID or Project Name...');
+    const searchInput = page.getByTestId('search-input');
     await expect(searchInput).toBeVisible();
-    // Type a search term
+    // Type a search term and click Search
     await searchInput.fill('GR-');
-    // Wait for debounced search to trigger
-    await page.waitForTimeout(500);
+    await page.getByTestId('search-button').click();
     // Page should still be functional
     await expect(page.getByRole('heading', { name: 'Governance Requests' })).toBeVisible();
   });
@@ -152,13 +155,14 @@ test.describe('Governance Requests', () => {
     // Requestor filter input should be visible
     const requestorInput = page.getByTestId('requestor-filter');
     await expect(requestorInput).toBeVisible();
-    // Type a requestor name and wait for debounced API call
+    // Type a requestor name and click Search to trigger API call
+    await requestorInput.fill('system');
     const [response] = await Promise.all([
       page.waitForResponse(
         (resp) => resp.url().includes('/governance-requests') && resp.url().includes('requestor=') && resp.request().method() === 'GET',
         { timeout: 10000 },
       ),
-      requestorInput.fill('system'),
+      page.getByTestId('search-button').click(),
     ]);
     expect(response.status()).toBe(200);
   });
@@ -209,6 +213,28 @@ test.describe('Governance Requests', () => {
     const gr = await resp.json();
     createdRequestIds.push(gr.requestId);
     expect(gr.status).toBe('Draft');
+
+    // Pre-fill any required questionnaire answers (DP domain may have required questions)
+    const tmplResp = await page.request.get(`http://localhost:4001/api/request-questionnaire/templates/${gr.requestId}`);
+    const tmplData = await tmplResp.json();
+    const requiredResponses: { templateId: string; domainCode: string; answer: unknown }[] = [];
+    for (const domain of tmplData.data || []) {
+      for (const q of domain.questions || []) {
+        if (q.isRequired) {
+          const answer = q.answerType === 'multiselect'
+            ? { value: [q.options?.[0] || 'N/A'] }
+            : q.answerType === 'textarea'
+              ? { value: 'E2E test answer' }
+              : { value: q.options?.[0] || 'N/A' };
+          requiredResponses.push({ templateId: q.id, domainCode: domain.domainCode, answer });
+        }
+      }
+    }
+    if (requiredResponses.length > 0) {
+      await page.request.post(`http://localhost:4001/api/request-questionnaire/${gr.requestId}`, {
+        data: { responses: requiredResponses },
+      });
+    }
 
     // Navigate to detail page (wizard step 1)
     await page.goto(`/governance/${gr.requestId}`);

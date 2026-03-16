@@ -5,6 +5,19 @@ SET search_path TO egm;
 -- (gr_seq sequence removed — EGQ-format request_id uses daily counter instead)
 
 -- ═══════════════════════════════════════════════════════
+-- System Configuration (key-value)
+-- ═══════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS system_config (
+    key     VARCHAR PRIMARY KEY,
+    value   TEXT NOT NULL
+);
+
+INSERT INTO system_config (key, value) VALUES
+    ('questionnaire.descriptionBoxDefaultTitle', 'Justify your answer below')
+ON CONFLICT (key) DO NOTHING;
+
+-- ═══════════════════════════════════════════════════════
 -- Projects (synced from EAM)
 -- ═══════════════════════════════════════════════════════
 
@@ -175,7 +188,10 @@ CREATE TABLE IF NOT EXISTS domain_questionnaire_template (
     options         JSONB,
     is_required     BOOLEAN DEFAULT FALSE,
     sort_order      INT DEFAULT 0,
-    is_active       BOOLEAN DEFAULT TRUE
+    is_active       BOOLEAN DEFAULT TRUE,
+    dependency      JSONB,                          -- { "questionId": "<uuid>", "answer": "<option>" }
+    has_description_box  BOOLEAN DEFAULT FALSE,
+    description_box_title VARCHAR                   -- NULL → use system_config default
 );
 
 CREATE TABLE IF NOT EXISTS domain_questionnaire_response (
@@ -250,6 +266,19 @@ CREATE TABLE IF NOT EXISTS review_action_attachment (
     create_at        TIMESTAMP DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS review_action_feedback_attachment (
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    feedback_id      UUID NOT NULL REFERENCES review_action_feedback(id) ON DELETE CASCADE,
+    action_id        UUID NOT NULL REFERENCES review_action(id) ON DELETE CASCADE,
+    file_name        VARCHAR NOT NULL,
+    file_size        INT NOT NULL,
+    content_type     VARCHAR NOT NULL DEFAULT 'application/octet-stream',
+    file_data        BYTEA NOT NULL,
+    create_by        VARCHAR,
+    create_by_name   VARCHAR,
+    create_at        TIMESTAMP DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS review_action_email_log (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     action_id        UUID NOT NULL REFERENCES review_action(id) ON DELETE CASCADE,
@@ -269,6 +298,22 @@ CREATE TABLE IF NOT EXISTS review_comment (
     create_by       VARCHAR,
     create_at       TIMESTAMP DEFAULT NOW()
 );
+
+-- ═══════════════════════════════════════════════════════
+-- E.2: Ask EGM — AI conversation history
+-- ═══════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS ask_egm_conversation (
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    domain_review_id UUID NOT NULL REFERENCES domain_review(id) ON DELETE CASCADE,
+    role             VARCHAR NOT NULL,          -- 'user' | 'assistant'
+    content          TEXT NOT NULL,
+    create_by        VARCHAR,
+    create_at        TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_ask_egm_conv_review
+    ON ask_egm_conversation(domain_review_id, create_at);
 
 -- ═══════════════════════════════════════════════════════
 -- E: Shared Artifacts

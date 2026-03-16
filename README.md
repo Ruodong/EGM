@@ -48,6 +48,19 @@ pip install -r requirements.txt
 DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5433/egm_local
 DB_SCHEMA=egm
 AUTH_DISABLED=true
+
+# AI 助手 (Ask EGM) — 可选，支持任何 OpenAI 兼容端点
+LLM_BASE_URL=https://your-llm-endpoint/v1
+LLM_API_KEY=sk-your-api-key
+LLM_MODEL=gpt-4.1-dev
+LLM_TEMPERATURE=0.7
+LLM_TOP_P=0.8
+
+# Embedding (Ask EGM RAG 相似案例检索) — 可选
+EMBEDDING_BASE_URL=https://your-llm-endpoint/v1
+EMBEDDING_API_KEY=sk-your-api-key
+EMBEDDING_MODEL=text-embedding-3-small
+EMBEDDING_DIMENSIONS=256
 ```
 
 ### 启动开发服务
@@ -70,7 +83,7 @@ EGM/
 │   │   ├── config.py      配置管理
 │   │   ├── database.py    数据库连接
 │   │   ├── auth/          认证与 RBAC 权限
-│   │   ├── routers/       12 个 API 路由模块
+│   │   ├── routers/       13 个 API 路由模块
 │   │   └── utils/         分页、过滤工具
 │   └── requirements.txt
 ├── frontend/          Next.js 前端应用
@@ -103,6 +116,7 @@ EGM/
 | 仪表盘 | `/api/dashboard` | 统计数据 |
 | 进度 | `/api/progress` | 请求级进度 |
 | 审计日志 | `/api/audit-log` | 操作记录 |
+| AI 助手 | `/api/ask-egm` | Ask EGM 对话式评审分析 (SSE) |
 
 API 文档：启动后端后访问 http://localhost:4001/docs (Swagger UI)
 
@@ -133,3 +147,10 @@ npx playwright test --reporter=list
 ## 文档
 
 - [架构设计](docs/architecture.md) — 详细的系统架构、数据库设计、业务流程
+- [功能文档](docs/features/) — 各功能模块的详细设计与验收标准
+  - [Ask EGM](docs/features/ask-egm.md) — AI 辅助评审分析
+  - [治理请求](docs/features/governance-requests.md) — 请求全生命周期
+  - [评审 Action Items](docs/features/review-action-items.md) — 评审操作项与反馈
+  - [问卷模板](docs/features/questionnaire-templates.md) — 领域问卷模板管理
+  - [用户授权](docs/features/user-authorization.md) — 用户角色与权限
+  - [更多...](docs/features/)

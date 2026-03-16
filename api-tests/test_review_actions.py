@@ -854,3 +854,125 @@ class TestAttachments:
             headers=_h(ADMIN),
         )
         assert resp.status_code == 200
+
+
+# ═══════════════════════════════════════════════════════
+# Feedback Attachment CRUD tests
+# ═══════════════════════════════════════════════════════
+
+class TestFeedbackAttachments:
+    """Test feedback attachment upload, list (inline), download, delete."""
+
+    def _create_action_and_feedback(self, client, accepted_review):
+        """Helper: create action + submit feedback, return (action_id, feedback_id)."""
+        resp = client.post("/review-actions", headers=_h(REVIEWER_DD), json={
+            "domainReviewId": accepted_review["reviewId"],
+            "title": "FB Attach Test",
+        })
+        action_id = resp.json()["id"]
+        # Assignee submits feedback
+        resp = client.post(
+            f"/review-actions/{action_id}/feedback",
+            headers=_h(REQUESTOR),
+            json={"content": "Feedback with attachment"},
+        )
+        feedback_id = resp.json()["id"]
+        return action_id, feedback_id
+
+    def test_upload_feedback_attachment(self, client, accepted_review):
+        """Upload a file attachment to a feedback entry."""
+        action_id, feedback_id = self._create_action_and_feedback(client, accepted_review)
+
+        file_content = b"Screenshot data here"
+        resp = client.post(
+            f"/review-actions/{action_id}/feedback/{feedback_id}/attachments",
+            headers={"X-Dev-User": REQUESTOR},
+            files={"file": ("screenshot.png", file_content, "image/png")},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["fileName"] == "screenshot.png"
+        assert data["fileSize"] == len(file_content)
+        assert data["contentType"] == "image/png"
+        assert data["createBy"] == REQUESTOR
+        assert data["feedbackId"] == feedback_id
+        assert data["actionId"] == action_id
+
+    def test_feedback_list_includes_attachments(self, client, accepted_review):
+        """Feedback list endpoint includes attachment metadata."""
+        action_id, feedback_id = self._create_action_and_feedback(client, accepted_review)
+
+        # Upload 2 files
+        for name in ("file1.txt", "file2.pdf"):
+            client.post(
+                f"/review-actions/{action_id}/feedback/{feedback_id}/attachments",
+                headers={"X-Dev-User": REQUESTOR},
+                files={"file": (name, b"data", "application/octet-stream")},
+            )
+
+        # List feedback
+        resp = client.get(f"/review-actions/{action_id}/feedback", headers=_admin_h())
+        assert resp.status_code == 200
+        fb_list = resp.json()["data"]
+        fb = next(f for f in fb_list if f["id"] == feedback_id)
+        assert "attachments" in fb
+        assert len(fb["attachments"]) == 2
+        names = {a["fileName"] for a in fb["attachments"]}
+        assert names == {"file1.txt", "file2.pdf"}
+
+    def test_download_feedback_attachment(self, client, accepted_review):
+        """Download preserves binary content."""
+        action_id, feedback_id = self._create_action_and_feedback(client, accepted_review)
+
+        file_content = b"\x89PNG\r\n\x1a\nfake image"
+        resp = client.post(
+            f"/review-actions/{action_id}/feedback/{feedback_id}/attachments",
+            headers={"X-Dev-User": REQUESTOR},
+            files={"file": ("image.png", file_content, "image/png")},
+        )
+        att_id = resp.json()["id"]
+
+        resp = client.get(
+            f"/review-actions/{action_id}/feedback/{feedback_id}/attachments/{att_id}",
+            headers=_admin_h(),
+        )
+        assert resp.status_code == 200
+        assert resp.content == file_content
+        assert "image.png" in resp.headers.get("content-disposition", "")
+
+    def test_delete_own_feedback_attachment(self, client, accepted_review):
+        """Uploader can delete their own feedback attachment."""
+        action_id, feedback_id = self._create_action_and_feedback(client, accepted_review)
+
+        resp = client.post(
+            f"/review-actions/{action_id}/feedback/{feedback_id}/attachments",
+            headers={"X-Dev-User": REQUESTOR},
+            files={"file": ("delete-me.txt", b"bye", "text/plain")},
+        )
+        att_id = resp.json()["id"]
+
+        resp = client.delete(
+            f"/review-actions/{action_id}/feedback/{feedback_id}/attachments/{att_id}",
+            headers=_h(REQUESTOR),
+        )
+        assert resp.status_code == 200
+        assert resp.json()["deleted"] is True
+
+        # Verify gone
+        resp = client.get(
+            f"/review-actions/{action_id}/feedback/{feedback_id}/attachments/{att_id}",
+            headers=_admin_h(),
+        )
+        assert resp.status_code == 404
+
+    def test_reviewer_can_upload_feedback_attachment(self, client, accepted_review):
+        """Reviewer can upload feedback attachments."""
+        action_id, feedback_id = self._create_action_and_feedback(client, accepted_review)
+
+        resp = client.post(
+            f"/review-actions/{action_id}/feedback/{feedback_id}/attachments",
+            headers={"X-Dev-User": REVIEWER_DD},
+            files={"file": ("reviewer-file.txt", b"data", "text/plain")},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["createBy"] == REVIEWER_DD

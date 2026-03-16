@@ -12,3 +12,4 @@ nohup.out
 test-results/
 .pytest_cache/
 .claude/settings.local.json
+backups/

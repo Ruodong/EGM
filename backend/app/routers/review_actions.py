@@ -10,6 +10,7 @@ Guard: Actions can only be created when domain_review.status = 'Accept'.
 """
 from __future__ import annotations
 
+from datetime import date as _date
 from fastapi import APIRouter, Depends, Query, HTTPException, UploadFile
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -66,6 +67,21 @@ def _map_feedback(r: dict) -> dict:
         "content": r["content"],
         "createdBy": r["created_by"],
         "createdByName": r.get("created_by_name"),
+        "createAt": r["create_at"].isoformat() if r.get("create_at") else None,
+    }
+
+
+def _map_feedback_attachment(r: dict) -> dict:
+    """Map a review_action_feedback_attachment DB row to camelCase response."""
+    return {
+        "id": str(r["id"]),
+        "feedbackId": str(r["feedback_id"]),
+        "actionId": str(r["action_id"]),
+        "fileName": r["file_name"],
+        "fileSize": r["file_size"],
+        "contentType": r["content_type"],
+        "createBy": r["create_by"],
+        "createByName": r.get("create_by_name"),
         "createAt": r["create_at"].isoformat() if r.get("create_at") else None,
     }
 
@@ -349,7 +365,7 @@ async def get_feedback(
     action_id: str,
     db: AsyncSession = Depends(get_db),
 ):
-    """Get all feedback entries for an action item."""
+    """Get all feedback entries for an action item, including attachments."""
     # Verify action exists
     await _get_action(db, action_id)
 
@@ -357,7 +373,26 @@ async def get_feedback(
         "SELECT * FROM review_action_feedback WHERE action_id = :aid ORDER BY create_at"
     ), {"aid": action_id})).mappings().all()
 
-    return {"data": [_map_feedback(dict(r)) for r in rows]}
+    # Fetch all feedback attachments for this action in one query
+    att_rows = (await db.execute(text(
+        "SELECT id, feedback_id, action_id, file_name, file_size, content_type, "
+        "create_by, create_by_name, create_at "
+        "FROM review_action_feedback_attachment WHERE action_id = :aid ORDER BY create_at"
+    ), {"aid": action_id})).mappings().all()
+
+    # Group attachments by feedback_id
+    att_by_feedback: dict[str, list] = {}
+    for a in att_rows:
+        fid = str(a["feedback_id"])
+        att_by_feedback.setdefault(fid, []).append(_map_feedback_attachment(dict(a)))
+
+    result = []
+    for r in rows:
+        fb = _map_feedback(dict(r))
+        fb["attachments"] = att_by_feedback.get(fb["id"], [])
+        result.append(fb)
+
+    return {"data": result}
 
 
 # ═══════════════════════════════════════════════════════
@@ -423,7 +458,8 @@ async def create_action(
 
     action_no = await _next_action_no(db, domain_review_id)
 
-    due_date = body.get("dueDate")  # expects 'YYYY-MM-DD' string or None
+    due_date_str = body.get("dueDate")  # expects 'YYYY-MM-DD' string or None
+    due_date = _date.fromisoformat(due_date_str) if due_date_str else None
 
     row = (await db.execute(text("""
         INSERT INTO review_action
@@ -451,7 +487,7 @@ async def create_action(
 
     await write_audit(db, "review_action", str(row["id"]), "created", user.id,
                       new_value={"title": title, "status": status, "assignee": assignee,
-                                 "dueDate": due_date, "domainCode": review["domain_code"]})
+                                 "dueDate": due_date_str, "domainCode": review["domain_code"]})
 
     # Send notification if assigned
     if status == "Assigned" and assignee:
@@ -496,6 +532,8 @@ async def update_action(
                 raise HTTPException(status_code=400, detail=f"Invalid priority")
             if field == "actionType" and val not in VALID_TYPES:
                 raise HTTPException(status_code=400, detail=f"Invalid actionType")
+            if field == "dueDate" and val:
+                val = _date.fromisoformat(val)
             updates.append(f"{col} = :{col}")
             params[col] = val
 
@@ -906,10 +944,11 @@ async def download_action_attachment(
     """), {"att_id": att_id, "aid": action_id})).mappings().first()
     if not row:
         raise HTTPException(status_code=404, detail="Attachment not found")
+    disposition = "inline" if row["content_type"].startswith("image/") else "attachment"
     return Response(
         content=bytes(row["file_data"]),
         media_type=row["content_type"],
-        headers={"Content-Disposition": f'attachment; filename="{row["file_name"]}"'},
+        headers={"Content-Disposition": f'{disposition}; filename="{row["file_name"]}"'},
     )
 
 
@@ -940,5 +979,125 @@ async def delete_action_attachment(
 
     await write_audit(db, "review_action", action_id, "attachment_deleted", user.id,
                       new_value={"fileName": att["file_name"]})
+    await db.commit()
+    return {"deleted": True}
+
+
+# ═══════════════════════════════════════════════════════
+# Feedback Attachments
+# ═══════════════════════════════════════════════════════
+
+async def _check_feedback_attachment_access(user: AuthUser, action_row: dict, review_row: dict):
+    """Check that user can upload feedback attachments.
+
+    Same rules as feedback submission:
+    - Admin / Governance Lead: always allowed.
+    - Domain Reviewer: if domain_code in their domains.
+    - Requestor (assignee): allowed.
+    """
+    if Role.ADMIN in user.roles or Role.GOVERNANCE_LEAD in user.roles:
+        return
+    if Role.DOMAIN_REVIEWER in user.roles and review_row["domain_code"] in user.domain_codes:
+        return
+    if user.id == action_row.get("assignee"):
+        return
+    raise HTTPException(status_code=403, detail="Not authorized to manage feedback attachments")
+
+
+@router.post("/{action_id}/feedback/{feedback_id}/attachments",
+             dependencies=[Depends(require_permission("review_action", "read"))])
+async def upload_feedback_attachment(
+    action_id: str,
+    feedback_id: str,
+    file: UploadFile,
+    user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Upload a file attachment to a feedback entry."""
+    action = await _get_action(db, action_id)
+    review = await _get_review(db, str(action["domain_review_id"]))
+    await _check_feedback_attachment_access(user, action, review)
+
+    # Verify feedback belongs to this action
+    fb = (await db.execute(text(
+        "SELECT id FROM review_action_feedback WHERE id = :fid AND action_id = :aid"
+    ), {"fid": feedback_id, "aid": action_id})).mappings().first()
+    if not fb:
+        raise HTTPException(status_code=404, detail="Feedback not found")
+
+    data = await file.read()
+    row = (await db.execute(text("""
+        INSERT INTO review_action_feedback_attachment
+            (feedback_id, action_id, file_name, file_size, content_type, file_data, create_by, create_by_name)
+        VALUES (:fid, :aid, :fname, :fsize, :ctype, :fdata, :user, :user_name)
+        RETURNING id, feedback_id, action_id, file_name, file_size, content_type, create_by, create_by_name, create_at
+    """), {
+        "fid": feedback_id,
+        "aid": action_id,
+        "fname": file.filename or "untitled",
+        "fsize": len(data),
+        "ctype": file.content_type or "application/octet-stream",
+        "fdata": data,
+        "user": user.id,
+        "user_name": user.name,
+    })).mappings().first()
+
+    await write_audit(db, "review_action", action_id, "feedback_attachment_uploaded", user.id,
+                      new_value={"feedbackId": feedback_id, "fileName": row["file_name"],
+                                 "fileSize": row["file_size"]})
+    await db.commit()
+    return _map_feedback_attachment(dict(row))
+
+
+@router.get("/{action_id}/feedback/{feedback_id}/attachments/{att_id}",
+            dependencies=[Depends(require_permission("review_action", "read"))])
+async def download_feedback_attachment(
+    action_id: str,
+    feedback_id: str,
+    att_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Download a feedback attachment (returns binary file)."""
+    row = (await db.execute(text("""
+        SELECT file_name, content_type, file_data
+        FROM review_action_feedback_attachment
+        WHERE id = :att_id AND feedback_id = :fid AND action_id = :aid
+    """), {"att_id": att_id, "fid": feedback_id, "aid": action_id})).mappings().first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Feedback attachment not found")
+    disposition = "inline" if row["content_type"].startswith("image/") else "attachment"
+    return Response(
+        content=bytes(row["file_data"]),
+        media_type=row["content_type"],
+        headers={"Content-Disposition": f'{disposition}; filename="{row["file_name"]}"'},
+    )
+
+
+@router.delete("/{action_id}/feedback/{feedback_id}/attachments/{att_id}",
+               dependencies=[Depends(require_permission("review_action", "read"))])
+async def delete_feedback_attachment(
+    action_id: str,
+    feedback_id: str,
+    att_id: str,
+    user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a feedback attachment. Only the uploader or admin/lead can delete."""
+    att = (await db.execute(text(
+        "SELECT id, create_by, file_name FROM review_action_feedback_attachment "
+        "WHERE id = :att_id AND feedback_id = :fid AND action_id = :aid"
+    ), {"att_id": att_id, "fid": feedback_id, "aid": action_id})).mappings().first()
+    if not att:
+        raise HTTPException(status_code=404, detail="Feedback attachment not found")
+
+    if att["create_by"] != user.id and Role.ADMIN not in user.roles and Role.GOVERNANCE_LEAD not in user.roles:
+        raise HTTPException(status_code=403, detail="Can only delete your own attachments")
+
+    await db.execute(text(
+        "DELETE FROM review_action_feedback_attachment WHERE id = :att_id"
+    ), {"att_id": att_id})
+
+    await write_audit(db, "review_action", action_id, "feedback_attachment_deleted", user.id,
+                      new_value={"feedbackId": feedback_id, "fileName": att["file_name"]})
     await db.commit()
     return {"deleted": True}

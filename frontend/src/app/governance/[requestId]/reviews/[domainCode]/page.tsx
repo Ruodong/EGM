@@ -12,6 +12,7 @@ import { DomainQuestionnaires } from '../../../_components/DomainQuestionnaires'
 import { ProcessingLogStepper } from '../../../_components/ProcessingLogStepper';
 import { DomainPreviewChip } from '../../../_components/DomainPreviewChip';
 import { ActionItemsSection } from '../../../_components/ActionItemsSection';
+import { AskEgmFloating } from '../../../_components/AskEgmFloating';
 import { Button } from 'antd';
 import clsx from 'clsx';
 
@@ -647,6 +648,13 @@ export default function DomainReviewDetailPage() {
           </Button>
         </div>
       </div>
+      {/* Ask EGM floating AI assistant */}
+      {review && (
+        <AskEgmFloating
+          domainReviewId={review.id}
+          domainName={review.domainName || review.domainCode}
+        />
+      )}
     </PageLayout>
   );
 }

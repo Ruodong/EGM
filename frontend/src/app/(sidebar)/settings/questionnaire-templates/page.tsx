@@ -7,7 +7,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useToast } from '@/components/ui/Toast';
 import clsx from 'clsx';
 import { AutoComplete, Button, Input, Select, Switch } from 'antd';
-import { PlusCircleOutlined, EditOutlined, DownOutlined, RightOutlined, CloseOutlined, PlusOutlined, ArrowUpOutlined, ArrowDownOutlined } from '@ant-design/icons';
+import { PlusCircleOutlined, EditOutlined, DownOutlined, RightOutlined, CloseOutlined, PlusOutlined, ArrowUpOutlined, ArrowDownOutlined, LinkOutlined, FileTextOutlined } from '@ant-design/icons';
 import { getDomainIcon } from '@/lib/domain-icons';
 
 interface Template {
@@ -22,6 +22,9 @@ interface Template {
   isRequired: boolean;
   sortOrder: number;
   isActive: boolean;
+  dependency: { questionId: string; answer: string } | null;
+  hasDescriptionBox: boolean;
+  descriptionBoxTitle: string | null;
 }
 
 interface DomainGroup {
@@ -50,6 +53,10 @@ const emptyForm = {
   includeOther: false,
   isRequired: false,
   sortOrder: 0,
+  dependencyQuestionId: '' as string,
+  dependencyAnswer: '' as string,
+  hasDescriptionBox: false,
+  descriptionBoxTitle: '',
 };
 
 export default function QuestionnaireTemplatesPage() {
@@ -66,6 +73,13 @@ export default function QuestionnaireTemplatesPage() {
     queryKey: ['questionnaire-templates'],
     queryFn: () => api.get('/questionnaire-templates'),
   });
+
+  // Fetch default description box title from system config
+  const { data: defaultTitleData } = useQuery<{ key: string; value: string }>({
+    queryKey: ['system-config', 'questionnaire.descriptionBoxDefaultTitle'],
+    queryFn: () => api.get('/system-config/questionnaire.descriptionBoxDefaultTitle'),
+  });
+  const defaultDescTitle = defaultTitleData?.value || 'Justify your answer below';
 
   const saveMutation = useMutation({
     mutationFn: (payload: Record<string, unknown>) =>
@@ -117,6 +131,10 @@ export default function QuestionnaireTemplatesPage() {
       includeOther: hasOther,
       isRequired: t.isRequired,
       sortOrder: t.sortOrder,
+      dependencyQuestionId: t.dependency?.questionId || '',
+      dependencyAnswer: t.dependency?.answer || '',
+      hasDescriptionBox: t.hasDescriptionBox,
+      descriptionBoxTitle: t.descriptionBoxTitle || '',
     });
     setShowForm(true);
   }
@@ -143,6 +161,10 @@ export default function QuestionnaireTemplatesPage() {
       return;
     }
 
+    const dependency = form.dependencyQuestionId && form.dependencyAnswer
+      ? { questionId: form.dependencyQuestionId, answer: form.dependencyAnswer }
+      : null;
+
     const payload: Record<string, unknown> = {
       domainCode: form.domainCode,
       section: form.section || null,
@@ -153,6 +175,9 @@ export default function QuestionnaireTemplatesPage() {
       options: needsOptions ? allOptions : null,
       isRequired: form.isRequired,
       sortOrder: Number(form.sortOrder),
+      dependency,
+      hasDescriptionBox: form.hasDescriptionBox,
+      descriptionBoxTitle: form.descriptionBoxTitle || null,
     };
     saveMutation.mutate(payload);
   }
@@ -204,6 +229,29 @@ export default function QuestionnaireTemplatesPage() {
       )].map(s => ({ value: s, label: s }))
     : [];
 
+  // Candidate questions for dependency: same domain + same section, with lower sort order, and has options
+  const dependencyCandidates = (form.domainCode && form.section)
+    ? (groups.find(g => g.domainCode === form.domainCode)?.templates || [])
+        .filter(t =>
+          t.section === form.section &&
+          t.sortOrder < Number(form.sortOrder) &&
+          t.options && t.options.length > 0 &&
+          t.id !== editing?.id
+        )
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+    : [];
+
+  // Options for the selected dependency question
+  const selectedDepQuestion = dependencyCandidates.find(t => t.id === form.dependencyQuestionId);
+  const depQuestionOptions = selectedDepQuestion?.options || [];
+
+  // Helper to find question text by ID for display
+  function findQuestionText(domainCode: string, questionId: string): string {
+    const group = groups.find(g => g.domainCode === domainCode);
+    const q = group?.templates.find(t => t.id === questionId);
+    return q ? q.questionText : questionId;
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -235,7 +283,7 @@ export default function QuestionnaireTemplatesPage() {
                 <Select
                   className={clsx('w-full', editing && 'bg-gray-50 text-text-secondary')}
                   value={form.domainCode || undefined}
-                  onChange={(value) => setForm({ ...form, domainCode: value })}
+                  onChange={(value) => setForm({ ...form, domainCode: value, dependencyQuestionId: '', dependencyAnswer: '' })}
                   disabled={!!editing}
                   placeholder="Select domain..."
                   data-testid="domain-select"
@@ -250,7 +298,7 @@ export default function QuestionnaireTemplatesPage() {
                 <AutoComplete
                   className="w-full"
                   value={form.section}
-                  onChange={(value) => setForm({ ...form, section: value })}
+                  onChange={(value) => setForm({ ...form, section: value, dependencyQuestionId: '', dependencyAnswer: '' })}
                   options={existingSections}
                   placeholder="Select or type a new section"
                   filterOption={(input, option) =>
@@ -358,6 +406,76 @@ export default function QuestionnaireTemplatesPage() {
               </div>
             )}
 
+            {/* Dependency selector */}
+            {dependencyCandidates.length > 0 && (
+              <div className="border border-border-light rounded-lg p-4 bg-gray-50">
+                <label className="block text-sm font-medium mb-2">
+                  <LinkOutlined className="mr-1" />
+                  Conditional Dependency (optional)
+                </label>
+                <p className="text-xs text-text-secondary mb-3">
+                  Show this question only when a specific answer is selected for a previous question in the same section.
+                </p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs text-text-secondary mb-1">Depends on Question</label>
+                    <Select
+                      className="w-full"
+                      value={form.dependencyQuestionId || undefined}
+                      onChange={(value) => setForm({ ...form, dependencyQuestionId: value || '', dependencyAnswer: '' })}
+                      placeholder="Select a question..."
+                      allowClear
+                      options={dependencyCandidates.map((t) => ({
+                        label: `[${t.sortOrder}] ${t.questionText}`,
+                        value: t.id,
+                      }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-text-secondary mb-1">When Answer Is</label>
+                    <Select
+                      className="w-full"
+                      value={form.dependencyAnswer || undefined}
+                      onChange={(value) => setForm({ ...form, dependencyAnswer: value || '' })}
+                      placeholder="Select an answer..."
+                      disabled={!form.dependencyQuestionId}
+                      allowClear
+                      options={depQuestionOptions.map((o) => ({ label: o, value: o }))}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Description Box toggle */}
+            <div className="border border-border-light rounded-lg p-4 bg-gray-50">
+              <label className="flex items-center gap-2 text-sm font-medium mb-2">
+                <input
+                  type="checkbox"
+                  checked={form.hasDescriptionBox}
+                  onChange={(e) => setForm({ ...form, hasDescriptionBox: e.target.checked })}
+                  className="rounded"
+                />
+                <FileTextOutlined />
+                Add Description Box
+              </label>
+              <p className="text-xs text-text-secondary mb-2">
+                Adds a text area below the answer for the user to provide additional justification or details.
+              </p>
+              {form.hasDescriptionBox && (
+                <div>
+                  <label className="block text-xs text-text-secondary mb-1">
+                    Description Box Title (leave blank for default: &quot;{defaultDescTitle}&quot;)
+                  </label>
+                  <Input
+                    value={form.descriptionBoxTitle}
+                    onChange={(e) => setForm({ ...form, descriptionBoxTitle: e.target.value })}
+                    placeholder={defaultDescTitle}
+                  />
+                </div>
+              )}
+            </div>
+
             <div className="flex gap-2">
               <Button
                 type="primary"
@@ -428,7 +546,7 @@ export default function QuestionnaireTemplatesPage() {
                           const sorted = [...group.templates].sort((a, b) => a.sortOrder - b.sortOrder);
                           return sorted.map((t, idx) => (
                             <tr key={t.id} className={clsx('border-b border-border-light last:border-0', !t.isActive && 'opacity-50')}>
-                              <td className="px-4 py-2 text-text-secondary text-xs">{t.section || '—'}</td>
+                              <td className="px-4 py-2 text-text-secondary text-xs">{t.section || '\u2014'}</td>
                               <td className="px-4 py-2">
                                 <div>
                                   <span>{t.questionText}</span>
@@ -443,13 +561,29 @@ export default function QuestionnaireTemplatesPage() {
                                     ))}
                                   </div>
                                 )}
+                                {/* Dependency badge */}
+                                {t.dependency && (
+                                  <div className="mt-1 flex items-center gap-1 text-xs text-purple-600">
+                                    <LinkOutlined style={{ fontSize: 10 }} />
+                                    <span>
+                                      Depends on: &quot;{findQuestionText(t.domainCode, t.dependency.questionId)}&quot; = {t.dependency.answer}
+                                    </span>
+                                  </div>
+                                )}
+                                {/* Description box badge */}
+                                {t.hasDescriptionBox && (
+                                  <div className="mt-1 flex items-center gap-1 text-xs text-amber-600">
+                                    <FileTextOutlined style={{ fontSize: 10 }} />
+                                    <span>Description box: {t.descriptionBoxTitle || defaultDescTitle}</span>
+                                  </div>
+                                )}
                               </td>
                               <td className="px-4 py-2 text-center">
                                 <span className="px-2 py-0.5 rounded text-xs bg-blue-50 text-blue-700 whitespace-nowrap">
                                   {ANSWER_TYPE_LABELS[t.answerType] || t.answerType}
                                 </span>
                               </td>
-                              <td className="px-4 py-2">{t.isRequired ? '✓' : ''}</td>
+                              <td className="px-4 py-2">{t.isRequired ? '\u2713' : ''}</td>
                               <td className="px-4 py-2">
                                 <span className={clsx('px-2 py-0.5 rounded text-xs', t.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500')}>
                                   {t.isActive ? 'Active' : 'Inactive'}
