@@ -1,6 +1,31 @@
 """Test domain review lifecycle endpoints (new 6-state machine)."""
 import httpx
 
+BASE_URL = "http://localhost:4001/api"
+ADMIN = {"X-Dev-Role": "admin"}
+
+
+def _answer_reviewer_questionnaires(client: httpx.Client, review_id: str):
+    """Answer all required reviewer questionnaire templates for a domain review."""
+    resp = client.get(f"/domain-questionnaire/templates/{review_id}", headers=ADMIN)
+    if resp.status_code != 200:
+        return
+    templates = resp.json().get("data", [])
+    responses = []
+    for tmpl in templates:
+        if tmpl.get("isRequired"):
+            if tmpl["answerType"] in ("radio", "dropdown") and tmpl.get("options"):
+                answer = {"value": tmpl["options"][0]}
+            elif tmpl["answerType"] == "multiselect" and tmpl.get("options"):
+                answer = {"value": [tmpl["options"][0]]}
+            else:
+                answer = {"value": "Test answer"}
+            responses.append({"templateId": tmpl["id"], "answer": answer})
+    if responses:
+        client.post(f"/domain-questionnaire/{review_id}", json={
+            "responses": responses,
+        }, headers=ADMIN)
+
 
 def test_list_reviews(client: httpx.Client):
     resp = client.get("/domain-reviews")
@@ -118,6 +143,9 @@ def test_approve_review(client: httpx.Client, submitted_request_with_reviews):
     # Accept first
     client.put(f"/domain-reviews/{review_id}/accept")
 
+    # Answer required reviewer questionnaires
+    _answer_reviewer_questionnaires(client, review_id)
+
     # Approve
     resp = client.put(f"/domain-reviews/{review_id}/approve")
     assert resp.status_code == 200
@@ -130,6 +158,7 @@ def test_approve_with_exception(client: httpx.Client, submitted_request_with_rev
     review_id = submitted_request_with_reviews["reviewId"]
 
     client.put(f"/domain-reviews/{review_id}/accept")
+    _answer_reviewer_questionnaires(client, review_id)
 
     resp = client.put(f"/domain-reviews/{review_id}/approve-with-exception", json={
         "outcomeNotes": "Exception: requires follow-up audit"
@@ -144,6 +173,7 @@ def test_not_pass_review(client: httpx.Client, submitted_request_with_reviews):
     review_id = submitted_request_with_reviews["reviewId"]
 
     client.put(f"/domain-reviews/{review_id}/accept")
+    _answer_reviewer_questionnaires(client, review_id)
 
     resp = client.put(f"/domain-reviews/{review_id}/not-pass", json={
         "outcomeNotes": "Does not meet compliance requirements"
@@ -181,9 +211,10 @@ def test_auto_complete_request(client: httpx.Client, submitted_request_with_revi
     reviews = submitted_request_with_reviews["reviews"]
     rid = submitted_request_with_reviews["request"]["requestId"]
 
-    # Accept and approve all reviews
+    # Accept, answer reviewer questionnaires, and approve all reviews
     for review in reviews:
         client.put(f"/domain-reviews/{review['id']}/accept")
+        _answer_reviewer_questionnaires(client, review["id"])
         client.put(f"/domain-reviews/{review['id']}/approve")
 
     # Request should now be Complete

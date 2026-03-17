@@ -4,6 +4,7 @@ import { useState, useRef } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useToast } from '@/components/ui/Toast';
+import { useLocale } from '@/lib/locale-context';
 import { Button, Image } from 'antd';
 import {
   SendOutlined,
@@ -68,6 +69,7 @@ export function ActionFeedbackPanel({
   domainReviewId,
   requestId,
 }: ActionFeedbackPanelProps) {
+  const { t } = useLocale();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [content, setContent] = useState('');
@@ -83,7 +85,7 @@ export function ActionFeedbackPanel({
   const feedbackMutation = useMutation({
     mutationFn: async (text: string) => {
       // 1. Submit feedback text (use placeholder if only files are being sent)
-      const feedbackText = text || '(see attached file)';
+      const feedbackText = text || t('feedback.seeAttached');
       const fb = await api.post<{ id: string }>(`/review-actions/${actionId}/feedback`, { content: feedbackText });
       // 2. Upload any pending files to the feedback
       if (pendingFiles.length > 0) {
@@ -99,9 +101,9 @@ export function ActionFeedbackPanel({
       invalidate();
       setContent('');
       setPendingFiles([]);
-      toast('Feedback submitted', 'success');
+      toast(t('feedback.submitted'), 'success');
     },
-    onError: () => toast('Failed to submit feedback', 'error'),
+    onError: () => toast(t('feedback.failedSubmit'), 'error'),
   });
 
   const deleteAttachmentMutation = useMutation({
@@ -109,9 +111,9 @@ export function ActionFeedbackPanel({
       api.delete(`/review-actions/${actionId}/feedback/${feedbackId}/attachments/${attId}`),
     onSuccess: () => {
       invalidate();
-      toast('Attachment deleted', 'success');
+      toast(t('actionItems.attachmentDeleted'), 'success');
     },
-    onError: () => toast('Failed to delete attachment', 'error'),
+    onError: () => toast(t('actionItems.failedDeleteAttachment'), 'error'),
   });
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -151,7 +153,7 @@ export function ActionFeedbackPanel({
 
   return (
     <div className="mt-3 border-t border-border-light pt-3">
-      <span className="text-xs font-medium text-text-secondary mb-2 block">Feedback History</span>
+      <span className="text-xs font-medium text-text-secondary mb-2 block">{t('feedback.title')}</span>
 
       {/* Feedback timeline */}
       {feedback.length > 0 && (
@@ -185,7 +187,7 @@ export function ActionFeedbackPanel({
                       {f.createdByName || f.createdBy}
                     </span>
                     <span className="text-xs opacity-60">
-                      Round {f.roundNo} · {isResponse ? 'Response' : 'Follow-up'}
+                      {t('feedback.round')}{f.roundNo} · {isResponse ? t('feedback.response') : t('feedback.followUp')}
                     </span>
                     {f.createAt && (
                       <span className="text-xs opacity-50">
@@ -222,7 +224,7 @@ export function ActionFeedbackPanel({
                                 {att.fileName}
                               </a>
                               <span className="opacity-50 whitespace-nowrap">{formatFileSize(att.fileSize)}</span>
-                              <a href={attUrl} download={att.fileName} title="Download">
+                              <a href={attUrl} download={att.fileName} title={t('common.download')}>
                                 <DownloadOutlined style={{ fontSize: 11, color: '#1890FF' }} />
                               </a>
                               {att.createBy === currentUser && (
@@ -233,7 +235,7 @@ export function ActionFeedbackPanel({
                                     attId: att.id,
                                   })}
                                   className="text-red-400 hover:text-red-600"
-                                  title="Delete"
+                                  title={t('common.delete')}
                                 >
                                   <DeleteOutlined style={{ fontSize: 11 }} />
                                 </button>
@@ -259,7 +261,7 @@ export function ActionFeedbackPanel({
               <textarea
                 className="input-field w-full resize-none"
                 rows={2}
-                placeholder="Type your feedback response... (paste screenshot with Ctrl+V)"
+                placeholder={t('feedback.placeholder')}
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
                 onPaste={handlePaste}
@@ -285,7 +287,7 @@ export function ActionFeedbackPanel({
                           type="button"
                           onClick={() => removePendingFile(i)}
                           className="text-gray-400 hover:text-red-500"
-                          title="Remove"
+                          title={t('common.remove')}
                         >
                           <CloseOutlined style={{ fontSize: 10 }} />
                         </button>
@@ -307,7 +309,7 @@ export function ActionFeedbackPanel({
                 type="text"
                 icon={<PaperClipOutlined />}
                 onClick={() => fileInputRef.current?.click()}
-                title="Attach file"
+                title={t('feedback.attachFile')}
                 style={{ padding: '4px 8px' }}
               />
               <Button
@@ -316,7 +318,7 @@ export function ActionFeedbackPanel({
                 disabled={(!content.trim() && pendingFiles.length === 0) || feedbackMutation.isPending}
                 onClick={() => feedbackMutation.mutate(content.trim())}
               >
-                {feedbackMutation.isPending ? 'Sending...' : 'Send'}
+                {feedbackMutation.isPending ? t('common.sending') : t('common.send')}
               </Button>
             </div>
           </div>
@@ -324,7 +326,7 @@ export function ActionFeedbackPanel({
       )}
 
       {feedback.length === 0 && !canSubmit && (
-        <p className="text-xs text-text-secondary italic">No feedback yet</p>
+        <p className="text-xs text-text-secondary italic">{t('feedback.noFeedback')}</p>
       )}
     </div>
   );

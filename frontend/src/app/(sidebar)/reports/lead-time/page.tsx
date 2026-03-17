@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Tag, Typography, Spin } from 'antd';
+import { useLocale } from '@/lib/locale-context';
 
 const { Title, Text } = Typography;
 
@@ -23,6 +24,7 @@ function daysBetween(start: string, end?: string): number {
 }
 
 export default function LeadTimePage() {
+  const { t } = useLocale();
   const { data, isLoading } = useQuery<{ data: GovRequest[]; total: number }>({
     queryKey: ['requests-lead-time'],
     queryFn: () => api.get('/governance-requests', { pageSize: 500 }),
@@ -43,7 +45,7 @@ export default function LeadTimePage() {
 
   return (
     <div>
-      <Title level={4} style={{ margin: 0, marginBottom: 24 }}>Lead Time Analysis</Title>
+      <Title level={4} style={{ margin: 0, marginBottom: 24 }}>{t('leadTime.title')}</Title>
 
       {isLoading ? (
         <div className="text-center py-4"><Spin /></div>
@@ -53,19 +55,19 @@ export default function LeadTimePage() {
           <div className="grid grid-cols-4 gap-4 mb-6">
             <div className="bg-white rounded-lg border border-border-light p-5">
               <p className="text-3xl font-bold text-egm-teal">{requests.length}</p>
-              <p className="text-sm text-text-secondary mt-1">Total Requests</p>
+              <p className="text-sm text-text-secondary mt-1">{t('leadTime.totalRequests')}</p>
             </div>
             <div className="bg-white rounded-lg border border-border-light p-5">
               <p className="text-3xl font-bold text-status-completed">{completedRequests.length}</p>
-              <p className="text-sm text-text-secondary mt-1">Completed</p>
+              <p className="text-sm text-text-secondary mt-1">{t('leadTime.completed')}</p>
             </div>
             <div className="bg-white rounded-lg border border-border-light p-5">
               <p className="text-3xl font-bold text-primary-blue">{avgLeadTime}</p>
-              <p className="text-sm text-text-secondary mt-1">Avg Lead Time (days)</p>
+              <p className="text-sm text-text-secondary mt-1">{t('leadTime.avgLeadTime')}</p>
             </div>
             <div className="bg-white rounded-lg border border-border-light p-5">
               <p className="text-3xl font-bold text-status-in-progress">{avgAge}</p>
-              <p className="text-sm text-text-secondary mt-1">Avg Active Age (days)</p>
+              <p className="text-sm text-text-secondary mt-1">{t('leadTime.avgActiveAge')}</p>
             </div>
           </div>
 
@@ -74,13 +76,13 @@ export default function LeadTimePage() {
             <table className="w-full text-sm">
               <thead className="bg-bg-gray border-b border-border-light">
                 <tr>
-                  <th className="text-left px-4 py-3 font-medium">Request ID</th>
-                  <th className="text-left px-4 py-3 font-medium">Title</th>
-                  <th className="text-left px-4 py-3 font-medium">Status</th>
-                  <th className="text-left px-4 py-3 font-medium">Priority</th>
-                  <th className="text-left px-4 py-3 font-medium">Created</th>
-                  <th className="text-left px-4 py-3 font-medium">Completed</th>
-                  <th className="text-center px-4 py-3 font-medium">Days</th>
+                  <th className="text-left px-4 py-3 font-medium">{t('col.requestId')}</th>
+                  <th className="text-left px-4 py-3 font-medium">{t('leadTime.title2')}</th>
+                  <th className="text-left px-4 py-3 font-medium">{t('col.status')}</th>
+                  <th className="text-left px-4 py-3 font-medium">{t('col.priority')}</th>
+                  <th className="text-left px-4 py-3 font-medium">{t('col.created')}</th>
+                  <th className="text-left px-4 py-3 font-medium">{t('status.complete')}</th>
+                  <th className="text-center px-4 py-3 font-medium">{t('leadTime.days')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -112,7 +114,7 @@ export default function LeadTimePage() {
 
           {requests.length === 0 && (
             <div className="bg-white rounded-lg border border-border-light p-8 text-center mt-4">
-              <Text type="secondary">No requests available for lead time analysis.</Text>
+              <Text type="secondary">{t('leadTime.noData')}</Text>
             </div>
           )}
         </>

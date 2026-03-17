@@ -10,26 +10,9 @@ import { SearchOutlined, UndoOutlined } from '@ant-design/icons';
 import DataTable, { type Column } from '@/components/shared/DataTable';
 import MultiSelect, { type MultiSelectOption } from '@/components/shared/MultiSelect';
 import dayjs from 'dayjs';
+import { useLocale } from '@/lib/locale-context';
 
 const { Title, Text } = Typography;
-
-const DATE_PRESETS = [
-  { label: 'All Time', value: 'all' },
-  { label: '1 Day', value: '1d' },
-  { label: '7 Days', value: '7d' },
-  { label: '1 Month', value: '1m' },
-  { label: '3 Months', value: '3m' },
-  { label: 'Custom', value: 'custom' },
-];
-
-const STATUS_OPTIONS: MultiSelectOption[] = [
-  { value: 'Waiting for Accept', label: 'Waiting for Accept' },
-  { value: 'Return for Additional Information', label: 'Return for Additional Information' },
-  { value: 'Accept', label: 'Accept' },
-  { value: 'Approved', label: 'Approved' },
-  { value: 'Approved with Exception', label: 'Approved with Exception' },
-  { value: 'Not Passed', label: 'Not Passed' },
-];
 
 interface DomainReview {
   id: string;
@@ -99,6 +82,26 @@ function computeDateRange(preset: string, customFrom: string, customTo: string) 
 }
 
 export default function AllReviewsPage() {
+  const { t } = useLocale();
+
+  const DATE_PRESETS = [
+    { label: t('date.allTime'), value: 'all' },
+    { label: t('date.1day'), value: '1d' },
+    { label: t('date.7days'), value: '7d' },
+    { label: t('date.1month'), value: '1m' },
+    { label: t('date.3months'), value: '3m' },
+    { label: t('date.custom'), value: 'custom' },
+  ];
+
+  const STATUS_OPTIONS: MultiSelectOption[] = [
+    { value: 'Waiting for Accept', label: t('reviewStatus.waitingForAccept') },
+    { value: 'Return for Additional Information', label: t('reviewStatus.returnForAdditionalInfo') },
+    { value: 'Accept', label: t('reviewStatus.accept') },
+    { value: 'Approved', label: t('reviewStatus.approved') },
+    { value: 'Approved with Exception', label: t('reviewStatus.approvedWithException') },
+    { value: 'Not Passed', label: t('reviewStatus.notPassed') },
+  ];
+
   const [page, setPage] = useState(1);
   const [sortField, setSortField] = useState('create_at');
   const [sortOrder, setSortOrder] = useState<'ASC' | 'DESC'>('DESC');
@@ -180,7 +183,7 @@ export default function AllReviewsPage() {
   const columns: Column<DomainReview>[] = [
     {
       key: 'gov_request_id',
-      label: 'Request ID',
+      label: t('col.requestId'),
       render: (r) => (
         <Link href={`/governance/${r.govRequestId || r.requestId}/reviews/${r.domainCode}`} className="text-primary-blue hover:underline">
           {r.govRequestId || r.requestId}
@@ -190,19 +193,19 @@ export default function AllReviewsPage() {
     },
     {
       key: 'project_name',
-      label: 'Project Name',
+      label: t('col.projectName'),
       render: (r) => <span title={r.projectName || ''}>{r.projectName || '-'}</span>,
       exportValue: (r) => r.projectName || '',
     },
     {
       key: 'requestor_name',
-      label: 'Requestor',
+      label: t('col.requestor'),
       render: (r) => <>{r.requestorName || r.requestor || '-'}</>,
       exportValue: (r) => r.requestorName || r.requestor || '',
     },
     {
       key: 'gov_status',
-      label: 'Request Status',
+      label: t('col.requestStatus'),
       render: (r) => r.govStatus ? (
         <Tag color={statusHex[r.govStatus] || '#9CA3AF'}>{r.govStatus}</Tag>
       ) : <Text type="secondary">-</Text>,
@@ -210,13 +213,13 @@ export default function AllReviewsPage() {
     },
     {
       key: 'domain',
-      label: 'Domain',
+      label: t('col.domain'),
       render: (r) => <span className="font-medium">{r.domainName || r.domainCode}</span>,
       exportValue: (r) => r.domainName || r.domainCode,
     },
     {
       key: 'review_status',
-      label: 'Review Status',
+      label: t('col.reviewStatus'),
       render: (r) => {
         const label = r.outcome || r.status;
         return (
@@ -227,7 +230,7 @@ export default function AllReviewsPage() {
     },
     {
       key: 'gov_create_at',
-      label: 'Created',
+      label: t('col.created'),
       render: (r) => (
         <Text type="secondary">
           {r.govCreateAt ? new Date(r.govCreateAt).toLocaleDateString() : '-'}
@@ -239,13 +242,13 @@ export default function AllReviewsPage() {
 
   return (
     <div>
-      <Title level={4} style={{ margin: 0, marginBottom: 16 }}>All Domain Reviews</Title>
+      <Title level={4} style={{ margin: 0, marginBottom: 16 }}>{t('reviews.title')}</Title>
 
       <div className="border border-border-light rounded-lg px-3 py-2.5 mb-3">
         {/* Row 1 */}
         <div className="flex flex-wrap items-center gap-2 mb-2">
           <Input
-            placeholder="Request ID / Project Name"
+            placeholder={t('requests.searchPlaceholder')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             onPressEnter={handleSearch}
@@ -257,14 +260,14 @@ export default function AllReviewsPage() {
             options={STATUS_OPTIONS}
             selected={statusFilter}
             onChange={setStatusFilter}
-            placeholder="Review Status"
+            placeholder={t('col.reviewStatus')}
             size="small"
           />
           <Select
             size="small"
             value={datePreset || undefined}
             onChange={(v) => setDatePreset(v ?? '')}
-            placeholder="Period"
+            placeholder={t('requests.period')}
             allowClear
             style={{ minWidth: 110 }}
             options={DATE_PRESETS.map((p) => ({ value: p.value, label: p.label }))}
@@ -289,11 +292,11 @@ export default function AllReviewsPage() {
             options={domainOptions}
             selected={domainFilter}
             onChange={setDomainFilter}
-            placeholder="Domain"
+            placeholder={t('col.domain')}
             size="small"
           />
           <Input
-            placeholder="Requestor"
+            placeholder={t('col.requestor')}
             size="small"
             value={requestor}
             onChange={(e) => setRequestor(e.target.value)}
@@ -302,10 +305,10 @@ export default function AllReviewsPage() {
             style={{ width: 150 }}
           />
           <Button type="primary" size="small" icon={<SearchOutlined />} onClick={handleSearch}>
-            Search
+            {t('common.search')}
           </Button>
           <Button size="small" icon={<UndoOutlined />} onClick={handleReset}>
-            Reset
+            {t('common.reset')}
           </Button>
         </div>
       </div>

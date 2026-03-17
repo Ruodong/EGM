@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import clsx from 'clsx';
 import { Tag, Typography } from 'antd';
+import { useLocale } from '@/lib/locale-context';
 
 const { Title } = Typography;
 
@@ -21,6 +22,7 @@ interface DomainReview {
 }
 
 export default function DomainMetricsPage() {
+  const { t } = useLocale();
   const { data, isLoading } = useQuery<{ data: DomainReview[]; total: number }>({
     queryKey: ['all-reviews-metrics'],
     queryFn: () => api.get('/domain-reviews', { pageSize: 500 }),
@@ -58,13 +60,13 @@ export default function DomainMetricsPage() {
 
   return (
     <div>
-      <Title level={4} style={{ margin: 0, marginBottom: 24 }}>Domain Metrics</Title>
+      <Title level={4} style={{ margin: 0, marginBottom: 24 }}>{t('domainMetrics.title')}</Title>
 
       {isLoading ? (
-        <p className="text-text-secondary">Loading metrics...</p>
+        <p className="text-text-secondary">{t('domainMetrics.loading')}</p>
       ) : domainStats.length === 0 ? (
         <div className="bg-white rounded-lg border border-border-light p-8 text-center text-text-secondary">
-          No domain review data available yet.
+          {t('domainMetrics.noData')}
         </div>
       ) : (
         <>
@@ -72,23 +74,23 @@ export default function DomainMetricsPage() {
           <div className="grid grid-cols-4 gap-4 mb-6">
             <div className="bg-white rounded-lg border border-border-light p-5">
               <p className="text-3xl font-bold text-egm-teal">{reviews.length}</p>
-              <p className="text-sm text-text-secondary mt-1">Total Reviews</p>
+              <p className="text-sm text-text-secondary mt-1">{t('domainMetrics.totalReviews')}</p>
             </div>
             <div className="bg-white rounded-lg border border-border-light p-5">
               <p className="text-3xl font-bold text-status-in-progress">
                 {reviews.filter((r) => r.status === 'In Progress').length}
               </p>
-              <p className="text-sm text-text-secondary mt-1">In Progress</p>
+              <p className="text-sm text-text-secondary mt-1">{t('domainMetrics.inProgress')}</p>
             </div>
             <div className="bg-white rounded-lg border border-border-light p-5">
               <p className="text-3xl font-bold text-status-completed">
                 {reviews.filter((r) => r.status === 'Approved' || r.status === 'Approved with Exception' || r.status === 'Not Passed').length}
               </p>
-              <p className="text-sm text-text-secondary mt-1">Completed</p>
+              <p className="text-sm text-text-secondary mt-1">{t('domainMetrics.completed')}</p>
             </div>
             <div className="bg-white rounded-lg border border-border-light p-5">
               <p className="text-3xl font-bold text-primary-blue">{domainStats.length}</p>
-              <p className="text-sm text-text-secondary mt-1">Active Domains</p>
+              <p className="text-sm text-text-secondary mt-1">{t('domainMetrics.activeDomains')}</p>
             </div>
           </div>
 
@@ -97,14 +99,14 @@ export default function DomainMetricsPage() {
             <table className="w-full text-sm">
               <thead className="bg-bg-gray border-b border-border-light">
                 <tr>
-                  <th className="text-left px-4 py-3 font-medium">Domain</th>
-                  <th className="text-center px-4 py-3 font-medium">Total</th>
-                  <th className="text-center px-4 py-3 font-medium">Pending</th>
-                  <th className="text-center px-4 py-3 font-medium">In Progress</th>
-                  <th className="text-center px-4 py-3 font-medium">Completed</th>
-                  <th className="text-center px-4 py-3 font-medium">Approved</th>
-                  <th className="text-center px-4 py-3 font-medium">Rejected</th>
-                  <th className="text-center px-4 py-3 font-medium">Completion %</th>
+                  <th className="text-left px-4 py-3 font-medium">{t('col.domain')}</th>
+                  <th className="text-center px-4 py-3 font-medium">{t('domainMetrics.total')}</th>
+                  <th className="text-center px-4 py-3 font-medium">{t('domainMetrics.pending')}</th>
+                  <th className="text-center px-4 py-3 font-medium">{t('domainMetrics.inProgress')}</th>
+                  <th className="text-center px-4 py-3 font-medium">{t('domainMetrics.completed')}</th>
+                  <th className="text-center px-4 py-3 font-medium">{t('domainMetrics.approved')}</th>
+                  <th className="text-center px-4 py-3 font-medium">{t('domainMetrics.rejected')}</th>
+                  <th className="text-center px-4 py-3 font-medium">{t('domainMetrics.completionPct')}</th>
                 </tr>
               </thead>
               <tbody>

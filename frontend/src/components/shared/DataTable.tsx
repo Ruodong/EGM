@@ -5,8 +5,9 @@ import { Table, Button, Space, Tooltip } from 'antd';
 import { DownloadOutlined } from '@ant-design/icons';
 import type { TableProps } from 'antd';
 import { exportToCsv } from '@/lib/csv';
+import { useLocale } from '@/lib/locale-context';
 
-// ── Public types (re-exported for consumers) ──────────────────────────
+// -- Public types (re-exported for consumers) ------------------------------------
 
 export interface Column<T> {
   /** Field name used for sorting key and CSV export. */
@@ -47,7 +48,7 @@ export interface DataTableProps<T> {
   pagination?: PaginationConfig;
 }
 
-// ── Component ─────────────────────────────────────────────────────────
+// -- Component -------------------------------------------------------------------
 
 export default function DataTable<T extends object>({
   columns,
@@ -60,8 +61,9 @@ export default function DataTable<T extends object>({
   exportFilename,
   pagination,
 }: DataTableProps<T>) {
+  const { t } = useLocale();
 
-  // ── CSV export ────────────────────────────────────────────────────
+  // -- CSV export ----------------------------------------------------------------
 
   const handleExport = useCallback(() => {
     if (!exportFilename) return;
@@ -81,7 +83,7 @@ export default function DataTable<T extends object>({
     );
   }, [exportFilename, columns, data]);
 
-  // ── Map Column<T> → antd ColumnsType ────────────────────────────
+  // -- Map Column<T> -> antd ColumnsType ----------------------------------------
 
   const antdColumns: TableProps<T>['columns'] = useMemo(
     () =>
@@ -103,7 +105,7 @@ export default function DataTable<T extends object>({
     [columns, sortField, sortOrder, onSort],
   );
 
-  // ── Sort change handler ─────────────────────────────────────────
+  // -- Sort change handler -------------------------------------------------------
 
   const handleTableChange: TableProps<T>['onChange'] = useCallback(
     (_pagination: unknown, _filters: unknown, sorter: any) => {
@@ -115,7 +117,7 @@ export default function DataTable<T extends object>({
     [onSort],
   );
 
-  // ── Render ────────────────────────────────────────────────────────
+  // -- Render --------------------------------------------------------------------
 
   return (
     <div>
@@ -129,7 +131,7 @@ export default function DataTable<T extends object>({
             type="text"
             style={{ padding: '0 6px', height: 20, fontSize: 11, lineHeight: '20px' }}
           >
-            Export CSV
+            {t('common.exportCsv')}
           </Button>
         </div>
       )}
@@ -147,7 +149,7 @@ export default function DataTable<T extends object>({
                 total: pagination.total,
                 pageSize: pagination.pageSize || Math.ceil(pagination.total / pagination.totalPages) || 20,
                 onChange: pagination.onPageChange,
-                showTotal: (total) => `Total ${total} items`,
+                showTotal: (total) => t('common.total').replace('{total}', String(total)),
                 size: 'small',
               }
             : false

@@ -1,6 +1,7 @@
 """Governance Requests router — CRUD + lifecycle."""
 from __future__ import annotations
 
+import logging
 from datetime import date as dt_date, timedelta
 from fastapi import APIRouter, Depends, Query, HTTPException, UploadFile, File as FastAPIFile
 from fastapi.responses import Response
@@ -13,6 +14,8 @@ from app.utils.filters import multi_value_condition
 from app.utils.audit import write_audit
 from app.auth import require_permission, get_current_user, AuthUser, Role
 from app.utils.access import is_requestor_only as _is_requestor_only, is_domain_reviewer_only as _is_domain_reviewer_only
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -804,6 +807,7 @@ async def submit_request(request_id: str, user: AuthUser = Depends(get_current_u
         required_templates = (await db.execute(text("""
             SELECT id, domain_code FROM domain_questionnaire_template
             WHERE domain_code = ANY(:codes) AND is_active = true AND is_required = true
+            AND audience = 'requestor'
         """), {"codes": list(internal_domains)})).mappings().all()
 
         if required_templates:
@@ -842,7 +846,7 @@ async def submit_request(request_id: str, user: AuthUser = Depends(get_current_u
                       old_value={"status": "Draft"}, new_value={"status": "Submitted"})
     await db.commit()
 
-    # Schedule AI review analysis as background task (non-blocking)
+    # Schedule AI review analysis as background task (non-blocking, observable)
     import asyncio
     try:
         from app.services.ai_review_analysis import run_analysis
@@ -857,13 +861,16 @@ async def submit_request(request_id: str, user: AuthUser = Depends(get_current_u
                 for dr_id in review_ids:
                     try:
                         await run_analysis(bg_db, str(dr_id), "submit", trigger_by)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.warning(
+                            "Background AI analysis failed for review %s on submit: %s",
+                            dr_id, e,
+                        )
 
         if dr_rows:
             asyncio.create_task(_run_bg_analysis(list(dr_rows), user.id))
-    except Exception:
-        pass  # LLM not configured or import failure
+    except Exception as e:
+        logger.warning("Failed to schedule AI analysis on submit: %s", e)
 
     return _map(dict(row))
 

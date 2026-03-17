@@ -189,9 +189,15 @@ CREATE TABLE IF NOT EXISTS domain_questionnaire_template (
     is_required     BOOLEAN DEFAULT FALSE,
     sort_order      INT DEFAULT 0,
     is_active       BOOLEAN DEFAULT TRUE,
+    audience        VARCHAR NOT NULL DEFAULT 'requestor',  -- 'requestor' | 'reviewer'
     dependency      JSONB,                          -- { "questionId": "<uuid>", "answer": "<option>" }
     has_description_box  BOOLEAN DEFAULT FALSE,
-    description_box_title VARCHAR                   -- NULL → use system_config default
+    description_box_title VARCHAR,                  -- NULL → use system_config default
+    question_text_zh TEXT,                           -- Chinese translation of question_text
+    question_description_zh TEXT,                    -- Chinese translation of question_description
+    options_zh      JSONB,                           -- Chinese option labels (parallel array to options)
+    description_box_title_zh VARCHAR,                -- Chinese translation of description_box_title
+    question_images JSONB                            -- [{"url":"...","alt":"...","caption":"..."}]
 );
 
 CREATE TABLE IF NOT EXISTS domain_questionnaire_response (
@@ -309,11 +315,30 @@ CREATE TABLE IF NOT EXISTS ask_egm_conversation (
     role             VARCHAR NOT NULL,          -- 'user' | 'assistant'
     content          TEXT NOT NULL,
     create_by        VARCHAR,
-    create_at        TIMESTAMP DEFAULT NOW()
+    create_at        TIMESTAMP DEFAULT NOW(),
+    metadata         JSONB                      -- attachments refs, follow-up questions, etc.
 );
 
 CREATE INDEX IF NOT EXISTS idx_ask_egm_conv_review
     ON ask_egm_conversation(domain_review_id, create_at);
+
+-- ═══════════════════════════════════════════════════════
+-- E.3: Ask EGM — chat attachments (images/files)
+-- ═══════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS ask_egm_attachment (
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    domain_review_id UUID NOT NULL REFERENCES domain_review(id) ON DELETE CASCADE,
+    file_name        VARCHAR NOT NULL,
+    file_size        INT NOT NULL,
+    content_type     VARCHAR NOT NULL,
+    file_data        BYTEA NOT NULL,
+    create_by        VARCHAR,
+    create_at        TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_ask_egm_att_review
+    ON ask_egm_attachment(domain_review_id, create_at);
 
 -- ═══════════════════════════════════════════════════════
 -- E: Shared Artifacts

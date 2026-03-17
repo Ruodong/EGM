@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Typography, Spin } from 'antd';
+import { useLocale } from '@/lib/locale-context';
 
 const { Title, Text } = Typography;
 
@@ -34,12 +35,13 @@ function getStatusCount(stats: DashboardStats | undefined, status: string): numb
 }
 
 export default function GovernanceDashboardPage() {
+  const { t } = useLocale();
   const { data: stats, isLoading } = useQuery<DashboardStats>({
     queryKey: ['dashboard-stats'],
     queryFn: () => api.get('/dashboard/stats'),
   });
 
-  if (isLoading) return <div className="text-center py-8"><Spin tip="Loading dashboard..." /></div>;
+  if (isLoading) return <div className="text-center py-8"><Spin tip={t('common.loading')} /></div>;
 
   // Aggregate review counts by domain
   const domainTotals: Record<string, number> = {};
@@ -49,27 +51,27 @@ export default function GovernanceDashboardPage() {
 
   return (
     <div>
-      <Title level={4} style={{ margin: 0, marginBottom: 24 }}>Governance Dashboard</Title>
+      <Title level={4} style={{ margin: 0, marginBottom: 24 }}>{t('dashboard.title')}</Title>
 
       <div className="grid grid-cols-3 gap-4 mb-6">
         <div className="bg-white rounded-lg border border-border-light p-5">
           <p className="text-3xl font-bold text-egm-teal">{stats?.totalRequests ?? 0}</p>
-          <p className="text-sm text-text-secondary mt-1">Total Requests</p>
+          <p className="text-sm text-text-secondary mt-1">{t('dashboard.totalRequests')}</p>
         </div>
         <div className="bg-white rounded-lg border border-border-light p-5">
           <p className="text-3xl font-bold text-status-in-progress">{getStatusCount(stats, 'In Progress')}</p>
-          <p className="text-sm text-text-secondary mt-1">In Progress</p>
+          <p className="text-sm text-text-secondary mt-1">{t('dashboard.inProgress')}</p>
         </div>
         <div className="bg-white rounded-lg border border-border-light p-5">
           <p className="text-3xl font-bold text-status-completed">{getStatusCount(stats, 'Complete')}</p>
-          <p className="text-sm text-text-secondary mt-1">Complete</p>
+          <p className="text-sm text-text-secondary mt-1">{t('dashboard.complete')}</p>
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-6">
         {/* By Status */}
         <div className="bg-white rounded-lg border border-border-light p-5">
-          <h2 className="text-base font-semibold mb-3">By Status</h2>
+          <h2 className="text-base font-semibold mb-3">{t('dashboard.byStatus')}</h2>
           <div className="space-y-2">
             {stats?.byStatus?.map((item) => (
               <div key={item.status} className="flex justify-between text-sm">
@@ -82,7 +84,7 @@ export default function GovernanceDashboardPage() {
 
         {/* By Verdict */}
         <div className="bg-white rounded-lg border border-border-light p-5">
-          <h2 className="text-base font-semibold mb-3">By Verdict</h2>
+          <h2 className="text-base font-semibold mb-3">{t('dashboard.byVerdict')}</h2>
           <div className="space-y-2">
             {stats?.byVerdict?.length ? stats.byVerdict.map((item) => (
               <div key={item.verdict} className="flex justify-between text-sm">
@@ -90,14 +92,14 @@ export default function GovernanceDashboardPage() {
                 <span className="font-medium">{item.count}</span>
               </div>
             )) : (
-              <Text type="secondary" className="text-sm">No verdicts recorded yet</Text>
+              <Text type="secondary" className="text-sm">{t('dashboard.noVerdicts')}</Text>
             )}
           </div>
         </div>
 
         {/* By Domain */}
         <div className="bg-white rounded-lg border border-border-light p-5 col-span-2">
-          <h2 className="text-base font-semibold mb-3">Reviews by Domain</h2>
+          <h2 className="text-base font-semibold mb-3">{t('dashboard.reviewsByDomain')}</h2>
           <div className="space-y-2">
             {Object.entries(domainTotals).map(([domain, count]) => (
               <div key={domain} className="flex items-center gap-3 text-sm">

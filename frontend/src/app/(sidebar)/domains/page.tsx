@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import clsx from 'clsx';
 import { Tag, Typography, Spin } from 'antd';
 import { getDomainIcon } from '@/lib/domain-icons';
+import { useLocale } from '@/lib/locale-context';
 
 const { Title, Text } = Typography;
 
@@ -20,6 +21,7 @@ interface Domain {
 }
 
 export default function DomainsPage() {
+  const { t } = useLocale();
   const { data, isLoading } = useQuery<{ data: Domain[] }>({
     queryKey: ['domains'],
     queryFn: () => api.get('/domains'),
@@ -28,7 +30,7 @@ export default function DomainsPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <Title level={4} style={{ margin: 0 }}>Domain Registry</Title>
+        <Title level={4} style={{ margin: 0 }}>{t('domains.title')}</Title>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
@@ -51,16 +53,16 @@ export default function DomainsPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     {d.integrationType === 'external' && (
-                      <Tag color="purple">External</Tag>
+                      <Tag color="purple">{t('domains.external')}</Tag>
                     )}
                     <Tag color={d.isActive ? 'green' : 'default'}>
-                      {d.isActive ? 'Active' : 'Inactive'}
+                      {d.isActive ? t('common.active') : t('common.inactive')}
                     </Tag>
                   </div>
                 </div>
                 {d.description && <Text type="secondary" className="block text-sm mt-2">{d.description}</Text>}
                 {d.externalBaseUrl && (
-                  <Text type="secondary" className="block text-xs mt-1">System URL: {d.externalBaseUrl}</Text>
+                  <Text type="secondary" className="block text-xs mt-1">{t('domains.systemUrl')} {d.externalBaseUrl}</Text>
                 )}
               </div>
             );

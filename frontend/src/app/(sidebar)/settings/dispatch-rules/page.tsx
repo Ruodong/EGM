@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/auth-context';
 import clsx from 'clsx';
 import { Button, Input, Switch } from 'antd';
 import { PlusCircleOutlined, EditOutlined, SaveOutlined, RightOutlined, DownOutlined, ArrowUpOutlined, ArrowDownOutlined, PlusOutlined } from '@ant-design/icons';
+import { useLocale } from '@/lib/locale-context';
 
 interface DispatchRule {
   id: string;
@@ -52,6 +53,7 @@ interface FormData {
 type ConfigTab = 'matrix' | 'exclusions' | 'dependencies';
 
 export default function DispatchRulesPage() {
+  const { t } = useLocale();
   const qc = useQueryClient();
   const { hasPermission } = useAuth();
   const canWrite = hasPermission('dispatch_rule', 'write');
@@ -398,9 +400,9 @@ export default function DispatchRulesPage() {
       {/* ── Header ─────────────────────────────────────────── */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl font-bold">Dispatch Rules</h1>
+          <h1 className="text-xl font-bold">{t('dispatchRules.title')}</h1>
           <p className="text-sm text-text-secondary mt-1">
-            Manage project characteristic tags and Rule-Domain dispatch matrix
+            {t('dispatchRules.subtitle')}
           </p>
         </div>
         {canWrite && (
@@ -411,7 +413,7 @@ export default function DispatchRulesPage() {
             onClick={() => { resetForm(); setShowForm(true); }}
             data-testid="add-rule-btn"
           >
-            Add Rule
+            {t('dispatchRules.addRule')}
           </Button>
         )}
       </div>
@@ -419,13 +421,13 @@ export default function DispatchRulesPage() {
       {/* ── Create / Edit Form ─────────────────────────────── */}
       {showForm && (
         <div className="bg-white rounded-lg border border-border-light p-6 mb-6">
-          <h2 className="font-medium mb-4">{editingCode ? 'Edit Rule' : 'Add Rule'}</h2>
+          <h2 className="font-medium mb-4">{editingCode ? t('dispatchRules.editRule') : t('dispatchRules.addRule')}</h2>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-4 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-1">Rule Code</label>
+                <label className="block text-sm font-medium mb-1">{t('dispatchRules.ruleCode')}</label>
                 <Input
-                  placeholder="e.g. INTERNAL"
+                  placeholder={t('dispatchRules.ruleCodePlaceholder')}
                   value={formData.ruleCode}
                   onChange={(e) => setFormData({ ...formData, ruleCode: e.target.value })}
                   disabled={!!editingCode}
@@ -433,7 +435,7 @@ export default function DispatchRulesPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Rule Name</label>
+                <label className="block text-sm font-medium mb-1">{t('dispatchRules.ruleName')}</label>
                 <Input
                   placeholder="e.g. 内部项目"
                   value={formData.ruleName}
@@ -442,7 +444,7 @@ export default function DispatchRulesPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Parent Rule</label>
+                <label className="block text-sm font-medium mb-1">{t('dispatchRules.parentRule')}</label>
                 <select
                   className="ant-input w-full"
                   style={{ height: 32, borderRadius: 6, border: '1px solid #d9d9d9', padding: '0 8px' }}
@@ -451,7 +453,7 @@ export default function DispatchRulesPage() {
                   disabled={editingRuleHasChildren}
                   data-testid="parent-rule-select"
                 >
-                  <option value="">— None (Level 1) —</option>
+                  <option value="">{t('dispatchRules.noneLevel1')}</option>
                   {parentRules.filter((p) => p.ruleCode !== editingCode).map((p) => (
                     <option key={p.ruleCode} value={p.ruleCode}>
                       {p.ruleName} ({p.ruleCode})
@@ -460,7 +462,7 @@ export default function DispatchRulesPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Sort Order</label>
+                <label className="block text-sm font-medium mb-1">{t('common.sortOrder')}</label>
                 <Input
                   type="number"
                   value={formData.sortOrder}
@@ -470,9 +472,9 @@ export default function DispatchRulesPage() {
             </div>
             <div className="flex items-center gap-4">
               <div className="flex-1">
-                <label className="block text-sm font-medium mb-1">Description</label>
+                <label className="block text-sm font-medium mb-1">{t('common.description')}</label>
                 <Input
-                  placeholder="Optional description"
+                  placeholder={t('dispatchRules.optionalDescription')}
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   data-testid="rule-desc-input"
@@ -487,7 +489,7 @@ export default function DispatchRulesPage() {
                     onChange={(e) => setFormData({ ...formData, isMandatory: e.target.checked })}
                     data-testid="rule-mandatory-toggle"
                   />
-                  <span className="font-medium text-red-600">Mandatory</span>
+                  <span className="font-medium text-red-600">{t('dispatchRules.mandatory')}</span>
                 </label>
               </div>
             </div>
@@ -499,10 +501,10 @@ export default function DispatchRulesPage() {
                 disabled={createMutation.isPending || !formData.ruleCode || !formData.ruleName}
                 data-testid="save-rule-btn"
               >
-                {createMutation.isPending ? 'Saving...' : editingCode ? 'Update' : 'Create'}
+                {createMutation.isPending ? t('common.saving') : editingCode ? t('common.update') : t('common.create')}
               </Button>
               <Button onClick={resetForm}>
-                Cancel
+                {t('common.cancel')}
               </Button>
             </div>
           </form>
@@ -519,29 +521,29 @@ export default function DispatchRulesPage() {
             className="rounded"
             data-testid="show-inactive-toggle"
           />
-          Show inactive rules
+          {t('dispatchRules.showInactive')}
         </label>
       </div>
 
       {/* ── Rule List Table (Hierarchical) ───────────────────── */}
       {rulesLoading ? (
-        <p className="text-text-secondary">Loading...</p>
+        <p className="text-text-secondary">{t('common.loading')}</p>
       ) : (
         <div className="bg-white rounded-lg border border-border-light overflow-hidden mb-8">
           <table className="w-full text-sm" data-testid="rules-table">
             <thead className="bg-bg-gray border-b border-border-light">
               <tr>
-                <th className="text-left px-4 py-2 font-medium">Code</th>
-                <th className="text-left px-4 py-2 font-medium">Name</th>
-                <th className="text-left px-4 py-2 font-medium">Description</th>
-                {canWrite && <th className="text-left px-4 py-2 font-medium">Operation</th>}
+                <th className="text-left px-4 py-2 font-medium">{t('common.code')}</th>
+                <th className="text-left px-4 py-2 font-medium">{t('common.name')}</th>
+                <th className="text-left px-4 py-2 font-medium">{t('common.description')}</th>
+                {canWrite && <th className="text-left px-4 py-2 font-medium">{t('common.operation')}</th>}
               </tr>
             </thead>
             <tbody>
               {displayRows.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="px-4 py-8 text-center text-text-secondary">
-                    No dispatch rules yet. Click &quot;+ Add Rule&quot; to get started.
+                    {t('dispatchRules.noRules')}
                   </td>
                 </tr>
               ) : (
@@ -580,7 +582,7 @@ export default function DispatchRulesPage() {
                         )}
                         {r.isMandatory && (
                           <span className="ml-2 text-xs font-medium text-red-600 bg-red-50 px-1.5 py-0.5 rounded" data-testid={`mandatory-label-${r.ruleCode}`}>
-                            Mandatory
+                            {t('dispatchRules.mandatory')}
                           </span>
                         )}
                       </td>
@@ -592,7 +594,7 @@ export default function DispatchRulesPage() {
                             <button
                               onClick={() => moveRule(r.ruleCode, 'up')}
                               disabled={siblingIdx === 0 || reorderMutation.isPending}
-                              title="Move up"
+                              title={t('dispatchRules.moveUp')}
                               className={clsx(
                                 'p-1 rounded transition-colors',
                                 siblingIdx === 0 ? 'text-gray-300 cursor-not-allowed' : 'text-gray-500 hover:text-blue-600 hover:bg-blue-50',
@@ -605,7 +607,7 @@ export default function DispatchRulesPage() {
                             <button
                               onClick={() => moveRule(r.ruleCode, 'down')}
                               disabled={siblingIdx === siblingTotal - 1 || reorderMutation.isPending}
-                              title="Move down"
+                              title={t('dispatchRules.moveDown')}
                               className={clsx(
                                 'p-1 rounded transition-colors',
                                 siblingIdx === siblingTotal - 1 ? 'text-gray-300 cursor-not-allowed' : 'text-gray-500 hover:text-blue-600 hover:bg-blue-50',
@@ -618,7 +620,7 @@ export default function DispatchRulesPage() {
                             {isParent && (
                               <button
                                 onClick={() => openAddChild(r.ruleCode)}
-                                title="Add child rule"
+                                title={t('dispatchRules.addChild')}
                                 className="text-teal-600 hover:text-teal-700 p-1 rounded hover:bg-teal-50"
                                 data-testid={`add-child-${r.ruleCode}`}
                               >
@@ -628,7 +630,7 @@ export default function DispatchRulesPage() {
                             {/* Edit */}
                             <button
                               onClick={() => openEdit(r)}
-                              title="Edit"
+                              title={t('common.edit')}
                               className="text-primary-blue hover:text-blue-700 p-1"
                             >
                               <EditOutlined style={{ fontSize: 14 }} />
@@ -656,9 +658,9 @@ export default function DispatchRulesPage() {
       <div className="border-b border-border-light mb-6">
         <nav className="flex gap-0 -mb-px" data-testid="config-tabs">
           {([
-            { key: 'matrix' as ConfigTab, label: 'Rule-Domain Matrix', dirty: matrixDirty },
-            { key: 'exclusions' as ConfigTab, label: 'Rule Exclusions', dirty: exclusionsDirty },
-            { key: 'dependencies' as ConfigTab, label: 'Rule Dependencies', dirty: dependenciesDirty },
+            { key: 'matrix' as ConfigTab, label: t('dispatchRules.ruleDomainMatrix'), dirty: matrixDirty },
+            { key: 'exclusions' as ConfigTab, label: t('dispatchRules.ruleExclusions'), dirty: exclusionsDirty },
+            { key: 'dependencies' as ConfigTab, label: t('dispatchRules.ruleDependencies'), dirty: dependenciesDirty },
           ]).map((tab) => (
             <button
               key={tab.key}
@@ -673,7 +675,7 @@ export default function DispatchRulesPage() {
             >
               {tab.label}
               {tab.dirty && (
-                <span className="ml-1.5 inline-block w-2 h-2 rounded-full bg-orange-400" title="Unsaved changes" />
+                <span className="ml-1.5 inline-block w-2 h-2 rounded-full bg-orange-400" title={t('dispatchRules.unsavedChanges')} />
               )}
             </button>
           ))}
@@ -685,7 +687,7 @@ export default function DispatchRulesPage() {
         <>
           <div className="flex items-center justify-between mb-4">
             <p className="text-sm text-text-secondary">
-              Click cells to toggle in/out. Save when done.
+              {t('dispatchRules.matrixInstruction')}
             </p>
             {canWrite && (
               <Button
@@ -696,20 +698,20 @@ export default function DispatchRulesPage() {
                 disabled={!matrixDirty || matrixMutation.isPending}
                 data-testid="save-matrix-btn"
               >
-                {matrixMutation.isPending ? 'Saving...' : 'Save Matrix'}
+                {matrixMutation.isPending ? t('common.saving') : t('dispatchRules.saveMatrix')}
               </Button>
             )}
           </div>
 
           {matrixLoading ? (
-            <p className="text-text-secondary">Loading matrix...</p>
+            <p className="text-text-secondary">{t('dispatchRules.loadingMatrix')}</p>
           ) : matrixData && matrixRulesFlat.length > 0 ? (
             <div className="bg-white rounded-lg border border-border-light overflow-auto">
               <table className="w-full text-sm" data-testid="matrix-table">
                 <thead className="bg-bg-gray border-b border-border-light">
                   <tr>
                     <th className="text-left px-4 py-2 font-medium sticky left-0 bg-bg-gray z-10 border-r border-border-light">
-                      Rule
+                      {t('dispatchRules.rule')}
                     </th>
                     {matrixData.domains.map((domain) => (
                       <th
@@ -775,7 +777,7 @@ export default function DispatchRulesPage() {
         <>
           <div className="flex items-center justify-between mb-4">
             <p className="text-sm text-text-secondary">
-              Configure mutually exclusive rules. Level-1 rules exclude other Level-1 rules; Level-2 rules exclude siblings under the same parent.
+              {t('dispatchRules.exclusionInstruction')}
             </p>
             {canWrite && (
               <Button
@@ -786,7 +788,7 @@ export default function DispatchRulesPage() {
                 disabled={!exclusionsDirty || exclusionsMutation.isPending}
                 data-testid="save-exclusions-btn"
               >
-                {exclusionsMutation.isPending ? 'Saving...' : 'Save Exclusions'}
+                {exclusionsMutation.isPending ? t('common.saving') : t('dispatchRules.saveExclusions')}
               </Button>
             )}
           </div>
@@ -796,15 +798,15 @@ export default function DispatchRulesPage() {
               <table className="w-full text-sm">
                 <thead className="bg-bg-gray border-b border-border-light">
                   <tr>
-                    <th className="text-left px-4 py-2 font-medium w-1/3">Rule</th>
-                    <th className="text-left px-4 py-2 font-medium">Excludes</th>
+                    <th className="text-left px-4 py-2 font-medium w-1/3">{t('dispatchRules.rule')}</th>
+                    <th className="text-left px-4 py-2 font-medium">{t('dispatchRules.excludes')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {/* Level-1 exclusions */}
                   <tr className="border-b border-border-light bg-gray-50/40">
                     <td colSpan={2} className="px-4 py-1.5 text-xs font-semibold text-text-secondary uppercase tracking-wide">
-                      Level 1 — Cross-rule exclusions
+                      {t('dispatchRules.level1Exclusions')}
                     </td>
                   </tr>
                   {exclusionGroups.level1.map((rule) => {
@@ -913,7 +915,7 @@ export default function DispatchRulesPage() {
         <>
           <div className="flex items-center justify-between mb-4">
             <p className="text-sm text-text-secondary">
-              Configure prerequisite rules. A rule with dependencies can only be selected when at least one of its required rules is selected (OR logic).
+              {t('dispatchRules.dependencyInstruction')}
             </p>
             {canWrite && (
               <Button
@@ -924,7 +926,7 @@ export default function DispatchRulesPage() {
                 disabled={!dependenciesDirty || dependenciesMutation.isPending}
                 data-testid="save-dependencies-btn"
               >
-                {dependenciesMutation.isPending ? 'Saving...' : 'Save Dependencies'}
+                {dependenciesMutation.isPending ? t('common.saving') : t('dispatchRules.saveDependencies')}
               </Button>
             )}
           </div>
@@ -934,8 +936,8 @@ export default function DispatchRulesPage() {
               <table className="w-full text-sm">
                 <thead className="bg-bg-gray border-b border-border-light">
                   <tr>
-                    <th className="text-left px-4 py-2 font-medium w-1/3">Rule</th>
-                    <th className="text-left px-4 py-2 font-medium">Requires (any of)</th>
+                    <th className="text-left px-4 py-2 font-medium w-1/3">{t('dispatchRules.rule')}</th>
+                    <th className="text-left px-4 py-2 font-medium">{t('dispatchRules.requiresAnyOf')}</th>
                   </tr>
                 </thead>
                 <tbody>

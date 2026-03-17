@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     LLM_TEMPERATURE: float = 0.7
     LLM_TOP_P: float = 0.8
 
+    # Tavily Web Search (for Ask EGM external knowledge retrieval)
+    TAVILY_API_KEY: str = ""
+    TAVILY_SEARCH_MAX_RESULTS: int = 5
+
     # Embedding (for Ask EGM RAG — similar case retrieval)
     EMBEDDING_BASE_URL: str = ""
     EMBEDDING_API_KEY: str = ""

@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/auth-context';
 import clsx from 'clsx';
 import { Button, Input } from 'antd';
 import { PlusCircleOutlined, EditOutlined, DeleteOutlined, SafetyCertificateOutlined, WarningOutlined, UserOutlined } from '@ant-design/icons';
+import { useLocale } from '@/lib/locale-context';
 
 interface Employee {
   itcode: string;
@@ -44,13 +45,6 @@ interface DomainItem {
 
 const ROLES = ['admin', 'governance_lead', 'domain_reviewer', 'requestor'] as const;
 
-const ROLE_LABELS: Record<string, string> = {
-  admin: 'Admin',
-  governance_lead: 'Governance Lead',
-  domain_reviewer: 'Domain Reviewer',
-  requestor: 'Requestor',
-};
-
 const ROLE_COLORS: Record<string, string> = {
   admin: 'bg-red-100 text-red-700 border border-red-300',
   governance_lead: 'bg-blue-100 text-blue-700 border border-blue-300',
@@ -58,38 +52,46 @@ const ROLE_COLORS: Record<string, string> = {
   requestor: 'bg-green-100 text-green-700 border border-green-300',
 };
 
-const ROLE_DEFINITIONS: { role: string; icon: typeof WarningOutlined; color: string; description: string }[] = [
-  {
-    role: 'admin',
-    icon: WarningOutlined,
-    color: 'border-red-200 bg-red-50',
-    description: 'Full access to all features, settings, and user management.',
-  },
-  {
-    role: 'governance_lead',
-    icon: SafetyCertificateOutlined,
-    color: 'border-blue-200 bg-blue-50',
-    description: 'Manage governance process: Domain Management, Dispatch Rules, Questionnaire Templates. View all Requests and Reviews, but cannot modify Review content.',
-  },
-  {
-    role: 'domain_reviewer',
-    icon: SafetyCertificateOutlined,
-    color: 'border-purple-200 bg-purple-50',
-    description: 'View all Requests, review assigned Domain\'s Reviews. Manage assigned Domain\'s Questionnaire Templates. View Dispatch Rules.',
-  },
-  {
-    role: 'requestor',
-    icon: UserOutlined,
-    color: 'border-green-200 bg-green-50',
-    description: 'Submit, track, and modify own Requests.',
-  },
-];
-
 export default function UserAuthorizationPage() {
+  const { t } = useLocale();
   const qc = useQueryClient();
   const { hasPermission } = useAuth();
   const canWrite = hasPermission('user_authorization', 'write');
   const [showForm, setShowForm] = useState(false);
+
+  const ROLE_LABELS: Record<string, string> = {
+    admin: t('userAuth.adminLabel'),
+    governance_lead: t('userAuth.govLeadLabel'),
+    domain_reviewer: t('userAuth.reviewerLabel'),
+    requestor: t('userAuth.requestorLabel'),
+  };
+
+  const ROLE_DEFINITIONS: { role: string; icon: typeof WarningOutlined; color: string; description: string }[] = [
+    {
+      role: 'admin',
+      icon: WarningOutlined,
+      color: 'border-red-200 bg-red-50',
+      description: t('userAuth.adminDesc'),
+    },
+    {
+      role: 'governance_lead',
+      icon: SafetyCertificateOutlined,
+      color: 'border-blue-200 bg-blue-50',
+      description: t('userAuth.govLeadDesc'),
+    },
+    {
+      role: 'domain_reviewer',
+      icon: SafetyCertificateOutlined,
+      color: 'border-purple-200 bg-purple-50',
+      description: t('userAuth.reviewerDesc'),
+    },
+    {
+      role: 'requestor',
+      icon: UserOutlined,
+      color: 'border-green-200 bg-green-50',
+      description: t('userAuth.requestorDesc'),
+    },
+  ];
 
   // Employee search state
   const [employeeSearch, setEmployeeSearch] = useState('');
@@ -264,8 +266,8 @@ export default function UserAuthorizationPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl font-bold">User Authorization</h1>
-          <p className="text-sm text-text-secondary mt-1">Search employees and assign EGM roles</p>
+          <h1 className="text-xl font-bold">{t('userAuth.title')}</h1>
+          <p className="text-sm text-text-secondary mt-1">{t('userAuth.subtitle')}</p>
         </div>
         {canWrite && (
           <Button
@@ -275,7 +277,7 @@ export default function UserAuthorizationPage() {
             onClick={() => { resetForm(); setShowForm(true); }}
             data-testid="assign-role-btn"
           >
-            Assign Role
+            {t('userAuth.assignRole')}
           </Button>
         )}
       </div>
@@ -296,13 +298,13 @@ export default function UserAuthorizationPage() {
       {/* Assign Form */}
       {showForm && (
         <div className="bg-white rounded-lg border border-border-light p-6 mb-6">
-          <h2 className="font-medium mb-4">Assign Roles</h2>
+          <h2 className="font-medium mb-4">{t('userAuth.assignRoles')}</h2>
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Employee Search */}
             <div className="relative">
-              <label className="block text-sm font-medium mb-1">Employee</label>
+              <label className="block text-sm font-medium mb-1">{t('userAuth.employee')}</label>
               <Input
-                placeholder="Search by name, itcode, or email..."
+                placeholder={t('userAuth.searchPlaceholder')}
                 value={employeeSearch}
                 onChange={(e) => handleEmployeeSearchChange(e.target.value)}
                 onFocus={() => setShowDropdown(true)}
@@ -326,7 +328,7 @@ export default function UserAuthorizationPage() {
               )}
               {selectedEmployee && (
                 <p className="text-xs text-text-secondary mt-1">
-                  Selected: {selectedEmployee.name} ({selectedEmployee.itcode})
+                  {t('userAuth.selected').replace('{name}', selectedEmployee.name || '').replace('{itcode}', selectedEmployee.itcode)}
                   {selectedEmployee.tier1Org && ` · ${selectedEmployee.tier1Org}`}
                 </p>
               )}
@@ -334,7 +336,7 @@ export default function UserAuthorizationPage() {
 
             {/* Role Checkboxes */}
             <div>
-              <label className="block text-sm font-medium mb-2">Roles</label>
+              <label className="block text-sm font-medium mb-2">{t('userAuth.roles')}</label>
               <div className="flex flex-wrap gap-3">
                 {ROLES.map((role) => (
                   <label
@@ -363,7 +365,7 @@ export default function UserAuthorizationPage() {
             {selectedRoles.has('domain_reviewer') && (
               <div>
                 <label className="block text-sm font-medium mb-2">
-                  Assigned Domains <span className="text-red-500">*</span>
+                  {t('userAuth.assignedDomains')}
                 </label>
                 <div className="flex flex-wrap gap-2">
                   {domains.map((d) => (
@@ -388,7 +390,7 @@ export default function UserAuthorizationPage() {
                   ))}
                 </div>
                 {selectedRoles.has('domain_reviewer') && selectedDomains.size === 0 && (
-                  <p className="text-xs text-red-500 mt-1">Please select at least one domain</p>
+                  <p className="text-xs text-red-500 mt-1">{t('userAuth.selectDomain')}</p>
                 )}
               </div>
             )}
@@ -406,15 +408,15 @@ export default function UserAuthorizationPage() {
                 }
                 data-testid="save-role-btn"
               >
-                {assignMutation.isPending ? 'Saving...' : 'Assign'}
+                {assignMutation.isPending ? t('common.saving') : t('userAuth.assign')}
               </Button>
               <Button onClick={resetForm}>
-                Cancel
+                {t('common.cancel')}
               </Button>
             </div>
             {assignMutation.isError && (
               <p className="text-sm text-red-500">
-                {(assignMutation.error as Error)?.message || 'Failed to assign role'}
+                {(assignMutation.error as Error)?.message || t('userAuth.failedAssign')}
               </p>
             )}
           </form>
@@ -425,7 +427,7 @@ export default function UserAuthorizationPage() {
       <div className="mb-4">
         <Input
           type="text"
-          placeholder="Filter by name or itcode..."
+          placeholder={t('userAuth.filterPlaceholder')}
           value={roleSearch}
           onChange={(e) => handleRoleSearchChange(e.target.value)}
           style={{ width: 256 }}
@@ -435,24 +437,24 @@ export default function UserAuthorizationPage() {
 
       {/* Users & Roles Table */}
       {isLoading ? (
-        <p className="text-text-secondary">Loading...</p>
+        <p className="text-text-secondary">{t('common.loading')}</p>
       ) : (
         <div className="bg-white rounded-lg border border-border-light overflow-hidden">
           <table className="w-full text-sm" data-testid="roles-table">
             <thead className="bg-bg-gray border-b border-border-light">
               <tr>
-                <th className="text-left px-4 py-2 font-medium">Name</th>
-                <th className="text-left px-4 py-2 font-medium">ITCode</th>
-                <th className="text-left px-4 py-2 font-medium">Roles</th>
-                <th className="text-left px-4 py-2 font-medium">Organization</th>
-                {canWrite && <th className="text-left px-4 py-2 font-medium">Operation</th>}
+                <th className="text-left px-4 py-2 font-medium">{t('common.name')}</th>
+                <th className="text-left px-4 py-2 font-medium">{t('userAuth.itcode')}</th>
+                <th className="text-left px-4 py-2 font-medium">{t('userAuth.roles')}</th>
+                <th className="text-left px-4 py-2 font-medium">{t('userAuth.organization')}</th>
+                {canWrite && <th className="text-left px-4 py-2 font-medium">{t('common.operation')}</th>}
               </tr>
             </thead>
             <tbody>
               {users.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="px-4 py-8 text-center text-text-secondary">
-                    No role assignments yet. Click &quot;+ Assign Role&quot; to get started.
+                    {t('userAuth.noAssignments')}
                   </td>
                 </tr>
               ) : (
@@ -493,7 +495,7 @@ export default function UserAuthorizationPage() {
                                     role: r.role,
                                     domainCodes: new Set(r.domainCodes || []),
                                   })}
-                                  title="Edit domains"
+                                  title={t('userAuth.editDomains')}
                                   className="text-blue-400 hover:text-blue-600 p-1"
                                   data-testid={`edit-role-${u.itcode}-${r.role}`}
                                 >
@@ -502,7 +504,7 @@ export default function UserAuthorizationPage() {
                               )}
                               <button
                                 onClick={() => deleteRoleMutation.mutate({ itcode: u.itcode, role: r.role })}
-                                title={`Remove ${ROLE_LABELS[r.role] || r.role}`}
+                                title={`${t('common.remove')} ${ROLE_LABELS[r.role] || r.role}`}
                                 className="text-blue-400 hover:text-red-600 p-1"
                                 data-testid={`remove-role-${u.itcode}-${r.role}`}
                               >
@@ -521,7 +523,7 @@ export default function UserAuthorizationPage() {
                         <div className="flex items-start gap-4">
                           <div className="flex-1">
                             <label className="block text-sm font-medium mb-2">
-                              Edit Assigned Domains for <span className="text-purple-700">{u.name || u.itcode}</span>
+                              {t('userAuth.editDomainsFor').replace('{name}', u.name || u.itcode)}
                             </label>
                             <div className="flex flex-wrap gap-2">
                               {domains.map((d) => (
@@ -546,7 +548,7 @@ export default function UserAuthorizationPage() {
                               ))}
                             </div>
                             {editingUser.domainCodes.size === 0 && (
-                              <p className="text-xs text-red-500 mt-1">Please select at least one domain</p>
+                              <p className="text-xs text-red-500 mt-1">{t('userAuth.selectDomain')}</p>
                             )}
                           </div>
                           <div className="flex gap-2 pt-6">
@@ -558,20 +560,20 @@ export default function UserAuthorizationPage() {
                               disabled={updateDomainsMutation.isPending || editingUser.domainCodes.size === 0}
                               data-testid="edit-domains-save"
                             >
-                              {updateDomainsMutation.isPending ? 'Saving...' : 'Save'}
+                              {updateDomainsMutation.isPending ? t('common.saving') : t('common.save')}
                             </Button>
                             <Button
                               size="small"
                               onClick={() => setEditingUser(null)}
                               data-testid="edit-domains-cancel"
                             >
-                              Cancel
+                              {t('common.cancel')}
                             </Button>
                           </div>
                         </div>
                         {updateDomainsMutation.isError && (
                           <p className="text-sm text-red-500 mt-2">
-                            {(updateDomainsMutation.error as Error)?.message || 'Failed to update domains'}
+                            {(updateDomainsMutation.error as Error)?.message || t('userAuth.failedUpdate')}
                           </p>
                         )}
                       </td>

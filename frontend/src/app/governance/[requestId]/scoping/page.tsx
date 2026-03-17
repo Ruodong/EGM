@@ -7,6 +7,7 @@ import { api } from '@/lib/api';
 import { useToast } from '@/components/ui/Toast';
 import { PageLayout } from '@/components/layout/PageLayout';
 import { Button } from 'antd';
+import { useLocale } from '@/lib/locale-context';
 import clsx from 'clsx';
 
 interface Template {
@@ -35,6 +36,7 @@ export default function ScopingPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const requestId = params.requestId as string;
+  const { t } = useLocale();
 
   const [answers, setAnswers] = useState<Record<string, any>>({});
   const [saving, setSaving] = useState(false);
@@ -70,18 +72,18 @@ export default function ScopingPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['intake-responses', requestId] });
-      toast('Answers saved', 'success');
+      toast(t('scoping.answersSaved'), 'success');
     },
-    onError: () => toast('Failed to save answers', 'error'),
+    onError: () => toast(t('scoping.failedSave'), 'error'),
   });
 
   const evaluateMutation = useMutation({
     mutationFn: () => api.post(`/intake/evaluate/${requestId}`, {}),
     onSuccess: (data: any) => {
-      toast(`Scoping complete — ${data.triggeredDomains?.length || 0} domain(s) triggered`, 'success');
+      toast(`${t('scoping.scopingComplete')}${data.triggeredDomains?.length || 0} ${t('scoping.domainsTriggered')}`, 'success');
       router.push(`/governance/${requestId}/common-questionnaire`);
     },
-    onError: () => toast('Evaluation failed', 'error'),
+    onError: () => toast(t('scoping.evaluationFailed'), 'error'),
   });
 
   const handleSaveAndContinue = async () => {
@@ -102,9 +104,9 @@ export default function ScopingPage() {
   return (
     <PageLayout>
       <div className="max-w-3xl mx-auto">
-        <h1 className="text-xl font-bold mb-2">Scoping Questions</h1>
+        <h1 className="text-xl font-bold mb-2">{t('scoping.title')}</h1>
         <p className="text-sm text-text-secondary mb-6">
-          Answer these questions to determine which governance domains apply to your request.
+          {t('scoping.instruction')}
         </p>
 
         {Object.entries(grouped).map(([section, questions]) => (
@@ -119,7 +121,7 @@ export default function ScopingPage() {
                   </label>
                   {q.triggersDomain && (
                     <span className="text-xs text-text-secondary">
-                      Triggers: {q.triggersDomain.join(', ')}
+                      {t('scoping.triggers')}{q.triggersDomain.join(', ')}
                     </span>
                   )}
                   {q.answerType === 'select' && q.options ? (
@@ -128,7 +130,7 @@ export default function ScopingPage() {
                       value={answers[q.id] || ''}
                       onChange={(e) => setAnswers({ ...answers, [q.id]: e.target.value })}
                     >
-                      <option value="">-- Select --</option>
+                      <option value="">{t('govCreate.selectOption')}</option>
                       {q.options.map((opt) => (
                         <option key={opt} value={opt}>{opt}</option>
                       ))}
@@ -155,7 +157,7 @@ export default function ScopingPage() {
 
         <div className="flex justify-between mt-6">
           <Button type="default" onClick={() => router.push(`/governance/${requestId}`)}>
-            Back
+            {t('common.back')}
           </Button>
           <div className="flex gap-3">
             <Button
@@ -163,7 +165,7 @@ export default function ScopingPage() {
               disabled={saveMutation.isPending}
               onClick={() => saveMutation.mutate()}
             >
-              Save Draft
+              {t('scoping.saveDraft')}
             </Button>
             <Button
               type="primary"
@@ -171,7 +173,7 @@ export default function ScopingPage() {
               disabled={saving}
               onClick={handleSaveAndContinue}
             >
-              {saving ? 'Processing...' : 'Save & Continue'}
+              {saving ? t('scoping.processing') : t('scoping.saveContinue')}
             </Button>
           </div>
         </div>

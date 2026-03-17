@@ -1,8 +1,8 @@
 # Feature: Pre-Submit Domain Questionnaires
 
 **Status**: Implemented
-**Date**: 2026-03-13
-**Spec Version**: 1
+**Date**: 2026-03-16
+**Spec Version**: 2
 
 ## Impact Assessment
 
@@ -12,6 +12,8 @@ New router + new DB table + submit-gate validation in governance-requests router
 ## Summary
 
 During the Request Draft stage, if triggered domains include Internal domains, the requestor must fill out those domains' questionnaire templates before submitting the request. All required questions must be answered for submit to be allowed. Responses are stored in a new `request_questionnaire_response` table and validated server-side on submit.
+
+**v2**: Audience filtering — GET /templates now returns only `audience='requestor'` questions. Reviewer-audience questions are handled by the separate Domain Questionnaire module.
 
 ## Affected Files
 

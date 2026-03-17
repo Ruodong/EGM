@@ -21,6 +21,7 @@ import {
 } from '@ant-design/icons';
 import { sidebarNavItems, type NavItem } from '@/lib/constants';
 import { useAuth } from '@/lib/auth-context';
+import { useLocale } from '@/lib/locale-context';
 
 const { Sider } = Layout;
 
@@ -45,6 +46,7 @@ function getIconName(icon: NavItem['icon']): string {
 function buildMenuItems(
   items: NavItem[],
   hasPermission: (resource: string, scope: string) => boolean,
+  t: (key: string) => string,
 ): MenuProps['items'] {
   return items
     .filter((item) => {
@@ -69,11 +71,11 @@ function buildMenuItems(
         return {
           key: item.href,
           icon: iconNode,
-          label: item.label,
+          label: t(item.label),
           children: visibleChildren.map((child) => ({
             key: `child:${child.href}`,
             icon: ICON_MAP[getIconName(child.icon)] || <AppstoreOutlined />,
-            label: <Link href={child.href}>{child.label}</Link>,
+            label: <Link href={child.href}>{t(child.label)}</Link>,
           })),
         };
       }
@@ -81,7 +83,7 @@ function buildMenuItems(
       return {
         key: item.href,
         icon: iconNode,
-        label: <Link href={item.href}>{item.label}</Link>,
+        label: <Link href={item.href}>{t(item.label)}</Link>,
       };
     });
 }
@@ -89,10 +91,11 @@ function buildMenuItems(
 export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
   const pathname = usePathname();
   const { hasPermission } = useAuth();
+  const { t } = useLocale();
 
   const menuItems = useMemo(
-    () => buildMenuItems(sidebarNavItems, hasPermission),
-    [hasPermission],
+    () => buildMenuItems(sidebarNavItems, hasPermission, t),
+    [hasPermission, t],
   );
 
   // Determine selected keys — child items use "child:" prefix
@@ -131,7 +134,7 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
         items={menuItems}
         style={{ borderRight: 'none', paddingTop: 16 }}
       />
-      <Tooltip title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} placement="right">
+      <Tooltip title={collapsed ? t('common.expandSidebar') : t('common.collapseSidebar')} placement="right">
         <Button
           type="text"
           icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}

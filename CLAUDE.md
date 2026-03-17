@@ -30,6 +30,12 @@ Skip only for: documentation-only changes, test-only changes, dependency version
 - New page → add E2E cases, add to `test-map.json`
 - Full suite: `python3 -m pytest api-tests/ -v --tb=short` + `npx playwright test --reporter=list`
 
+## Plan Mode 规范
+
+- 已经用户确认并执行过的 plan 步骤，不得再次提出确认
+- 每个步骤执行完后，在回复开头明确标注 ✅ 已完成
+- 不要在新的回复中重新列出整个 plan，只展示当前步骤
+
 ## Code Conventions
 - Backend: camelCase responses (mapped from snake_case DB), `require_permission()` RBAC, raw SQL via `sqlalchemy.text()`
 - Frontend: `@/lib/api` wrapper, Ant Design 5 components

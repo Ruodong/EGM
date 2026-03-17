@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { useToast } from '@/components/ui/Toast';
+import { useLocale } from '@/lib/locale-context';
 import clsx from 'clsx';
 import { AutoComplete, Button, Input, Select, Switch } from 'antd';
 import { PlusCircleOutlined, EditOutlined, DownOutlined, RightOutlined, CloseOutlined, PlusOutlined, ArrowUpOutlined, ArrowDownOutlined, LinkOutlined, FileTextOutlined } from '@ant-design/icons';
@@ -25,6 +26,12 @@ interface Template {
   dependency: { questionId: string; answer: string } | null;
   hasDescriptionBox: boolean;
   descriptionBoxTitle: string | null;
+  questionTextZh?: string | null;
+  questionDescriptionZh?: string | null;
+  optionsZh?: string[] | null;
+  descriptionBoxTitleZh?: string | null;
+  questionImages?: Array<{ url: string; alt?: string; caption?: string }> | null;
+  audience: 'requestor' | 'reviewer';
 }
 
 interface DomainGroup {
@@ -33,14 +40,14 @@ interface DomainGroup {
   templates: Template[];
 }
 
-const ANSWER_TYPES = ['radio', 'multiselect', 'dropdown', 'textarea'] as const;
+interface SectionGroup {
+  section: string | null;
+  audience: 'requestor' | 'reviewer';
+  templates: Template[];
+  minSortOrder: number;
+}
 
-const ANSWER_TYPE_LABELS: Record<string, string> = {
-  radio: 'Single Select',
-  multiselect: 'Multi Select',
-  dropdown: 'Dropdown',
-  textarea: 'Long Text',
-};
+const ANSWER_TYPES = ['radio', 'multiselect', 'dropdown', 'textarea', 'text'] as const;
 
 const emptyForm = {
   domainCode: '',
@@ -57,9 +64,35 @@ const emptyForm = {
   dependencyAnswer: '' as string,
   hasDescriptionBox: false,
   descriptionBoxTitle: '',
+  questionTextZh: '',
+  questionDescriptionZh: '',
+  optionsZh: [] as string[],
+  descriptionBoxTitleZh: '',
+  questionImages: [] as Array<{ url: string; alt: string; caption: string }>,
+  audience: 'requestor' as 'requestor' | 'reviewer',
 };
 
+/** Group templates by section within a domain */
+function groupBySection(templates: Template[]): SectionGroup[] {
+  const map = new Map<string, SectionGroup>();
+  const sorted = [...templates].sort((a, b) => a.sortOrder - b.sortOrder);
+  for (const tmpl of sorted) {
+    const key = tmpl.section || '__none__';
+    if (!map.has(key)) {
+      map.set(key, {
+        section: tmpl.section,
+        audience: tmpl.audience,
+        templates: [],
+        minSortOrder: tmpl.sortOrder,
+      });
+    }
+    map.get(key)!.templates.push(tmpl);
+  }
+  return [...map.values()].sort((a, b) => a.minSortOrder - b.minSortOrder);
+}
+
 export default function QuestionnaireTemplatesPage() {
+  const { t } = useLocale();
   const qc = useQueryClient();
   const { hasPermission } = useAuth();
   const { toast } = useToast();
@@ -67,7 +100,17 @@ export default function QuestionnaireTemplatesPage() {
   const [editing, setEditing] = useState<Template | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [collapsedDomains, setCollapsedDomains] = useState<Record<string, boolean>>({});
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+  const [showInactive, setShowInactive] = useState(false);
+
+  const ANSWER_TYPE_LABELS: Record<string, string> = {
+    radio: t('qTemplates.radio'),
+    multiselect: t('qTemplates.multiselect'),
+    dropdown: t('qTemplates.dropdown'),
+    textarea: t('qTemplates.textarea'),
+    text: t('qTemplates.text'),
+  };
 
   const { data, isLoading } = useQuery<{ data: DomainGroup[] }>({
     queryKey: ['questionnaire-templates'],
@@ -88,10 +131,10 @@ export default function QuestionnaireTemplatesPage() {
         : api.post('/questionnaire-templates', payload),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['questionnaire-templates'] });
-      toast(editing ? 'Question updated' : 'Question created', 'success');
+      toast(editing ? t('qTemplates.questionUpdated') : t('qTemplates.questionCreated'), 'success');
       resetForm();
     },
-    onError: () => toast('Failed to save question', 'error'),
+    onError: () => toast(t('qTemplates.failedSave'), 'error'),
   });
 
   const toggleMutation = useMutation({
@@ -109,32 +152,63 @@ export default function QuestionnaireTemplatesPage() {
     },
   });
 
+  const sectionAudienceMutation = useMutation({
+    mutationFn: (p: { domainCode: string; section: string | null; audience: string }) =>
+      api.put('/questionnaire-templates/section-audience', { domainCode: p.domainCode, section: p.section, audience: p.audience }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['questionnaire-templates'] });
+    },
+  });
+
+  const toggleRequiredMutation = useMutation({
+    mutationFn: (p: { id: string; isRequired: boolean }) =>
+      api.put(`/questionnaire-templates/${p.id}`, { isRequired: p.isRequired }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['questionnaire-templates'] });
+    },
+  });
+
   function resetForm() {
     setShowForm(false);
     setEditing(null);
     setForm(emptyForm);
   }
 
-  function openEdit(t: Template) {
-    const opts = t.options ? [...t.options] : [];
+  function openEdit(tmpl: Template) {
+    const opts = tmpl.options ? [...tmpl.options] : [];
     const hasOther = opts.includes('Other');
     const filteredOpts = opts.filter((o) => o !== 'Other');
-    setEditing(t);
+    // For ZH options, also remove "Other" if the EN side has it (parallel arrays)
+    const optsZh = tmpl.optionsZh ? [...tmpl.optionsZh] : [];
+    const filteredOptsZh = hasOther && optsZh.length === opts.length
+      ? optsZh.filter((_, i) => opts[i] !== 'Other')
+      : optsZh;
+    setEditing(tmpl);
     setForm({
-      domainCode: t.domainCode,
-      section: t.section || '',
-      questionNo: t.questionNo,
-      questionText: t.questionText,
-      questionDescription: t.questionDescription || '',
-      answerType: t.answerType,
+      domainCode: tmpl.domainCode,
+      section: tmpl.section || '',
+      questionNo: tmpl.questionNo,
+      questionText: tmpl.questionText,
+      questionDescription: tmpl.questionDescription || '',
+      answerType: tmpl.answerType,
       options: filteredOpts,
       includeOther: hasOther,
-      isRequired: t.isRequired,
-      sortOrder: t.sortOrder,
-      dependencyQuestionId: t.dependency?.questionId || '',
-      dependencyAnswer: t.dependency?.answer || '',
-      hasDescriptionBox: t.hasDescriptionBox,
-      descriptionBoxTitle: t.descriptionBoxTitle || '',
+      isRequired: tmpl.isRequired,
+      sortOrder: tmpl.sortOrder,
+      dependencyQuestionId: tmpl.dependency?.questionId || '',
+      dependencyAnswer: tmpl.dependency?.answer || '',
+      hasDescriptionBox: tmpl.hasDescriptionBox,
+      descriptionBoxTitle: tmpl.descriptionBoxTitle || '',
+      questionTextZh: tmpl.questionTextZh || '',
+      questionDescriptionZh: tmpl.questionDescriptionZh || '',
+      optionsZh: filteredOptsZh,
+      descriptionBoxTitleZh: tmpl.descriptionBoxTitleZh || '',
+      questionImages: (tmpl.questionImages || []).map(img => ({
+        url: img.url || '',
+        alt: img.alt || '',
+        caption: img.caption || '',
+      })),
+      audience: tmpl.audience || 'requestor',
     });
     setShowForm(true);
   }
@@ -142,28 +216,40 @@ export default function QuestionnaireTemplatesPage() {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.domainCode) {
-      toast('Please select a domain', 'error');
+      toast(t('qTemplates.selectDomainError'), 'error');
       return;
     }
     if (!form.questionText.trim()) {
-      toast('Question text is required', 'error');
+      toast(t('qTemplates.questionTextRequired'), 'error');
       return;
     }
 
-    const needsOptions = ['radio', 'multiselect', 'dropdown'].includes(form.answerType);
+    const needsOpts = ['radio', 'multiselect', 'dropdown'].includes(form.answerType);
     const allOptions = [...form.options.filter((o) => o.trim())];
-    if (form.includeOther && needsOptions) {
+    if (form.includeOther && needsOpts) {
       allOptions.push('Other');
     }
 
-    if (needsOptions && allOptions.length === 0) {
-      toast('Please add at least one option', 'error');
+    if (needsOpts && allOptions.length === 0) {
+      toast(t('qTemplates.addOptionError'), 'error');
       return;
     }
 
     const dependency = form.dependencyQuestionId && form.dependencyAnswer
       ? { questionId: form.dependencyQuestionId, answer: form.dependencyAnswer }
       : null;
+
+    // Build ZH options (parallel array to EN options, including "Other" if applicable)
+    let allOptionsZh: string[] | null = null;
+    if (needsOpts && form.optionsZh.some(o => o.trim())) {
+      allOptionsZh = [...form.optionsZh.filter((_, i) => form.options[i]?.trim())];
+      if (form.includeOther) {
+        allOptionsZh.push('Other');
+      }
+    }
+
+    // Build images array (filter out empty URLs)
+    const images = form.questionImages.filter(img => img.url.trim());
 
     const payload: Record<string, unknown> = {
       domainCode: form.domainCode,
@@ -172,12 +258,18 @@ export default function QuestionnaireTemplatesPage() {
       questionText: form.questionText,
       questionDescription: form.questionDescription || null,
       answerType: form.answerType,
-      options: needsOptions ? allOptions : null,
+      options: needsOpts ? allOptions : null,
       isRequired: form.isRequired,
       sortOrder: Number(form.sortOrder),
       dependency,
       hasDescriptionBox: form.hasDescriptionBox,
       descriptionBoxTitle: form.descriptionBoxTitle || null,
+      questionTextZh: form.questionTextZh || null,
+      questionDescriptionZh: form.questionDescriptionZh || null,
+      optionsZh: allOptionsZh,
+      descriptionBoxTitleZh: form.descriptionBoxTitleZh || null,
+      questionImages: images.length > 0 ? images : null,
+      audience: form.audience,
     };
     saveMutation.mutate(payload);
   }
@@ -196,24 +288,61 @@ export default function QuestionnaireTemplatesPage() {
     setForm({ ...form, options: updated });
   }
 
-  function toggleCollapse(code: string) {
-    setCollapsed((prev) => ({ ...prev, [code]: !prev[code] }));
+  function toggleDomain(code: string) {
+    setCollapsedDomains((prev) => ({ ...prev, [code]: !prev[code] }));
+  }
+
+  function toggleSection(key: string) {
+    setCollapsedSections((prev) => ({ ...prev, [key]: !prev[key] }));
   }
 
   function moveTemplate(id: string, templates: Template[], direction: 'up' | 'down') {
     const sorted = [...templates].sort((a, b) => a.sortOrder - b.sortOrder);
-    const idx = sorted.findIndex((t) => t.id === id);
+    const idx = sorted.findIndex((tmpl) => tmpl.id === id);
     if (idx < 0) return;
     if (direction === 'up' && idx === 0) return;
     if (direction === 'down' && idx === sorted.length - 1) return;
 
     const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
-    const orders = sorted.map((t, i) => {
+    const orders = sorted.map((tmpl, i) => {
       let newSort = i;
       if (i === idx) newSort = swapIdx;
       if (i === swapIdx) newSort = idx;
-      return { id: t.id, sortOrder: newSort };
+      return { id: tmpl.id, sortOrder: newSort };
     });
+    reorderMutation.mutate(orders);
+  }
+
+  /** Move an entire section up or down among sections within a domain */
+  function moveSectionOrder(
+    domainCode: string,
+    sectionGroups: SectionGroup[],
+    sectionIdx: number,
+    direction: 'up' | 'down',
+  ) {
+    if (direction === 'up' && sectionIdx === 0) return;
+    if (direction === 'down' && sectionIdx === sectionGroups.length - 1) return;
+
+    const swapIdx = direction === 'up' ? sectionIdx - 1 : sectionIdx + 1;
+    // Collect all templates from both sections and reassign sort orders
+    const current = sectionGroups[sectionIdx];
+    const swap = sectionGroups[swapIdx];
+
+    // After swap, the "swap" section's templates come first (or second)
+    // We rebuild sort orders for both sections' templates
+    let orders: { id: string; sortOrder: number }[] = [];
+    let sortCounter = Math.min(current.minSortOrder, swap.minSortOrder);
+
+    const first = direction === 'up' ? current : swap;
+    const second = direction === 'up' ? swap : current;
+
+    for (const tmpl of first.templates) {
+      orders.push({ id: tmpl.id, sortOrder: sortCounter++ });
+    }
+    for (const tmpl of second.templates) {
+      orders.push({ id: tmpl.id, sortOrder: sortCounter++ });
+    }
+
     reorderMutation.mutate(orders);
   }
 
@@ -224,7 +353,7 @@ export default function QuestionnaireTemplatesPage() {
   const existingSections = form.domainCode
     ? [...new Set(
         (groups.find(g => g.domainCode === form.domainCode)?.templates || [])
-          .map(t => t.section)
+          .map(tmpl => tmpl.section)
           .filter((s): s is string => !!s)
       )].map(s => ({ value: s, label: s }))
     : [];
@@ -232,23 +361,23 @@ export default function QuestionnaireTemplatesPage() {
   // Candidate questions for dependency: same domain + same section, with lower sort order, and has options
   const dependencyCandidates = (form.domainCode && form.section)
     ? (groups.find(g => g.domainCode === form.domainCode)?.templates || [])
-        .filter(t =>
-          t.section === form.section &&
-          t.sortOrder < Number(form.sortOrder) &&
-          t.options && t.options.length > 0 &&
-          t.id !== editing?.id
+        .filter(tmpl =>
+          tmpl.section === form.section &&
+          tmpl.sortOrder < Number(form.sortOrder) &&
+          tmpl.options && tmpl.options.length > 0 &&
+          tmpl.id !== editing?.id
         )
         .sort((a, b) => a.sortOrder - b.sortOrder)
     : [];
 
   // Options for the selected dependency question
-  const selectedDepQuestion = dependencyCandidates.find(t => t.id === form.dependencyQuestionId);
+  const selectedDepQuestion = dependencyCandidates.find(tmpl => tmpl.id === form.dependencyQuestionId);
   const depQuestionOptions = selectedDepQuestion?.options || [];
 
   // Helper to find question text by ID for display
   function findQuestionText(domainCode: string, questionId: string): string {
     const group = groups.find(g => g.domainCode === domainCode);
-    const q = group?.templates.find(t => t.id === questionId);
+    const q = group?.templates.find(tmpl => tmpl.id === questionId);
     return q ? q.questionText : questionId;
   }
 
@@ -256,36 +385,42 @@ export default function QuestionnaireTemplatesPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl font-bold">Questionnaire Templates</h1>
-          <p className="text-sm text-text-secondary mt-1">Manage domain-specific review questionnaire templates</p>
+          <h1 className="text-xl font-bold">{t('qTemplates.title')}</h1>
+          <p className="text-sm text-text-secondary mt-1">{t('qTemplates.subtitle')}</p>
         </div>
-        {canWrite && (
-          <Button
-            type="primary"
-            style={{ background: '#13C2C2', borderColor: '#13C2C2' }}
-            icon={<PlusCircleOutlined />}
-            onClick={() => { resetForm(); setShowForm(true); }}
-            data-testid="add-question-btn"
-          >
-            Add Question
-          </Button>
-        )}
+        <div className="flex items-center gap-4">
+          <label className="flex items-center gap-2 text-sm text-text-secondary">
+            <Switch size="small" checked={showInactive} onChange={setShowInactive} />
+            {t('qTemplates.showInactive')}
+          </label>
+          {canWrite && (
+            <Button
+              type="primary"
+              style={{ background: '#13C2C2', borderColor: '#13C2C2' }}
+              icon={<PlusCircleOutlined />}
+              onClick={() => { resetForm(); setShowForm(true); }}
+              data-testid="add-question-btn"
+            >
+              {t('qTemplates.addQuestion')}
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Form */}
       {showForm && (
         <div className="bg-white rounded-lg border border-border-light p-6 mb-6">
-          <h2 className="font-medium mb-4">{editing ? 'Edit Question' : 'New Question'}</h2>
+          <h2 className="font-medium mb-4">{editing ? t('qTemplates.editQuestion') : t('qTemplates.newQuestion')}</h2>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-1">Domain *</label>
+                <label className="block text-sm font-medium mb-1">{t('qTemplates.domain')}</label>
                 <Select
                   className={clsx('w-full', editing && 'bg-gray-50 text-text-secondary')}
                   value={form.domainCode || undefined}
                   onChange={(value) => setForm({ ...form, domainCode: value, dependencyQuestionId: '', dependencyAnswer: '' })}
                   disabled={!!editing}
-                  placeholder="Select domain..."
+                  placeholder={t('qTemplates.selectDomain')}
                   data-testid="domain-select"
                   options={groups.map((g) => ({
                     label: `${g.domainName} (${g.domainCode})`,
@@ -294,20 +429,20 @@ export default function QuestionnaireTemplatesPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Section</label>
+                <label className="block text-sm font-medium mb-1">{t('common.section')}</label>
                 <AutoComplete
                   className="w-full"
                   value={form.section}
                   onChange={(value) => setForm({ ...form, section: value, dependencyQuestionId: '', dependencyAnswer: '' })}
                   options={existingSections}
-                  placeholder="Select or type a new section"
+                  placeholder={t('qTemplates.selectOrTypeSection')}
                   filterOption={(input, option) =>
                     (option?.label as string)?.toLowerCase().includes(input.toLowerCase()) ?? false
                   }
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Sort Order</label>
+                <label className="block text-sm font-medium mb-1">{t('common.sortOrder')}</label>
                 <Input
                   type="number"
                   value={form.sortOrder}
@@ -316,38 +451,123 @@ export default function QuestionnaireTemplatesPage() {
               </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium mb-1">Question Text *</label>
-              <Input.TextArea
-                rows={2}
-                value={form.questionText}
-                onChange={(e) => setForm({ ...form, questionText: e.target.value })}
-                required
-                placeholder="Enter the question..."
-              />
+            {/* Question Text — EN / ZH side by side */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">{t('qTemplates.questionTextEn')}</label>
+                <Input.TextArea
+                  rows={2}
+                  value={form.questionText}
+                  onChange={(e) => setForm({ ...form, questionText: e.target.value })}
+                  placeholder={t('qTemplates.questionTextPlaceholder')}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">{t('qTemplates.questionTextZhLabel')}</label>
+                <Input.TextArea
+                  rows={2}
+                  value={form.questionTextZh}
+                  onChange={(e) => setForm({ ...form, questionTextZh: e.target.value })}
+                  placeholder={t('qTemplates.questionTextZhPlaceholder')}
+                />
+              </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium mb-1">Question Description</label>
-              <Input.TextArea
-                rows={2}
-                value={form.questionDescription}
-                onChange={(e) => setForm({ ...form, questionDescription: e.target.value })}
-                placeholder="Optional description or help text for this question..."
-              />
+            {/* Question Description — EN / ZH side by side */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">{t('qTemplates.questionDescEn')} <span className="text-xs text-text-secondary font-normal">({t('qTemplates.supportsMarkdown')})</span></label>
+                <Input.TextArea
+                  rows={2}
+                  value={form.questionDescription}
+                  onChange={(e) => setForm({ ...form, questionDescription: e.target.value })}
+                  placeholder={t('qTemplates.questionDescPlaceholder')}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">{t('qTemplates.questionDescZhLabel')} <span className="text-xs text-text-secondary font-normal">({t('qTemplates.supportsMarkdown')})</span></label>
+                <Input.TextArea
+                  rows={2}
+                  value={form.questionDescriptionZh}
+                  onChange={(e) => setForm({ ...form, questionDescriptionZh: e.target.value })}
+                  placeholder={t('qTemplates.questionDescZhPlaceholder')}
+                />
+              </div>
+            </div>
+
+            {/* Question Images */}
+            <div className="border border-border-light rounded-lg p-4 bg-gray-50">
+              <label className="block text-sm font-medium mb-2">{t('qTemplates.questionImagesOptional')}</label>
+              <p className="text-xs text-text-secondary mb-3">{t('qTemplates.questionImagesHelp')}</p>
+              <div className="space-y-2">
+                {form.questionImages.map((img, idx) => (
+                  <div key={idx} className="flex items-start gap-2">
+                    <div className="flex-1 space-y-1">
+                      <Input
+                        value={img.url}
+                        onChange={(e) => {
+                          const updated = [...form.questionImages];
+                          updated[idx] = { ...updated[idx], url: e.target.value };
+                          setForm({ ...form, questionImages: updated });
+                        }}
+                        placeholder={t('qTemplates.imageUrlPlaceholder')}
+                        size="small"
+                      />
+                      <div className="flex gap-2">
+                        <Input
+                          className="flex-1"
+                          value={img.alt}
+                          onChange={(e) => {
+                            const updated = [...form.questionImages];
+                            updated[idx] = { ...updated[idx], alt: e.target.value };
+                            setForm({ ...form, questionImages: updated });
+                          }}
+                          placeholder={t('qTemplates.imageAltPlaceholder')}
+                          size="small"
+                        />
+                        <Input
+                          className="flex-1"
+                          value={img.caption}
+                          onChange={(e) => {
+                            const updated = [...form.questionImages];
+                            updated[idx] = { ...updated[idx], caption: e.target.value };
+                            setForm({ ...form, questionImages: updated });
+                          }}
+                          placeholder={t('qTemplates.imageCaptionPlaceholder')}
+                          size="small"
+                        />
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setForm({ ...form, questionImages: form.questionImages.filter((_, i) => i !== idx) })}
+                      className="text-red-400 hover:text-red-600 p-1 mt-1"
+                    >
+                      <CloseOutlined />
+                    </button>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setForm({ ...form, questionImages: [...form.questionImages, { url: '', alt: '', caption: '' }] })}
+                  className="text-primary-blue text-sm flex items-center gap-1 hover:underline"
+                >
+                  <PlusOutlined /> {t('qTemplates.addImage')}
+                </button>
+              </div>
             </div>
 
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-1">Answer Type</label>
+                <label className="block text-sm font-medium mb-1">{t('qTemplates.answerType')}</label>
                 <Select
                   className="w-full"
                   value={form.answerType}
                   onChange={(value) => setForm({ ...form, answerType: value })}
                   data-testid="answer-type-select"
-                  options={ANSWER_TYPES.map((t) => ({
-                    label: ANSWER_TYPE_LABELS[t],
-                    value: t,
+                  options={ANSWER_TYPES.map((at) => ({
+                    label: ANSWER_TYPE_LABELS[at],
+                    value: at,
                   }))}
                 />
               </div>
@@ -359,7 +579,7 @@ export default function QuestionnaireTemplatesPage() {
                     onChange={(e) => setForm({ ...form, isRequired: e.target.checked })}
                     className="rounded"
                   />
-                  Required
+                  {t('common.required')}
                 </label>
                 {needsOptions && (
                   <label className="flex items-center gap-2 text-sm">
@@ -369,16 +589,28 @@ export default function QuestionnaireTemplatesPage() {
                       onChange={(e) => setForm({ ...form, includeOther: e.target.checked })}
                       className="rounded"
                     />
-                    Include &quot;Other&quot; (free text)
+                    {t('qTemplates.includeOther')}
                   </label>
                 )}
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">{t('qTemplates.audience')}</label>
+                <Select
+                  className="w-full"
+                  value={form.audience}
+                  onChange={(value: 'requestor' | 'reviewer') => setForm({ ...form, audience: value })}
+                  options={[
+                    { label: t('qTemplates.requestor'), value: 'requestor' },
+                    { label: t('qTemplates.reviewer'), value: 'reviewer' },
+                  ]}
+                />
               </div>
             </div>
 
             {/* Options editor */}
             {needsOptions && (
               <div>
-                <label className="block text-sm font-medium mb-2">Options</label>
+                <label className="block text-sm font-medium mb-2">{t('qTemplates.options')}</label>
                 <div className="space-y-2">
                   {form.options.map((opt, idx) => (
                     <div key={idx} className="flex items-center gap-2">
@@ -386,9 +618,27 @@ export default function QuestionnaireTemplatesPage() {
                         className="flex-1"
                         value={opt}
                         onChange={(e) => updateOption(idx, e.target.value)}
-                        placeholder={`Option ${idx + 1}`}
+                        placeholder={t('qTemplates.optionEn').replace('{n}', String(idx + 1))}
                       />
-                      <button type="button" onClick={() => removeOption(idx)} className="text-red-400 hover:text-red-600 p-1">
+                      <Input
+                        className="flex-1"
+                        value={form.optionsZh[idx] || ''}
+                        onChange={(e) => {
+                          const updated = [...form.optionsZh];
+                          // Ensure array is long enough
+                          while (updated.length <= idx) updated.push('');
+                          updated[idx] = e.target.value;
+                          setForm({ ...form, optionsZh: updated });
+                        }}
+                        placeholder={t('qTemplates.optionZh').replace('{n}', String(idx + 1))}
+                      />
+                      <button type="button" onClick={() => {
+                        removeOption(idx);
+                        setForm(prev => ({
+                          ...prev,
+                          optionsZh: prev.optionsZh.filter((_, i) => i !== idx),
+                        }));
+                      }} className="text-red-400 hover:text-red-600 p-1">
                         <CloseOutlined />
                       </button>
                     </div>
@@ -396,11 +646,15 @@ export default function QuestionnaireTemplatesPage() {
                   {form.includeOther && (
                     <div className="flex items-center gap-2">
                       <Input className="flex-1 bg-gray-50 text-text-secondary" value="Other" disabled />
-                      <span className="text-xs text-text-secondary">(auto-added)</span>
+                      <Input className="flex-1 bg-gray-50 text-text-secondary" value="Other" disabled />
+                      <span className="text-xs text-text-secondary">{t('qTemplates.auto')}</span>
                     </div>
                   )}
-                  <button type="button" onClick={addOption} className="text-primary-blue text-sm flex items-center gap-1 hover:underline">
-                    <PlusOutlined /> Add Option
+                  <button type="button" onClick={() => {
+                    addOption();
+                    setForm(prev => ({ ...prev, optionsZh: [...prev.optionsZh, ''] }));
+                  }} className="text-primary-blue text-sm flex items-center gap-1 hover:underline">
+                    <PlusOutlined /> {t('qTemplates.addOption')}
                   </button>
                 </div>
               </div>
@@ -411,33 +665,33 @@ export default function QuestionnaireTemplatesPage() {
               <div className="border border-border-light rounded-lg p-4 bg-gray-50">
                 <label className="block text-sm font-medium mb-2">
                   <LinkOutlined className="mr-1" />
-                  Conditional Dependency (optional)
+                  {t('qTemplates.conditionalDependency')}
                 </label>
                 <p className="text-xs text-text-secondary mb-3">
-                  Show this question only when a specific answer is selected for a previous question in the same section.
+                  {t('qTemplates.conditionalDependencyHelp')}
                 </p>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs text-text-secondary mb-1">Depends on Question</label>
+                    <label className="block text-xs text-text-secondary mb-1">{t('qTemplates.dependsOnQuestion')}</label>
                     <Select
                       className="w-full"
                       value={form.dependencyQuestionId || undefined}
                       onChange={(value) => setForm({ ...form, dependencyQuestionId: value || '', dependencyAnswer: '' })}
-                      placeholder="Select a question..."
+                      placeholder={t('qTemplates.selectQuestion')}
                       allowClear
-                      options={dependencyCandidates.map((t) => ({
-                        label: `[${t.sortOrder}] ${t.questionText}`,
-                        value: t.id,
+                      options={dependencyCandidates.map((tmpl) => ({
+                        label: `[${tmpl.sortOrder}] ${tmpl.questionText}`,
+                        value: tmpl.id,
                       }))}
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-text-secondary mb-1">When Answer Is</label>
+                    <label className="block text-xs text-text-secondary mb-1">{t('qTemplates.whenAnswerIs')}</label>
                     <Select
                       className="w-full"
                       value={form.dependencyAnswer || undefined}
                       onChange={(value) => setForm({ ...form, dependencyAnswer: value || '' })}
-                      placeholder="Select an answer..."
+                      placeholder={t('qTemplates.selectAnswer')}
                       disabled={!form.dependencyQuestionId}
                       allowClear
                       options={depQuestionOptions.map((o) => ({ label: o, value: o }))}
@@ -457,21 +711,33 @@ export default function QuestionnaireTemplatesPage() {
                   className="rounded"
                 />
                 <FileTextOutlined />
-                Add Description Box
+                {t('qTemplates.addDescriptionBox')}
               </label>
               <p className="text-xs text-text-secondary mb-2">
-                Adds a text area below the answer for the user to provide additional justification or details.
+                {t('qTemplates.descriptionBoxHelp')}
               </p>
               {form.hasDescriptionBox && (
-                <div>
-                  <label className="block text-xs text-text-secondary mb-1">
-                    Description Box Title (leave blank for default: &quot;{defaultDescTitle}&quot;)
-                  </label>
-                  <Input
-                    value={form.descriptionBoxTitle}
-                    onChange={(e) => setForm({ ...form, descriptionBoxTitle: e.target.value })}
-                    placeholder={defaultDescTitle}
-                  />
+                <div className="space-y-2">
+                  <div>
+                    <label className="block text-xs text-text-secondary mb-1">
+                      {t('qTemplates.descriptionBoxTitleDefault').replace('{defaultTitle}', defaultDescTitle)}
+                    </label>
+                    <Input
+                      value={form.descriptionBoxTitle}
+                      onChange={(e) => setForm({ ...form, descriptionBoxTitle: e.target.value })}
+                      placeholder={defaultDescTitle}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-text-secondary mb-1">
+                      {t('qTemplates.descBoxTitleZh')}
+                    </label>
+                    <Input
+                      value={form.descriptionBoxTitleZh}
+                      onChange={(e) => setForm({ ...form, descriptionBoxTitleZh: e.target.value })}
+                      placeholder={t('qTemplates.descBoxTitleZhPlaceholder')}
+                    />
+                  </div>
                 </div>
               )}
             </div>
@@ -484,10 +750,10 @@ export default function QuestionnaireTemplatesPage() {
                 disabled={saveMutation.isPending}
                 data-testid="save-question-btn"
               >
-                {saveMutation.isPending ? 'Saving...' : editing ? 'Update' : 'Create'}
+                {saveMutation.isPending ? t('common.saving') : editing ? t('common.update') : t('common.create')}
               </Button>
               <Button onClick={resetForm}>
-                Cancel
+                {t('common.cancel')}
               </Button>
             </div>
           </form>
@@ -496,134 +762,234 @@ export default function QuestionnaireTemplatesPage() {
 
       {/* Domain-grouped list */}
       {isLoading ? (
-        <p className="text-text-secondary">Loading...</p>
+        <p className="text-text-secondary">{t('common.loading')}</p>
       ) : groups.length === 0 ? (
         <div className="bg-white rounded-lg border border-border-light p-8 text-center text-text-secondary">
-          No internal domains found. Create internal domains first in Domain Management.
+          {t('qTemplates.noDomainsFound')}
         </div>
       ) : (
         groups.map((group) => {
-          const isCollapsed = collapsed[group.domainCode] ?? true;
+          const isDomainCollapsed = collapsedDomains[group.domainCode] ?? true;
           const { Icon, colors } = getDomainIcon(group.domainCode);
+          const filteredTemplates = showInactive
+            ? group.templates
+            : group.templates.filter(tmpl => tmpl.isActive);
+          const hiddenCount = group.templates.length - filteredTemplates.length;
+          const sectionGroups = groupBySection(filteredTemplates);
+
           return (
             <div key={group.domainCode} className="mb-4">
               {/* Domain header */}
               <button
-                onClick={() => toggleCollapse(group.domainCode)}
+                onClick={() => toggleDomain(group.domainCode)}
                 className="w-full flex items-center gap-2 px-4 py-3 bg-white rounded-t-lg border border-border-light hover:bg-gray-50 transition-colors"
                 data-testid={`domain-section-${group.domainCode}`}
               >
-                {isCollapsed ? <RightOutlined style={{ fontSize: 12 }} /> : <DownOutlined style={{ fontSize: 12 }} />}
+                {isDomainCollapsed ? <RightOutlined style={{ fontSize: 12 }} /> : <DownOutlined style={{ fontSize: 12 }} />}
                 <span className={clsx('inline-flex items-center justify-center w-7 h-7 rounded-lg flex-shrink-0', colors)}>
                   <Icon style={{ fontSize: 15 }} />
                 </span>
                 <span className="font-medium">{group.domainName}</span>
                 <span className="text-xs text-text-secondary ml-1">({group.domainCode})</span>
-                <span className="ml-auto text-xs text-text-secondary">{group.templates.length} question{group.templates.length !== 1 ? 's' : ''}</span>
+                <span className="ml-auto text-xs text-text-secondary">
+                  {t('qTemplates.questionCount').replace('{count}', String(filteredTemplates.length))}
+                  {hiddenCount > 0 && ` ${t('qTemplates.hiddenCount').replace('{count}', String(hiddenCount))}`}
+                </span>
               </button>
 
-              {/* Templates table */}
-              {!isCollapsed && (
+              {/* Section-grouped content */}
+              {!isDomainCollapsed && (
                 <div className="bg-white border border-t-0 border-border-light rounded-b-lg overflow-hidden">
-                  {group.templates.length === 0 ? (
+                  {filteredTemplates.length === 0 ? (
                     <p className="px-4 py-6 text-center text-text-secondary text-sm">
-                      No questions yet for this domain.
+                      {group.templates.length === 0 ? t('qTemplates.noQuestions') : t('qTemplates.allInactive')}
                     </p>
                   ) : (
-                    <table className="w-full text-sm">
-                      <thead className="bg-bg-gray border-b border-border-light">
-                        <tr>
-                          <th className="text-left px-4 py-2 font-medium w-28">Section</th>
-                          <th className="text-left px-4 py-2 font-medium">Question</th>
-                          <th className="text-center px-4 py-2 font-medium w-28 whitespace-nowrap">Type</th>
-                          <th className="text-left px-4 py-2 font-medium w-20">Required</th>
-                          <th className="text-left px-4 py-2 font-medium w-20">Status</th>
-                          {canWrite && <th className="text-left px-4 py-2 font-medium w-28">Operation</th>}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(() => {
-                          const sorted = [...group.templates].sort((a, b) => a.sortOrder - b.sortOrder);
-                          return sorted.map((t, idx) => (
-                            <tr key={t.id} className={clsx('border-b border-border-light last:border-0', !t.isActive && 'opacity-50')}>
-                              <td className="px-4 py-2 text-text-secondary text-xs">{t.section || '\u2014'}</td>
-                              <td className="px-4 py-2">
-                                <div>
-                                  <span>{t.questionText}</span>
-                                  {t.questionDescription && (
-                                    <p className="text-xs text-text-secondary mt-0.5">{t.questionDescription}</p>
-                                  )}
-                                </div>
-                                {t.options && t.options.length > 0 && (
-                                  <div className="mt-1 flex flex-wrap gap-1">
-                                    {t.options.map((o, i) => (
-                                      <span key={i} className="text-xs px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded">{o}</span>
-                                    ))}
-                                  </div>
-                                )}
-                                {/* Dependency badge */}
-                                {t.dependency && (
-                                  <div className="mt-1 flex items-center gap-1 text-xs text-purple-600">
-                                    <LinkOutlined style={{ fontSize: 10 }} />
-                                    <span>
-                                      Depends on: &quot;{findQuestionText(t.domainCode, t.dependency.questionId)}&quot; = {t.dependency.answer}
-                                    </span>
-                                  </div>
-                                )}
-                                {/* Description box badge */}
-                                {t.hasDescriptionBox && (
-                                  <div className="mt-1 flex items-center gap-1 text-xs text-amber-600">
-                                    <FileTextOutlined style={{ fontSize: 10 }} />
-                                    <span>Description box: {t.descriptionBoxTitle || defaultDescTitle}</span>
-                                  </div>
-                                )}
-                              </td>
-                              <td className="px-4 py-2 text-center">
-                                <span className="px-2 py-0.5 rounded text-xs bg-blue-50 text-blue-700 whitespace-nowrap">
-                                  {ANSWER_TYPE_LABELS[t.answerType] || t.answerType}
+                    <div className="divide-y divide-border-light">
+                      {sectionGroups.map((sg, sectionIdx) => {
+                        const sectionKey = `${group.domainCode}::${sg.section || '__none__'}`;
+                        const isSectionCollapsed = collapsedSections[sectionKey] ?? false;
+                        const sorted = [...sg.templates].sort((a, b) => a.sortOrder - b.sortOrder);
+
+                        return (
+                          <div key={sectionKey}>
+                            {/* Section header */}
+                            <div className="flex items-center gap-2 pl-8 pr-4 py-2.5 bg-gray-50 border-b border-border-light">
+                              <button
+                                onClick={() => toggleSection(sectionKey)}
+                                className="flex items-center gap-2 flex-1 min-w-0 hover:text-primary-blue transition-colors"
+                              >
+                                {isSectionCollapsed
+                                  ? <RightOutlined style={{ fontSize: 10, color: '#999' }} />
+                                  : <DownOutlined style={{ fontSize: 10, color: '#999' }} />
+                                }
+                                <span className="font-medium text-sm truncate">
+                                  {sg.section || t('qTemplates.unsectioned')}
                                 </span>
-                              </td>
-                              <td className="px-4 py-2">{t.isRequired ? '\u2713' : ''}</td>
-                              <td className="px-4 py-2">
-                                <span className={clsx('px-2 py-0.5 rounded text-xs', t.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500')}>
-                                  {t.isActive ? 'Active' : 'Inactive'}
+                                <span className="text-xs text-text-secondary flex-shrink-0">
+                                  ({sg.templates.length})
                                 </span>
-                              </td>
-                              {canWrite && (
-                                <td className="px-4 py-2">
-                                  <div className="flex items-center gap-1">
+                              </button>
+
+                              <div className="flex items-center gap-2 flex-shrink-0">
+                                {/* Section audience selector */}
+                                {canWrite && (
+                                  <Select
+                                    size="small"
+                                    value={sg.audience}
+                                    onChange={(val: string) => sectionAudienceMutation.mutate({
+                                      domainCode: group.domainCode,
+                                      section: sg.section,
+                                      audience: val,
+                                    })}
+                                    options={[
+                                      { label: t('qTemplates.requestor'), value: 'requestor' },
+                                      { label: t('qTemplates.reviewer'), value: 'reviewer' },
+                                    ]}
+                                    style={{ width: 120 }}
+                                  />
+                                )}
+                                {!canWrite && (
+                                  <span className={clsx(
+                                    'px-2 py-0.5 rounded text-xs',
+                                    sg.audience === 'reviewer' ? 'bg-orange-100 text-orange-700' : 'bg-blue-50 text-blue-700',
+                                  )}>
+                                    {sg.audience === 'reviewer' ? t('qTemplates.reviewer') : t('qTemplates.requestor')}
+                                  </span>
+                                )}
+
+                                {/* Section reorder buttons */}
+                                {canWrite && (
+                                  <>
                                     <button
-                                      onClick={() => moveTemplate(t.id, group.templates, 'up')}
-                                      disabled={idx === 0 || reorderMutation.isPending}
-                                      title="Move up"
+                                      onClick={() => moveSectionOrder(group.domainCode, sectionGroups, sectionIdx, 'up')}
+                                      disabled={sectionIdx === 0 || reorderMutation.isPending}
+                                      title={t('dispatchRules.moveUp')}
                                       className="p-1 text-gray-400 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed"
                                     >
-                                      <ArrowUpOutlined />
+                                      <ArrowUpOutlined style={{ fontSize: 12 }} />
                                     </button>
                                     <button
-                                      onClick={() => moveTemplate(t.id, group.templates, 'down')}
-                                      disabled={idx === sorted.length - 1 || reorderMutation.isPending}
-                                      title="Move down"
+                                      onClick={() => moveSectionOrder(group.domainCode, sectionGroups, sectionIdx, 'down')}
+                                      disabled={sectionIdx === sectionGroups.length - 1 || reorderMutation.isPending}
+                                      title={t('dispatchRules.moveDown')}
                                       className="p-1 text-gray-400 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed"
                                     >
-                                      <ArrowDownOutlined />
+                                      <ArrowDownOutlined style={{ fontSize: 12 }} />
                                     </button>
-                                    <button onClick={() => openEdit(t)} title="Edit" className="text-primary-blue hover:text-blue-700 p-1">
-                                      <EditOutlined />
-                                    </button>
-                                    <Switch
-                                      size="small"
-                                      checked={t.isActive}
-                                      onChange={() => toggleMutation.mutate(t.id)}
-                                    />
-                                  </div>
-                                </td>
-                              )}
-                            </tr>
-                          ));
-                        })()}
-                      </tbody>
-                    </table>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Questions table within section */}
+                            {!isSectionCollapsed && (
+                              <table className="w-full text-sm">
+                                <thead className="bg-bg-gray border-b border-border-light">
+                                  <tr>
+                                    <th className="text-left pl-10 pr-4 py-2 font-medium">{t('scopingTemplates.question')}</th>
+                                    <th className="text-center px-4 py-2 font-medium w-28 whitespace-nowrap">{t('common.type')}</th>
+                                    <th className="text-left px-4 py-2 font-medium w-20">{t('common.required')}</th>
+                                    <th className="text-left px-4 py-2 font-medium w-20">{t('common.status')}</th>
+                                    {canWrite && <th className="text-left px-4 py-2 font-medium w-28">{t('common.operation')}</th>}
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {sorted.map((tmpl, idx) => (
+                                    <tr key={tmpl.id} className={clsx('border-b border-border-light last:border-0', !tmpl.isActive && 'opacity-50')}>
+                                      <td className="pl-10 pr-4 py-2">
+                                        <div>
+                                          <span>{tmpl.questionText}</span>
+                                          {tmpl.questionTextZh && <span className="ml-1.5 text-xs px-1 py-0.5 bg-amber-50 text-amber-700 rounded">ZH</span>}
+                                          {tmpl.questionImages && tmpl.questionImages.length > 0 && <span className="ml-1.5 text-xs px-1 py-0.5 bg-purple-50 text-purple-700 rounded">IMG</span>}
+                                          {tmpl.questionDescription && (
+                                            <p className="text-xs text-text-secondary mt-0.5">{tmpl.questionDescription}</p>
+                                          )}
+                                        </div>
+                                        {tmpl.options && tmpl.options.length > 0 && (
+                                          <div className="mt-1 flex flex-wrap gap-1">
+                                            {tmpl.options.map((o, i) => (
+                                              <span key={i} className="text-xs px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded">{o}</span>
+                                            ))}
+                                          </div>
+                                        )}
+                                        {/* Dependency badge */}
+                                        {tmpl.dependency && (
+                                          <div className="mt-1 flex items-center gap-1 text-xs text-purple-600">
+                                            <LinkOutlined style={{ fontSize: 10 }} />
+                                            <span>
+                                              {t('qTemplates.dependsOn')} &quot;{findQuestionText(tmpl.domainCode, tmpl.dependency.questionId)}&quot; = {tmpl.dependency.answer}
+                                            </span>
+                                          </div>
+                                        )}
+                                        {/* Description box badge */}
+                                        {tmpl.hasDescriptionBox && (
+                                          <div className="mt-1 flex items-center gap-1 text-xs text-amber-600">
+                                            <FileTextOutlined style={{ fontSize: 10 }} />
+                                            <span>{t('qTemplates.descriptionBox')} {tmpl.descriptionBoxTitle || defaultDescTitle}</span>
+                                          </div>
+                                        )}
+                                      </td>
+                                      <td className="px-4 py-2 text-center">
+                                        <span className="px-2 py-0.5 rounded text-xs bg-blue-50 text-blue-700 whitespace-nowrap">
+                                          {ANSWER_TYPE_LABELS[tmpl.answerType] || tmpl.answerType}
+                                        </span>
+                                      </td>
+                                      <td className="px-4 py-2">
+                                        {canWrite ? (
+                                          <Switch
+                                            size="small"
+                                            checked={tmpl.isRequired}
+                                            onChange={() => toggleRequiredMutation.mutate({ id: tmpl.id, isRequired: !tmpl.isRequired })}
+                                          />
+                                        ) : (
+                                          tmpl.isRequired ? '✓' : ''
+                                        )}
+                                      </td>
+                                      <td className="px-4 py-2">
+                                        <span className={clsx('px-2 py-0.5 rounded text-xs', tmpl.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500')}>
+                                          {tmpl.isActive ? t('common.active') : t('common.inactive')}
+                                        </span>
+                                      </td>
+                                      {canWrite && (
+                                        <td className="px-4 py-2">
+                                          <div className="flex items-center gap-1">
+                                            <button
+                                              onClick={() => moveTemplate(tmpl.id, sg.templates, 'up')}
+                                              disabled={idx === 0 || reorderMutation.isPending}
+                                              title={t('dispatchRules.moveUp')}
+                                              className="p-1 text-gray-400 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed"
+                                            >
+                                              <ArrowUpOutlined />
+                                            </button>
+                                            <button
+                                              onClick={() => moveTemplate(tmpl.id, sg.templates, 'down')}
+                                              disabled={idx === sorted.length - 1 || reorderMutation.isPending}
+                                              title={t('dispatchRules.moveDown')}
+                                              className="p-1 text-gray-400 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed"
+                                            >
+                                              <ArrowDownOutlined />
+                                            </button>
+                                            <button onClick={() => openEdit(tmpl)} title={t('common.edit')} className="text-primary-blue hover:text-blue-700 p-1">
+                                              <EditOutlined />
+                                            </button>
+                                            <Switch
+                                              size="small"
+                                              checked={tmpl.isActive}
+                                              onChange={() => toggleMutation.mutate(tmpl.id)}
+                                            />
+                                          </div>
+                                        </td>
+                                      )}
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   )}
                 </div>
               )}

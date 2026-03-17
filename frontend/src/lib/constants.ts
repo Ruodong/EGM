@@ -8,49 +8,49 @@ export interface NavItem {
 }
 
 export const sidebarNavItems: NavItem[] = [
-  { label: 'Home', href: '/', icon: 'Home' },
-  { label: 'Governance Requests', href: '/requests', icon: 'FileCheck' },
+  { label: 'nav.home', href: '/', icon: 'Home' },
+  { label: 'nav.governanceRequests', href: '/requests', icon: 'FileCheck' },
   {
-    label: 'Reviews',
+    label: 'nav.reviews',
     href: '/reviews',
     icon: 'ClipboardCheck',
     requiredResource: 'domain_review',
     requiredScope: 'write',
     children: [
-      { label: 'All Reviews', href: '/reviews', icon: 'ClipboardCheck', requiredResource: 'domain_review', requiredScope: 'write' },
-      { label: 'Review Actions', href: '/actions', icon: 'ListTodo', requiredResource: 'review_action', requiredScope: 'write' },
+      { label: 'nav.allReviews', href: '/reviews', icon: 'ClipboardCheck', requiredResource: 'domain_review', requiredScope: 'write' },
+      { label: 'nav.reviewActions', href: '/actions', icon: 'ListTodo', requiredResource: 'review_action', requiredScope: 'write' },
     ],
   },
   {
-    label: 'Domains',
+    label: 'nav.domains',
     href: '/domains',
     icon: 'Puzzle',
     requiredResource: 'domain_registry',
     requiredScope: 'read',
   },
   {
-    label: 'Reports',
+    label: 'nav.reports',
     href: '/reports',
     icon: 'BarChart3',
     children: [
-      { label: 'Governance Dashboard', href: '/reports/governance-dashboard', icon: 'BarChart3' },
-      { label: 'Domain Metrics', href: '/reports/domain-metrics', icon: 'BarChart3' },
-      { label: 'Lead Time', href: '/reports/lead-time', icon: 'BarChart3' },
+      { label: 'nav.dashboard', href: '/reports/governance-dashboard', icon: 'BarChart3' },
+      { label: 'nav.domainMetrics', href: '/reports/domain-metrics', icon: 'BarChart3' },
+      { label: 'nav.leadTime', href: '/reports/lead-time', icon: 'BarChart3' },
     ],
   },
   {
-    label: 'Settings',
+    label: 'nav.settings',
     href: '/settings',
     icon: 'Settings',
     children: [
-      { label: 'Questionnaire Templates', href: '/settings/questionnaire-templates', icon: 'Settings', requiredResource: 'domain_questionnaire', requiredScope: 'read' },
-      { label: 'Dispatch Rules', href: '/settings/dispatch-rules', icon: 'Settings', requiredResource: 'dispatch_rule', requiredScope: 'read' },
-      { label: 'Domain Management', href: '/settings/domains', icon: 'Puzzle', requiredResource: 'domain_registry', requiredScope: 'write' },
-      { label: 'User Authorization', href: '/settings/user-authorization', icon: 'Users', requiredResource: 'user_authorization', requiredScope: 'read' },
-      { label: 'Audit Log', href: '/settings/audit-log', icon: 'Shield', requiredResource: 'audit_log', requiredScope: 'read' },
+      { label: 'nav.questionnaireTemplates', href: '/settings/questionnaire-templates', icon: 'Settings', requiredResource: 'domain_questionnaire', requiredScope: 'read' },
+      { label: 'nav.dispatchRules', href: '/settings/dispatch-rules', icon: 'Settings', requiredResource: 'dispatch_rule', requiredScope: 'read' },
+      { label: 'nav.domainManagement', href: '/settings/domains', icon: 'Puzzle', requiredResource: 'domain_registry', requiredScope: 'write' },
+      { label: 'nav.userAuthorization', href: '/settings/user-authorization', icon: 'Users', requiredResource: 'user_authorization', requiredScope: 'read' },
+      { label: 'nav.auditLog', href: '/settings/audit-log', icon: 'Shield', requiredResource: 'audit_log', requiredScope: 'read' },
     ],
   },
-  { label: 'Help', href: '/help', icon: 'HelpCircle' },
+  { label: 'nav.help', href: '/help', icon: 'HelpCircle' },
 ];
 
 /** Default due date offset in days from creation date */

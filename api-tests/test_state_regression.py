@@ -191,6 +191,29 @@ def review_action(review_id: str, action: str, user: str, body: dict | None = No
     return resp
 
 
+def answer_reviewer_qs(review_id: str):
+    """Answer all required reviewer questionnaire templates for a domain review."""
+    resp = requests.get(f"{BASE}/domain-questionnaire/templates/{review_id}", headers=_h(ADMIN))
+    if resp.status_code != 200:
+        return
+    templates = resp.json().get("data", [])
+    responses = []
+    for tmpl in templates:
+        if tmpl.get("isRequired"):
+            at = tmpl["answerType"]
+            opts = tmpl.get("options")
+            if at in ("radio", "dropdown") and opts:
+                answer = {"value": opts[0]}
+            elif at == "multiselect" and opts:
+                answer = {"value": [opts[0]]}
+            else:
+                answer = {"value": "Test answer"}
+            responses.append({"templateId": tmpl["id"], "answer": answer})
+    if responses:
+        requests.post(f"{BASE}/domain-questionnaire/{review_id}",
+                       headers=_h(ADMIN), json={"responses": responses})
+
+
 def accept_all(rid: str):
     """Accept all domain reviews for a request."""
     for r in get_reviews(rid):
@@ -199,6 +222,13 @@ def accept_all(rid: str):
         reviewer = DOMAIN_REVIEWER[r["domainCode"]]
         resp = review_action(r["id"], "accept", reviewer)
         assert resp.status_code == 200, f"Accept {r['domainCode']} failed: {resp.text}"
+
+
+def answer_all_reviewer_qs(rid: str):
+    """Answer reviewer questionnaires for ALL reviews in a request."""
+    for r in get_reviews(rid):
+        if r["status"] == "Accept":
+            answer_reviewer_qs(r["id"])
 
 
 def get_activity_log(rid: str) -> list[dict]:
@@ -247,7 +277,8 @@ class TestS1HappyPath:
             resp = review_action(r["id"], "accept", reviewer)
             assert resp.status_code == 200
 
-        # Approve all -> Request becomes Complete
+        # Answer reviewer questionnaires and approve all -> Request becomes Complete
+        answer_all_reviewer_qs(rid)
         reviews = get_reviews(rid)
         for r in reviews:
             decider = DOMAIN_DECIDER[r["domainCode"]]
@@ -280,6 +311,7 @@ class TestS2ApproveWithException:
     def test_s2_exception_flow(self):
         rid = create_and_submit()
         accept_all(rid)
+        answer_all_reviewer_qs(rid)
 
         reviews = get_reviews(rid)
         half = len(reviews) // 2
@@ -320,6 +352,7 @@ class TestS3NotPassed:
     def test_s3_not_pass(self):
         rid = create_and_submit()
         accept_all(rid)
+        answer_all_reviewer_qs(rid)
 
         reviews = get_reviews(rid)
         # Not Pass first domain
@@ -381,8 +414,9 @@ class TestS4ReturnResubmit:
         dd_review = get_review_by_domain(rid, "DD")
         assert dd_review["status"] == "Waiting for Accept"
 
-        # Now accept all and approve all
+        # Now accept all, answer reviewer qs, and approve all
         accept_all(rid)
+        answer_all_reviewer_qs(rid)
         reviews = get_reviews(rid)
         for r in reviews:
             decider = DOMAIN_DECIDER[r["domainCode"]]
@@ -439,6 +473,7 @@ class TestS5MultipleReturns:
 
         # Accept all and approve all
         accept_all(rid)
+        answer_all_reviewer_qs(rid)
         reviews = get_reviews(rid)
         for r in reviews:
             decider = DOMAIN_DECIDER[r["domainCode"]]
@@ -459,6 +494,7 @@ class TestS6MixedTerminal:
     def test_s6_mixed(self):
         rid = create_and_submit()
         accept_all(rid)
+        answer_all_reviewer_qs(rid)
 
         reviews = get_reviews(rid)
         n = len(reviews)
@@ -521,6 +557,7 @@ class TestS8ArchiveComplete:
     def test_s8_archive(self):
         rid = create_and_submit()
         accept_all(rid)
+        answer_all_reviewer_qs(rid)
 
         # Approve all to reach Complete
         reviews = get_reviews(rid)
@@ -603,8 +640,9 @@ class TestS9InvalidTransitions:
         accepter = DOMAIN_ACCEPTER["DD"]
         decider = DOMAIN_DECIDER["DD"]
 
-        # Accept then approve
+        # Accept, answer reviewer qs, then approve
         review_action(review["id"], "accept", accepter)
+        answer_reviewer_qs(review["id"])
         review_action(review["id"], "approve", decider)
 
         # All further actions should fail

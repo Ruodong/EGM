@@ -2,13 +2,15 @@
 
 **Status**: Implemented
 **Date**: 2026-03-16
-**Spec Version**: 1
+**Spec Version**: 2
 
 ## Impact Assessment
 
 **Feature**: AI Review Analysis | **Impact**: L3 (cross-feature, reads domain_review + questionnaire + request + embeddings) | **Risk**: Medium | **Decision**: Pause — review
 
-New router `review_analysis.py` + new service `ai_review_analysis.py` + new table `ai_review_analysis` + new frontend component `AIAnalysisSection.tsx`. Reads from governance_request, domain_review, request_questionnaire_response, ask_egm_review_embedding. Extends existing Ask EGM LLM + embedding infrastructure. Triggered automatically on Submit/Resubmit.
+New router `review_analysis.py` + new service `ai_review_analysis.py` + new table `ai_review_analysis` + new frontend component `AIAnalysisSection.tsx`. Reads from governance_request, domain_review, request_questionnaire_response, review_action, review_action_feedback, ask_egm_review_embedding. Extends existing Ask EGM LLM + embedding infrastructure. Triggered automatically on Submit/Resubmit.
+
+**v2 security + context**: Object-level authorization on all endpoints. Analysis context expanded with action items + feedback (parity with Ask EGM). Background triggers log failures instead of silently swallowing. Content hash includes action items for change detection.
 
 ### Schema Changes
 - New table: `ai_review_analysis` (versioned analysis results per domain review per dimension)

@@ -137,7 +137,7 @@
     },
     "ask-egm": {
       "doc": "docs/features/ask-egm.md",
-      "tables": ["ask_egm_conversation", "ask_egm_review_embedding"],
+      "tables": ["ask_egm_conversation", "ask_egm_review_embedding", "ask_egm_attachment"],
       "routers": ["ask_egm.py"],
       "frontendPaths": [
         "frontend/src/app/governance/_components/AskEgmFloating.tsx",
@@ -151,6 +151,26 @@
       "frontendPaths": [
         "frontend/src/app/governance/_components/AIAnalysisSection.tsx",
         "frontend/src/app/governance/[requestId]/reviews/[domainCode]/"
+      ]
+    },
+    "domain-questionnaire": {
+      "doc": "docs/features/domain-questionnaire.md",
+      "tables": ["domain_questionnaire_response"],
+      "routers": ["domain_questionnaire.py"],
+      "frontendPaths": [
+        "frontend/src/app/governance/_components/ReviewerQuestionnaires.tsx",
+        "frontend/src/app/governance/_components/QuestionInput.tsx",
+        "frontend/src/app/governance/[requestId]/reviews/[domainCode]/"
+      ]
+    },
+    "i18n": {
+      "doc": "docs/features/i18n.md",
+      "tables": [],
+      "routers": [],
+      "frontendPaths": [
+        "frontend/src/lib/locale-context.tsx",
+        "frontend/src/i18n/",
+        "frontend/src/components/layout/Header.tsx"
       ]
     }
   },
@@ -280,12 +300,25 @@
       "to": "ask-egm",
       "type": "data_read",
       "detail": "reuses find_similar_reviews() from embeddings.py for reference case analysis"
+    },
+    {
+      "from": "domain-questionnaire",
+      "to": "domain-dispatch",
+      "type": "FK+guard",
+      "detail": "domain_questionnaire_response.domain_review_id FK; approve/not-pass blocked when required reviewer questions unanswered"
+    },
+    {
+      "from": "domain-questionnaire",
+      "to": "questionnaire-templates",
+      "type": "data_read",
+      "detail": "reads domain_questionnaire_template (audience='reviewer') for reviewer questions"
     }
   ],
   "sharedTables": {
     "governance_request": ["governance-requests", "intake-scoping", "domain-dispatch", "project-linking", "request-questionnaire"],
     "audit_log": ["governance-requests", "domain-dispatch", "audit-log"],
-    "review_action": ["domain-dispatch", "review-action-items"]
+    "review_action": ["domain-dispatch", "review-action-items"],
+    "domain_questionnaire_response": ["domain-dispatch", "domain-questionnaire"]
   },
   "globalFiles": [
     "backend/app/database.py",

@@ -1,20 +1,23 @@
 'use client';
 
 import Link from 'next/link';
-
-const settingsItems = [
-  { label: 'Scoping Templates', href: '/settings/scoping-templates', description: 'Manage scoping questions used to determine applicable domains' },
-  { label: 'Questionnaire Templates', href: '/settings/questionnaire-templates', description: 'Configure common questionnaire sections and questions' },
-  { label: 'Dispatch Rules', href: '/settings/dispatch-rules', description: 'Manage project characteristic tags and Rule-Domain dispatch matrix' },
-  { label: 'Domain Management', href: '/settings/domains', description: 'Create, edit and manage governance domain definitions' },
-  { label: 'User Authorization', href: '/settings/user-authorization', description: 'Search employees and assign EGM roles for access control' },
-  { label: 'Audit Log', href: '/settings/audit-log', description: 'View system activity and change history' },
-];
+import { useLocale } from '@/lib/locale-context';
 
 export default function SettingsPage() {
+  const { t } = useLocale();
+
+  const settingsItems = [
+    { label: t('settings.scopingTemplates'), href: '/settings/scoping-templates', description: t('settings.scopingTemplatesDesc') },
+    { label: t('settings.questionnaireTemplates'), href: '/settings/questionnaire-templates', description: t('settings.questionnaireTemplatesDesc') },
+    { label: t('settings.dispatchRules'), href: '/settings/dispatch-rules', description: t('settings.dispatchRulesDesc') },
+    { label: t('settings.domainManagement'), href: '/settings/domains', description: t('settings.domainManagementDesc') },
+    { label: t('settings.userAuthorization'), href: '/settings/user-authorization', description: t('settings.userAuthorizationDesc') },
+    { label: t('settings.auditLog'), href: '/settings/audit-log', description: t('settings.auditLogDesc') },
+  ];
+
   return (
     <div>
-      <h1 className="text-xl font-bold mb-6">Settings</h1>
+      <h1 className="text-xl font-bold mb-6">{t('settings.title')}</h1>
       <div className="grid grid-cols-2 gap-4">
         {settingsItems.map((item) => (
           <Link

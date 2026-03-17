@@ -1,9 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { Layout, Dropdown, Button, Badge, Spin, Space, Typography } from 'antd';
+import { Layout, Dropdown, Button, Badge, Spin, Space, Typography, Segmented } from 'antd';
 import { DownOutlined, LoadingOutlined, UserOutlined } from '@ant-design/icons';
 import { useAuth } from '@/lib/auth-context';
+import { useLocale } from '@/lib/locale-context';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import type { MenuProps } from 'antd';
@@ -18,16 +19,9 @@ const ROLE_COLORS: Record<string, string> = {
   viewer: '#9CA3AF',
 };
 
-const ROLE_LABELS: Record<string, string> = {
-  admin: 'Admin',
-  governance_lead: 'Gov Lead',
-  domain_reviewer: 'Reviewer',
-  requestor: 'Requestor',
-  viewer: 'Viewer',
-};
-
 export function Header() {
   const { user, switchUser } = useAuth();
+  const { locale, setLocale, t } = useLocale();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
 
@@ -41,7 +35,7 @@ export function Header() {
   const roleUsers = usersData?.data ?? [];
 
   const currentRoleColor = ROLE_COLORS[user?.role ?? ''] ?? '#9CA3AF';
-  const currentRoleLabel = ROLE_LABELS[user?.role ?? ''] ?? user?.role ?? '';
+  const currentRoleLabel = t(`role.${user?.role ?? ''}`);
 
   const handleSwitch = async (itcode: string) => {
     setOpen(false);
@@ -52,7 +46,7 @@ export function Header() {
   const menuItems: MenuProps['items'] = usersLoading
     ? [{ key: 'loading', label: <Spin indicator={<LoadingOutlined />} size="small" />, disabled: true }]
     : roleUsers.length === 0
-      ? [{ key: 'empty', label: <Text type="secondary">No users found</Text>, disabled: true }]
+      ? [{ key: 'empty', label: <Text type="secondary">{t('common.noData')}</Text>, disabled: true }]
       : roleUsers.map((u) => ({
           key: u.itcode,
           label: (
@@ -61,7 +55,7 @@ export function Header() {
                 <Badge color={ROLE_COLORS[u.role] ?? '#9CA3AF'} />
                 <span style={{ fontWeight: user?.id === u.itcode ? 600 : 400 }}>{u.name}</span>
               </Space>
-              <Text type="secondary" style={{ fontSize: 12 }}>{ROLE_LABELS[u.role] ?? u.role}</Text>
+              <Text type="secondary" style={{ fontSize: 12 }}>{t(`role.${u.role}`)}</Text>
             </Space>
           ),
           onClick: () => handleSwitch(u.itcode),
@@ -85,24 +79,36 @@ export function Header() {
           <rect width="200" height="200" rx="40" fill="#E1002A" />
           <text x="100" y="138" textAnchor="middle" fontFamily="Arial, Helvetica, sans-serif" fontWeight="bold" fontSize="110" fill="#FFFFFF" letterSpacing="-4">Le</text>
         </svg>
-        <Text strong style={{ fontSize: 16 }}>Enterprise Governance Management</Text>
+        <Text strong style={{ fontSize: 16 }}>{t('header.title')}</Text>
       </Space>
-      {user && (
-        <Dropdown
-          menu={{ items: menuItems }}
-          trigger={['click']}
-          open={open}
-          onOpenChange={setOpen}
-          placement="bottomRight"
-        >
-          <Button type="text" style={{ display: 'flex', alignItems: 'center', gap: 8, height: 40 }}>
-            <Badge color={currentRoleColor} />
-            <Text strong>{user.name}</Text>
-            <Text type="secondary">({currentRoleLabel})</Text>
-            <DownOutlined style={{ fontSize: 12, color: '#8C8C8C' }} />
-          </Button>
-        </Dropdown>
-      )}
+
+      <Space size="middle">
+        <Segmented
+          value={locale}
+          onChange={(val) => setLocale(val as 'en' | 'zh')}
+          options={[
+            { label: 'EN', value: 'en' },
+            { label: '中文', value: 'zh' },
+          ]}
+          size="small"
+        />
+        {user && (
+          <Dropdown
+            menu={{ items: menuItems }}
+            trigger={['click']}
+            open={open}
+            onOpenChange={setOpen}
+            placement="bottomRight"
+          >
+            <Button type="text" style={{ display: 'flex', alignItems: 'center', gap: 8, height: 40 }}>
+              <Badge color={currentRoleColor} />
+              <Text strong>{user.name}</Text>
+              <Text type="secondary">({currentRoleLabel})</Text>
+              <DownOutlined style={{ fontSize: 12, color: '#8C8C8C' }} />
+            </Button>
+          </Dropdown>
+        )}
+      </Space>
     </Layout.Header>
   );
 }

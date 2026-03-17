@@ -6,6 +6,7 @@ import { api } from '@/lib/api';
 import { PageLayout } from '@/components/layout/PageLayout';
 import { statusColors } from '@/lib/constants';
 import { Button } from 'antd';
+import { useLocale } from '@/lib/locale-context';
 import clsx from 'clsx';
 
 interface GovRequest {
@@ -42,6 +43,7 @@ export default function SummaryPage() {
   const params = useParams();
   const router = useRouter();
   const requestId = params.requestId as string;
+  const { t } = useLocale();
 
   const { data: request } = useQuery<GovRequest>({
     queryKey: ['governance-request', requestId],
@@ -59,7 +61,7 @@ export default function SummaryPage() {
   });
 
   if (!request) {
-    return <PageLayout><p className="text-text-secondary">Loading...</p></PageLayout>;
+    return <PageLayout><p className="text-text-secondary">{t('common.loading')}</p></PageLayout>;
   }
 
   const allComplete = progress && progress.completedDomains === progress.totalDomains && progress.totalDomains > 0;
@@ -67,28 +69,28 @@ export default function SummaryPage() {
   return (
     <PageLayout>
       <div className="max-w-3xl mx-auto">
-        <h1 className="text-xl font-bold mb-6">Governance Summary</h1>
+        <h1 className="text-xl font-bold mb-6">{t('summary.title')}</h1>
 
         {/* Overall status */}
         <div className="bg-white rounded-lg border border-border-light p-6 mb-4">
-          <h2 className="text-base font-semibold mb-3">Request: {request.requestId}</h2>
+          <h2 className="text-base font-semibold mb-3">{t('summary.request')}{request.requestId}</h2>
           <dl className="space-y-2 text-sm">
-            <div className="flex"><dt className="w-36 text-text-secondary">Title</dt><dd>{request.title}</dd></div>
-            <div className="flex"><dt className="w-36 text-text-secondary">Status</dt><dd>
+            <div className="flex"><dt className="w-36 text-text-secondary">{t('summary.title2')}</dt><dd>{request.title}</dd></div>
+            <div className="flex"><dt className="w-36 text-text-secondary">{t('common.status')}</dt><dd>
               <span className={clsx('px-2 py-0.5 rounded text-xs text-white', statusColors[request.status] || 'bg-gray-400')}>
                 {request.status}
               </span>
             </dd></div>
-            <div className="flex"><dt className="w-36 text-text-secondary">Requestor</dt><dd>{request.requestorName || request.requestor}</dd></div>
+            <div className="flex"><dt className="w-36 text-text-secondary">{t('col.requestor')}</dt><dd>{request.requestorName || request.requestor}</dd></div>
           </dl>
         </div>
 
         {/* Progress */}
         {progress && (
           <div className="bg-white rounded-lg border border-border-light p-6 mb-4">
-            <h2 className="text-base font-semibold mb-3">Review Progress</h2>
+            <h2 className="text-base font-semibold mb-3">{t('summary.reviewProgress')}</h2>
             <div className="flex justify-between text-sm mb-2">
-              <span>{progress.completedDomains}/{progress.totalDomains} domains complete</span>
+              <span>{progress.completedDomains}/{progress.totalDomains} {t('summary.domainsComplete')}</span>
               <span>{progress.progressPercent}%</span>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-2 mb-3">
@@ -98,14 +100,14 @@ export default function SummaryPage() {
               />
             </div>
             {progress.openInfoRequests > 0 && (
-              <p className="text-sm text-status-info-requested">{progress.openInfoRequests} open info request(s)</p>
+              <p className="text-sm text-status-info-requested">{progress.openInfoRequests} {t('reviewDetail.openInfoRequestsShort')}</p>
             )}
           </div>
         )}
 
         {/* Domain outcomes */}
         <div className="bg-white rounded-lg border border-border-light p-6 mb-4">
-          <h2 className="text-base font-semibold mb-3">Domain Review Outcomes</h2>
+          <h2 className="text-base font-semibold mb-3">{t('summary.domainReviewOutcomes')}</h2>
           {reviews?.data && reviews.data.length > 0 ? (
             <div className="space-y-3">
               {reviews.data.map((r) => (
@@ -128,16 +130,16 @@ export default function SummaryPage() {
               ))}
             </div>
           ) : (
-            <p className="text-sm text-text-secondary">No reviews dispatched.</p>
+            <p className="text-sm text-text-secondary">{t('summary.noReviewsDispatched')}</p>
           )}
         </div>
 
         <div className="flex justify-between mt-6">
           <Button type="default" onClick={() => router.push(`/governance/${requestId}/reviews`)}>
-            Back to Reviews
+            {t('reviewDetail.backToReviews')}
           </Button>
           <Button type="default" onClick={() => router.push(`/governance/${requestId}`)}>
-            Back to Overview
+            {t('summary.backToOverview')}
           </Button>
         </div>
       </div>

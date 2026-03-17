@@ -486,3 +486,88 @@ class TestSystemConfig:
         """Nonexistent key returns 404."""
         resp = client.get("/system-config/nonexistent.key")
         assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Audience field — requestor vs reviewer
+# ---------------------------------------------------------------------------
+class TestAudience:
+    def test_create_with_audience_reviewer(self, client, internal_domain):
+        """Create template with audience='reviewer'."""
+        resp = client.post("/questionnaire-templates", json={
+            "domainCode": internal_domain["domainCode"],
+            "questionText": "Reviewer only question?",
+            "answerType": "textarea",
+            "audience": "reviewer",
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["audience"] == "reviewer"
+        with httpx.Client(base_url=BASE_URL, timeout=30) as c:
+            c.post("/dev/delete", json={"questionnaireTemplates": [data["id"]]})
+
+    def test_create_default_audience_requestor(self, client, internal_domain):
+        """Default audience is 'requestor' when not specified."""
+        resp = client.post("/questionnaire-templates", json={
+            "domainCode": internal_domain["domainCode"],
+            "questionText": "Default audience question?",
+            "answerType": "textarea",
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["audience"] == "requestor"
+        with httpx.Client(base_url=BASE_URL, timeout=30) as c:
+            c.post("/dev/delete", json={"questionnaireTemplates": [data["id"]]})
+
+    def test_create_invalid_audience(self, client, internal_domain):
+        """Invalid audience value returns 400."""
+        resp = client.post("/questionnaire-templates", json={
+            "domainCode": internal_domain["domainCode"],
+            "questionText": "Bad audience?",
+            "answerType": "textarea",
+            "audience": "manager",
+        })
+        assert resp.status_code == 400
+
+    def test_update_section_audience(self, client, internal_domain):
+        """PUT /section-audience batch updates audience for a section."""
+        ids = []
+        for i in range(2):
+            resp = client.post("/questionnaire-templates", json={
+                "domainCode": internal_domain["domainCode"],
+                "section": "Audit Section",
+                "questionText": f"Audit Q{i}?",
+                "answerType": "textarea",
+                "sortOrder": i,
+                "audience": "requestor",
+            })
+            assert resp.status_code == 200
+            ids.append(resp.json()["id"])
+
+        # Batch update section audience to reviewer
+        resp = client.put("/questionnaire-templates/section-audience", json={
+            "domainCode": internal_domain["domainCode"],
+            "section": "Audit Section",
+            "audience": "reviewer",
+        })
+        assert resp.status_code == 200
+        assert resp.json()["ok"] is True
+
+        # Verify all questions in section now have audience=reviewer
+        resp = client.get(f"/questionnaire-templates/{internal_domain['domainCode']}")
+        assert resp.status_code == 200
+        section_qs = [t for t in resp.json()["data"] if t.get("section") == "Audit Section"]
+        for q in section_qs:
+            assert q["audience"] == "reviewer"
+
+        with httpx.Client(base_url=BASE_URL, timeout=30) as c:
+            c.post("/dev/delete", json={"questionnaireTemplates": ids})
+
+    def test_update_section_audience_invalid(self, client, internal_domain):
+        """Invalid audience value returns 400."""
+        resp = client.put("/questionnaire-templates/section-audience", json={
+            "domainCode": internal_domain["domainCode"],
+            "section": "Any",
+            "audience": "manager",
+        })
+        assert resp.status_code == 400

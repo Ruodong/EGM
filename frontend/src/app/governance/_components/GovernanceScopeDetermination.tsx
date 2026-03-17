@@ -3,6 +3,7 @@
 import { useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { useLocale } from '@/lib/locale-context';
 import { DomainPreviewChip } from './DomainPreviewChip';
 import clsx from 'clsx';
 
@@ -48,6 +49,7 @@ function RuleToggle({
   disabled?: boolean;
   disabledReason?: string;
 }) {
+  const { t } = useLocale();
   return (
     <div
       className={clsx(
@@ -69,7 +71,7 @@ function RuleToggle({
           <span className="text-xs text-text-secondary">({rule.ruleCode})</span>
           {rule.isMandatory && (
             <span className="text-xs font-medium text-red-600 bg-red-50 px-1.5 py-0.5 rounded" data-testid={`mandatory-badge-${rule.ruleCode}`}>
-              Required
+              {t('scope.required')}
             </span>
           )}
         </div>
@@ -96,7 +98,7 @@ function RuleToggle({
           )}
           data-testid={`rule-toggle-${rule.ruleCode}-yes`}
         >
-          YES
+          {t('scope.yes')}
         </button>
         <button
           type="button"
@@ -112,7 +114,7 @@ function RuleToggle({
           )}
           data-testid={`rule-toggle-${rule.ruleCode}-no`}
         >
-          NO
+          {t('scope.no')}
         </button>
       </div>
     </div>
@@ -124,6 +126,7 @@ export function GovernanceScopeDetermination({
   onRulesChange,
   onTriggeredDomainsChange,
 }: GovernanceScopeDeterminationProps) {
+  const { t } = useLocale();
   const { data: matrixData, isLoading } = useQuery<MatrixData>({
     queryKey: ['dispatch-rules-matrix'],
     queryFn: () => api.get('/dispatch-rules/matrix'),
@@ -245,12 +248,12 @@ export function GovernanceScopeDetermination({
           const r = matrixData.rules.find((rule) => rule.ruleCode === rc);
           return r ? r.ruleName : rc;
         });
-        blocked.set(ruleCode, `Requires ${names.join(' or ')}`);
+        blocked.set(ruleCode, `${t('scope.requires')}${names.join(' or ')}`);
       }
     }
 
     return blocked;
-  }, [selectedRules, autoParentCodes, matrixData]);
+  }, [selectedRules, autoParentCodes, matrixData, t]);
 
   // Compute triggered domains from selected rules + auto-aggregated parents
   const triggeredDomains = useMemo(() => {
@@ -288,11 +291,11 @@ export function GovernanceScopeDetermination({
   }, [triggeredDomains, onTriggeredDomainsChange]);
 
   if (isLoading) {
-    return <div className="text-sm text-text-secondary py-2">Loading rules...</div>;
+    return <div className="text-sm text-text-secondary py-2">{t('scope.loadingRules')}</div>;
   }
 
   if (!matrixData || matrixData.rules.length === 0) {
-    return <div className="text-sm text-text-secondary py-2">No dispatch rules configured.</div>;
+    return <div className="text-sm text-text-secondary py-2">{t('scope.noRules')}</div>;
   }
 
   return (
@@ -303,11 +306,11 @@ export function GovernanceScopeDetermination({
           const hasChildren = group.children.length > 0;
           const parentSelected = autoParentCodes.has(group.parent.ruleCode);
 
-          // Level-1 rule WITHOUT children → render as a direct toggle
+          // Level-1 rule WITHOUT children -> render as a direct toggle
           if (!hasChildren) {
             const exclReason = excludedRulesMap.get(group.parent.ruleCode);
             const depReason = dependencyBlockedMap.get(group.parent.ruleCode);
-            const reason = exclReason ? `Excluded by ${exclReason}` : depReason || undefined;
+            const reason = exclReason ? `${t('scope.excludedBy')}${exclReason}` : depReason || undefined;
             return (
               <RuleToggle
                 key={group.parent.ruleCode}
@@ -320,7 +323,7 @@ export function GovernanceScopeDetermination({
             );
           }
 
-          // Level-1 rule WITH children → group header + child toggles
+          // Level-1 rule WITH children -> group header + child toggles
           return (
             <div key={group.parent.ruleCode} className="space-y-1">
               {/* Parent header */}
@@ -338,7 +341,7 @@ export function GovernanceScopeDetermination({
                   <span className="text-xs text-text-secondary ml-2">({group.parent.ruleCode})</span>
                   {group.parent.isMandatory && (
                     <span className="text-xs font-medium text-red-600 bg-red-50 px-1.5 py-0.5 rounded ml-2" data-testid={`mandatory-badge-${group.parent.ruleCode}`}>
-                      Required
+                      {t('scope.required')}
                     </span>
                   )}
                   {group.parent.description && (
@@ -347,7 +350,7 @@ export function GovernanceScopeDetermination({
                 </div>
                 {parentSelected && (
                   <span className="text-xs text-purple-600 font-medium" data-testid={`parent-auto-${group.parent.ruleCode}`}>
-                    Auto
+                    {t('scope.auto')}
                   </span>
                 )}
               </div>
@@ -356,7 +359,7 @@ export function GovernanceScopeDetermination({
               {group.children.map((rule) => {
                 const exclReason = excludedRulesMap.get(rule.ruleCode);
                 const depReason = dependencyBlockedMap.get(rule.ruleCode);
-                const reason = exclReason ? `Excluded by ${exclReason}` : depReason || undefined;
+                const reason = exclReason ? `${t('scope.excludedBy')}${exclReason}` : depReason || undefined;
                 return (
                   <RuleToggle
                     key={rule.ruleCode}
@@ -377,11 +380,11 @@ export function GovernanceScopeDetermination({
       {/* Triggered Domains preview */}
       <div data-testid="triggered-domains-section" className="pt-2">
         <label className="block text-sm font-medium mb-2 text-text-secondary">
-          Triggered Domains
+          {t('scope.triggeredDomains')}
         </label>
         {triggeredDomains.length === 0 ? (
           <p className="text-xs text-text-secondary italic">
-            Select rules above to see triggered domains
+            {t('scope.selectRules')}
           </p>
         ) : (
           <div className="flex flex-wrap gap-2">

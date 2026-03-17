@@ -3,6 +3,7 @@
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
+import { useLocale } from '@/lib/locale-context';
 import { PageLayout } from '@/components/layout/PageLayout';
 import {
   FileProtectOutlined, AuditOutlined, CheckCircleOutlined, PlusOutlined,
@@ -107,9 +108,9 @@ const ACTION_TYPE_HEX: Record<string, string> = {
   'Long Term': '#13C2C2',
 };
 
-function StatsCard({ label, value, icon, color }: { label: string; value: React.ReactNode; icon: React.ReactNode; color: string }) {
-  return (
-    <div className="bg-white rounded-lg border border-border-light p-5 flex items-center gap-4">
+function StatsCard({ label, value, icon, color, href }: { label: string; value: React.ReactNode; icon: React.ReactNode; color: string; href?: string }) {
+  const content = (
+    <div className={`bg-white rounded-lg border border-border-light p-5 flex items-center gap-4 transition-all ${href ? 'cursor-pointer hover:shadow-md hover:border-blue-300' : ''}`}>
       <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${color}`} style={{ fontSize: 24, color: '#fff' }}>
         {icon}
       </div>
@@ -119,6 +120,8 @@ function StatsCard({ label, value, icon, color }: { label: string; value: React.
       </div>
     </div>
   );
+  if (href) return <Link href={href}>{content}</Link>;
+  return content;
 }
 
 /* ─── Action Detail Modal ─── */
@@ -134,6 +137,7 @@ function ActionDetailModal({
   role: 'requestor' | 'reviewer';
   onClose: () => void;
 }) {
+  const { t } = useLocale();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -202,7 +206,7 @@ function ActionDetailModal({
           {/* Meta info */}
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div>
-              <span className="text-text-secondary">Request ID</span>
+              <span className="text-text-secondary">{t('col.requestId')}</span>
               <div className="mt-0.5">
                 <Link
                   href={role === 'reviewer'
@@ -216,35 +220,35 @@ function ActionDetailModal({
               </div>
             </div>
             <div>
-              <span className="text-text-secondary">Project Name</span>
+              <span className="text-text-secondary">{t('col.projectName')}</span>
               <p className="mt-0.5 font-medium">{action.projectName || '-'}</p>
             </div>
             <div>
-              <span className="text-text-secondary">Review Domain</span>
+              <span className="text-text-secondary">{t('col.reviewDomain')}</span>
               <p className="mt-0.5 font-medium">{action.domainName || action.domainCode}</p>
             </div>
             <div>
-              <span className="text-text-secondary">Reviewer</span>
+              <span className="text-text-secondary">{t('col.reviewer')}</span>
               <p className="mt-0.5 font-medium">{action.createByName || action.createBy}</p>
             </div>
             <div>
-              <span className="text-text-secondary">Priority</span>
+              <span className="text-text-secondary">{t('col.priority')}</span>
               <div className="mt-0.5">
                 <Tag color={PRIORITY_HEX[action.priority] || '#6B7280'}>{action.priority}</Tag>
               </div>
             </div>
             <div>
-              <span className="text-text-secondary">Type</span>
+              <span className="text-text-secondary">{t('common.type')}</span>
               <div className="mt-0.5">
                 <Tag color={ACTION_TYPE_HEX[action.actionType] || '#8C8C8C'}>{action.actionType}</Tag>
               </div>
             </div>
             <div>
-              <span className="text-text-secondary">Due Date</span>
+              <span className="text-text-secondary">{t('col.dueDate')}</span>
               <p className="mt-0.5">{action.dueDate || '-'}</p>
             </div>
             <div>
-              <span className="text-text-secondary">Send Time</span>
+              <span className="text-text-secondary">{t('col.sendTime')}</span>
               <p className="mt-0.5">{action.sendTime ? new Date(action.sendTime).toLocaleString() : '-'}</p>
             </div>
           </div>
@@ -252,7 +256,7 @@ function ActionDetailModal({
           {/* Description */}
           {action.description && (
             <div>
-              <span className="text-sm text-text-secondary">Description</span>
+              <span className="text-sm text-text-secondary">{t('common.description')}</span>
               <p className="mt-1 text-sm bg-gray-50 rounded-lg p-3 whitespace-pre-wrap">{action.description}</p>
             </div>
           )}
@@ -261,7 +265,7 @@ function ActionDetailModal({
           <div className="border border-border-light rounded-lg p-3">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-medium text-text-secondary flex items-center gap-1">
-                <PaperClipOutlined /> Attachments{attachments.length > 0 ? ` (${attachments.length})` : ''}
+                <PaperClipOutlined /> {t('actionItems.attachments')}{attachments.length > 0 ? ` (${attachments.length})` : ''}
               </span>
               {!isTerminal && (
                 <>
@@ -274,7 +278,7 @@ function ActionDetailModal({
                     disabled={uploadMutation.isPending}
                     style={{ fontSize: 11, height: 22, padding: '0 6px' }}
                   >
-                    {uploadMutation.isPending ? 'Uploading...' : 'Upload'}
+                    {uploadMutation.isPending ? t('common.uploading') : t('common.upload')}
                   </Button>
                 </>
               )}
@@ -308,11 +312,11 @@ function ActionDetailModal({
                           {att.fileSize < 1024 ? `${att.fileSize} B` : att.fileSize < 1048576 ? `${(att.fileSize / 1024).toFixed(1)} KB` : `${(att.fileSize / 1048576).toFixed(1)} MB`}
                         </span>
                         {att.createByName && <span className="text-text-secondary whitespace-nowrap">{att.createByName}</span>}
-                        <a href={attUrl} download={att.fileName} title="Download">
+                        <a href={attUrl} download={att.fileName} title={t('common.download')}>
                           <DownloadOutlined style={{ fontSize: 12, color: '#1890FF' }} />
                         </a>
                         {att.createBy === currentUser && (
-                          <button type="button" onClick={() => deleteAttMutation.mutate(att.id)} className="text-red-400 hover:text-red-600" title="Delete">
+                          <button type="button" onClick={() => deleteAttMutation.mutate(att.id)} className="text-red-400 hover:text-red-600" title={t('common.delete')}>
                             <DeleteOutlined style={{ fontSize: 12 }} />
                           </button>
                         )}
@@ -322,7 +326,7 @@ function ActionDetailModal({
                 })}
               </div>
             ) : (
-              <p className="text-xs text-text-secondary italic">No attachments</p>
+              <p className="text-xs text-text-secondary italic">{t('actionItems.noAttachments')}</p>
             )}
           </div>
 
@@ -345,6 +349,7 @@ function ActionDetailModal({
 
 export default function HomePage() {
   const { user, hasRole, loading: authLoading } = useAuth();
+  const { t } = useLocale();
   const [selectedAction, setSelectedAction] = useState<AssignedAction | null>(null);
   const [selectedActionRole, setSelectedActionRole] = useState<'requestor' | 'reviewer'>('requestor');
   const [myOnly, setMyOnly] = useState(true);
@@ -405,20 +410,20 @@ export default function HomePage() {
       <div className="max-w-6xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-bold text-text-primary">Enterprise Governance Portal</h1>
-            <p className="text-text-secondary mt-1">AI Governance Management Dashboard</p>
+            <h1 className="text-2xl font-bold text-text-primary">{t('header.portal')}</h1>
+            <p className="text-text-secondary mt-1">{t('header.subtitle')}</p>
           </div>
           <Link href="/governance/create">
             <Button type="primary" style={{ background: '#13C2C2', borderColor: '#13C2C2' }} icon={<PlusOutlined />}>
-              New Governance Request
+              {t('home.newGovernanceRequest')}
             </Button>
           </Link>
         </div>
 
         <div className="grid grid-cols-3 gap-4 mb-8">
-          <StatsCard label="Total Requests" value={stats?.totalRequests ?? 0} icon={<FileProtectOutlined />} color="bg-primary-blue" />
-          <StatsCard label="In Progress" value={stats?.inReview ?? 0} icon={<AuditOutlined />} color="bg-status-in-progress" />
-          <StatsCard label="Completed" value={stats?.completed ?? 0} icon={<CheckCircleOutlined />} color="bg-status-completed" />
+          <StatsCard label={t('home.totalRequests')} value={stats?.totalRequests ?? 0} icon={<FileProtectOutlined />} color="bg-primary-blue" href="/requests" />
+          <StatsCard label={t('home.inProgress')} value={stats?.inReview ?? 0} icon={<AuditOutlined />} color="bg-status-in-progress" href="/requests?status=In+Progress" />
+          <StatsCard label={t('home.completed')} value={stats?.completed ?? 0} icon={<CheckCircleOutlined />} color="bg-status-completed" href="/requests?status=Complete" />
         </div>
 
         {/* ── Reviews Waiting for Accept (first-time submissions) ── */}
@@ -429,7 +434,7 @@ export default function HomePage() {
               <div className="flex items-center gap-2 px-5 py-3 border-b border-border-light bg-green-50">
                 <CheckCircleOutlined style={{ color: '#52C41A', fontSize: 16 }} />
                 <h2 className="text-sm font-semibold text-green-700">
-                  Reviews Waiting for Accept
+                  {t('home.reviewsWaitingForAccept')}
                 </h2>
                 <span className="ml-1 text-xs text-green-500">
                   ({firstSubmitItems.length})
@@ -438,11 +443,11 @@ export default function HomePage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-gray-50 text-left text-xs text-text-secondary uppercase tracking-wider">
-                    <th className="px-5 py-2.5 font-medium">Request ID</th>
-                    <th className="px-5 py-2.5 font-medium">Project Name</th>
-                    <th className="px-5 py-2.5 font-medium">Domain</th>
-                    <th className="px-5 py-2.5 font-medium">Requestor</th>
-                    <th className="px-5 py-2.5 font-medium">Submit Time</th>
+                    <th className="px-5 py-2.5 font-medium">{t('col.requestId')}</th>
+                    <th className="px-5 py-2.5 font-medium">{t('col.projectName')}</th>
+                    <th className="px-5 py-2.5 font-medium">{t('col.domain')}</th>
+                    <th className="px-5 py-2.5 font-medium">{t('col.requestor')}</th>
+                    <th className="px-5 py-2.5 font-medium">{t('col.submitTime')}</th>
                     <th className="px-5 py-2.5 font-medium"></th>
                   </tr>
                 </thead>
@@ -468,7 +473,7 @@ export default function HomePage() {
                           href={`/governance/${item.govUuid}/reviews/${item.domainCode}`}
                           className="text-green-600 hover:text-green-800 text-xs font-medium"
                         >
-                          Review <RightOutlined className="text-[10px]" />
+                          {t('home.review')} <RightOutlined className="text-[10px]" />
                         </Link>
                       </td>
                     </tr>
@@ -500,7 +505,7 @@ export default function HomePage() {
                 <div className="flex items-center gap-2 px-5 py-3 border-b border-border-light bg-pink-50">
                   <ExclamationCircleOutlined style={{ color: '#EB2F96', fontSize: 16 }} />
                   <h2 className="text-sm font-semibold text-pink-700">
-                    Return for Additional Information
+                    {t('home.returnForAdditionalInfo')}
                   </h2>
                   <span className="ml-1 text-xs text-pink-500">
                     ({returnItems.length})
@@ -509,11 +514,11 @@ export default function HomePage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-gray-50 text-left text-xs text-text-secondary uppercase tracking-wider">
-                      <th className="px-5 py-2.5 font-medium">Request ID</th>
-                      <th className="px-5 py-2.5 font-medium">Project Name</th>
-                      <th className="px-5 py-2.5 font-medium">Review Domain</th>
-                      <th className="px-5 py-2.5 font-medium">Reviewer</th>
-                      <th className="px-5 py-2.5 font-medium">Send Time</th>
+                      <th className="px-5 py-2.5 font-medium">{t('col.requestId')}</th>
+                      <th className="px-5 py-2.5 font-medium">{t('col.projectName')}</th>
+                      <th className="px-5 py-2.5 font-medium">{t('col.reviewDomain')}</th>
+                      <th className="px-5 py-2.5 font-medium">{t('col.reviewer')}</th>
+                      <th className="px-5 py-2.5 font-medium">{t('col.sendTime')}</th>
                       <th className="px-5 py-2.5 font-medium"></th>
                     </tr>
                   </thead>
@@ -545,7 +550,7 @@ export default function HomePage() {
                             href={`/governance/${item.govUuid}`}
                             className="text-pink-600 hover:text-pink-800 text-xs font-medium"
                           >
-                            Respond <RightOutlined className="text-[10px]" />
+                            {t('home.respond')} <RightOutlined className="text-[10px]" />
                           </Link>
                         </td>
                       </tr>
@@ -573,7 +578,7 @@ export default function HomePage() {
                 <div className="flex items-center gap-2 px-5 py-3 border-b border-border-light bg-blue-50">
                   <CarryOutOutlined style={{ color: '#1890FF', fontSize: 16 }} />
                   <h2 className="text-sm font-semibold text-blue-700">
-                    Action Items Assigned to You
+                    {t('home.actionItemsAssigned')}
                   </h2>
                   <span className="ml-1 text-xs text-blue-500">
                     ({actionItems.length})
@@ -582,16 +587,16 @@ export default function HomePage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-gray-50 text-left text-xs text-text-secondary uppercase tracking-wider">
-                      <th className="px-5 py-2.5 font-medium">Request ID</th>
-                      <th className="px-5 py-2.5 font-medium">Project Name</th>
-                      <th className="px-5 py-2.5 font-medium">Action Name</th>
-                      <th className="px-5 py-2.5 font-medium">Last Feedback</th>
-                      <th className="px-5 py-2.5 font-medium">Review Domain</th>
-                      <th className="px-5 py-2.5 font-medium">Priority</th>
-                      <th className="px-5 py-2.5 font-medium">Type</th>
-                      <th className="px-5 py-2.5 font-medium">Reviewer</th>
-                      <th className="px-5 py-2.5 font-medium">Due Date</th>
-                      <th className="px-5 py-2.5 font-medium">Send Time</th>
+                      <th className="px-5 py-2.5 font-medium">{t('col.requestId')}</th>
+                      <th className="px-5 py-2.5 font-medium">{t('col.projectName')}</th>
+                      <th className="px-5 py-2.5 font-medium">{t('col.actionName')}</th>
+                      <th className="px-5 py-2.5 font-medium">{t('col.lastFeedback')}</th>
+                      <th className="px-5 py-2.5 font-medium">{t('col.reviewDomain')}</th>
+                      <th className="px-5 py-2.5 font-medium">{t('col.priority')}</th>
+                      <th className="px-5 py-2.5 font-medium">{t('common.type')}</th>
+                      <th className="px-5 py-2.5 font-medium">{t('col.reviewer')}</th>
+                      <th className="px-5 py-2.5 font-medium">{t('col.dueDate')}</th>
+                      <th className="px-5 py-2.5 font-medium">{t('col.sendTime')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border-light">
@@ -658,16 +663,16 @@ export default function HomePage() {
         {isReviewer && (
           <div className="space-y-4 mb-8">
             <div className="flex items-center justify-between">
-              <h2 className="text-base font-semibold text-text-primary">Reviewer Tasks</h2>
+              <h2 className="text-base font-semibold text-text-primary">{t('home.reviewerTasks')}</h2>
               <div className="flex items-center gap-2 text-sm">
-                <span className="text-text-secondary">My Only</span>
+                <span className="text-text-secondary">{t('home.myOnly')}</span>
                 <Switch size="small" checked={myOnly} onChange={setMyOnly} />
               </div>
             </div>
 
             {!hasReviewerTasks && (
               <div className="bg-white rounded-lg border border-border-light p-6 text-center text-sm text-text-secondary">
-                No pending reviewer tasks
+                {t('home.noPendingTasks')}
               </div>
             )}
 
@@ -677,7 +682,7 @@ export default function HomePage() {
                 <div className="flex items-center gap-2 px-5 py-3 border-b border-border-light bg-green-50">
                   <CheckCircleOutlined style={{ color: '#52C41A', fontSize: 16 }} />
                   <h2 className="text-sm font-semibold text-green-700">
-                    Waiting for Accept with Additional Information
+                    {t('home.waitingWithAdditionalInfo')}
                   </h2>
                   <span className="ml-1 text-xs text-green-500">
                     ({resubmittedItems.length})
@@ -686,11 +691,11 @@ export default function HomePage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-gray-50 text-left text-xs text-text-secondary uppercase tracking-wider">
-                      <th className="px-5 py-2.5 font-medium">Request ID</th>
-                      <th className="px-5 py-2.5 font-medium">Project Name</th>
-                      <th className="px-5 py-2.5 font-medium">Domain</th>
-                      <th className="px-5 py-2.5 font-medium">Requestor</th>
-                      <th className="px-5 py-2.5 font-medium">Resubmit Time</th>
+                      <th className="px-5 py-2.5 font-medium">{t('col.requestId')}</th>
+                      <th className="px-5 py-2.5 font-medium">{t('col.projectName')}</th>
+                      <th className="px-5 py-2.5 font-medium">{t('col.domain')}</th>
+                      <th className="px-5 py-2.5 font-medium">{t('col.requestor')}</th>
+                      <th className="px-5 py-2.5 font-medium">{t('col.resubmitTime')}</th>
                       <th className="px-5 py-2.5 font-medium"></th>
                     </tr>
                   </thead>
@@ -716,7 +721,7 @@ export default function HomePage() {
                             href={`/governance/${item.govUuid}/reviews/${item.domainCode}`}
                             className="text-green-600 hover:text-green-800 text-xs font-medium"
                           >
-                            Review <RightOutlined className="text-[10px]" />
+                            {t('home.review')} <RightOutlined className="text-[10px]" />
                           </Link>
                         </td>
                       </tr>
@@ -744,7 +749,7 @@ export default function HomePage() {
                 <div className="flex items-center gap-2 px-5 py-3 border-b border-border-light bg-orange-50">
                   <CarryOutOutlined style={{ color: '#FA8C16', fontSize: 16 }} />
                   <h2 className="text-sm font-semibold text-orange-700">
-                    Action Responses — Pending Your Review
+                    {t('home.actionResponsesPending')}
                   </h2>
                   <span className="ml-1 text-xs text-orange-500">
                     ({pendingActionItems.length})
@@ -753,14 +758,14 @@ export default function HomePage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-gray-50 text-left text-xs text-text-secondary uppercase tracking-wider">
-                      <th className="px-5 py-2.5 font-medium">Request ID</th>
-                      <th className="px-5 py-2.5 font-medium">Project Name</th>
-                      <th className="px-5 py-2.5 font-medium">Action Name</th>
-                      <th className="px-5 py-2.5 font-medium">Last Feedback</th>
-                      <th className="px-5 py-2.5 font-medium">Domain</th>
-                      <th className="px-5 py-2.5 font-medium">Assignee</th>
-                      <th className="px-5 py-2.5 font-medium">Due Date</th>
-                      <th className="px-5 py-2.5 font-medium">Response Time</th>
+                      <th className="px-5 py-2.5 font-medium">{t('col.requestId')}</th>
+                      <th className="px-5 py-2.5 font-medium">{t('col.projectName')}</th>
+                      <th className="px-5 py-2.5 font-medium">{t('col.actionName')}</th>
+                      <th className="px-5 py-2.5 font-medium">{t('col.lastFeedback')}</th>
+                      <th className="px-5 py-2.5 font-medium">{t('col.domain')}</th>
+                      <th className="px-5 py-2.5 font-medium">{t('col.assignee')}</th>
+                      <th className="px-5 py-2.5 font-medium">{t('col.dueDate')}</th>
+                      <th className="px-5 py-2.5 font-medium">{t('col.responseTime')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border-light">
@@ -810,19 +815,19 @@ export default function HomePage() {
         )}
 
         <div className="bg-white rounded-lg border border-border-light p-6">
-          <h2 className="text-lg font-semibold mb-4">Quick Actions</h2>
+          <h2 className="text-lg font-semibold mb-4">{t('home.quickActions')}</h2>
           <div className="grid grid-cols-3 gap-4">
             <Link href="/governance/create" className="p-4 border border-border-light rounded-lg hover:border-primary-blue transition-colors">
-              <h3 className="font-medium">Create New Request</h3>
-              <p className="text-sm text-text-secondary mt-1">Submit a new AI governance review request</p>
+              <h3 className="font-medium">{t('home.createNewRequest')}</h3>
+              <p className="text-sm text-text-secondary mt-1">{t('home.submitNewRequest')}</p>
             </Link>
             <Link href="/requests" className="p-4 border border-border-light rounded-lg hover:border-primary-blue transition-colors">
-              <h3 className="font-medium">View All Requests</h3>
-              <p className="text-sm text-text-secondary mt-1">Browse and manage governance requests</p>
+              <h3 className="font-medium">{t('home.viewAllRequests')}</h3>
+              <p className="text-sm text-text-secondary mt-1">{t('home.browseRequests')}</p>
             </Link>
             <Link href="/reports/governance-dashboard" className="p-4 border border-border-light rounded-lg hover:border-primary-blue transition-colors">
-              <h3 className="font-medium">Governance Dashboard</h3>
-              <p className="text-sm text-text-secondary mt-1">View governance metrics and KPIs</p>
+              <h3 className="font-medium">{t('home.governanceDashboard')}</h3>
+              <p className="text-sm text-text-secondary mt-1">{t('home.viewMetrics')}</p>
             </Link>
           </div>
         </div>

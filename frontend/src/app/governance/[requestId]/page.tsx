@@ -10,6 +10,7 @@ import { statusColors } from '@/lib/constants';
 import { ArrowLeftOutlined, CopyOutlined, InboxOutlined, CloseCircleOutlined } from '@ant-design/icons';
 import { Button } from 'antd';
 import { useAuth } from '@/lib/auth-context';
+import { useLocale } from '@/lib/locale-context';
 import { SectionCard } from '../_components/SectionCard';
 import { GovernanceScopeDetermination } from '../_components/GovernanceScopeDetermination';
 import { DomainPreviewChip } from '../_components/DomainPreviewChip';
@@ -122,6 +123,7 @@ export default function RequestDetailPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { user, hasRole } = useAuth();
+  const { t } = useLocale();
 
   // --- Data fetching ---
   const { data: request, isLoading } = useQuery<GovRequest>({
@@ -261,6 +263,18 @@ export default function RequestDetailPage() {
   const triggeredDomainsRef = useRef<{ domainCode: string; domainName: string }[]>([]);
   const questionnaireRef = useRef<DomainQuestionnairesRef>(null);
 
+  // Per-domain read-only: lock domains in terminal statuses
+  const TERMINAL_STATUSES = ['Approved', 'Approved with Exception', 'Not Passed'];
+  const domainEditabilityMap = useMemo(() => {
+    if (!progress?.domains) return {};
+    const map: Record<string, boolean> = {};
+    for (const d of progress.domains) {
+      map[d.domainCode] = TERMINAL_STATUSES.includes(d.status);
+    }
+    return map;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [progress]);
+
   // Wizard mode — only for Draft status
   const initialStep = searchParams.get('step') === '2' ? 2 : 1;
   const [wizardStep, setWizardStep] = useState<1 | 2>(initialStep as 1 | 2);
@@ -339,11 +353,11 @@ export default function RequestDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['governance-request', requestId] });
       queryClient.invalidateQueries({ queryKey: ['changelog', requestId] });
       queryClient.invalidateQueries({ queryKey: ['activity-log', requestId] });
-      toast('Request submitted for review', 'success');
+      toast(t('govDetail.requestSubmitted'), 'success');
     },
     onError: (err: unknown) => {
       const detail = (err as { detail?: string })?.detail;
-      toast(detail || 'Failed to submit request', 'error');
+      toast(detail || t('govDetail.failedSubmit'), 'error');
     },
   });
 
@@ -351,10 +365,10 @@ export default function RequestDetailPage() {
   const copyMutation = useMutation({
     mutationFn: () => api.post<{ requestId: string }>(`/governance-requests/${requestId}/copy`, {}),
     onSuccess: (res) => {
-      toast(`Request copied — new Draft ${res.requestId}`, 'success');
+      toast(`${t('govDetail.requestCopied')} ${res.requestId}`, 'success');
       router.push(`/governance/${res.requestId}`);
     },
-    onError: () => toast('Failed to copy request', 'error'),
+    onError: () => toast(t('govDetail.failedCopy'), 'error'),
   });
 
   // --- Cancel (Draft only, owner) ---
@@ -362,12 +376,12 @@ export default function RequestDetailPage() {
     mutationFn: () => api.put(`/governance-requests/${requestId}/cancel`, {}),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['governance-request', requestId] });
-      toast('Request cancelled', 'success');
+      toast(t('govDetail.requestCancelled'), 'success');
       router.push('/requests');
     },
     onError: (err: unknown) => {
       const detail = (err as { detail?: string })?.detail;
-      toast(detail || 'Failed to cancel request', 'error');
+      toast(detail || t('govDetail.failedCancel'), 'error');
     },
   });
 
@@ -376,11 +390,11 @@ export default function RequestDetailPage() {
     mutationFn: () => api.put(`/governance-requests/${requestId}/archive`, {}),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['governance-request', requestId] });
-      toast('Request archived', 'success');
+      toast(t('govDetail.requestArchived'), 'success');
     },
     onError: (err: unknown) => {
       const detail = (err as { detail?: string })?.detail;
-      toast(detail || 'Failed to archive request', 'error');
+      toast(detail || t('govDetail.failedArchive'), 'error');
     },
   });
 
@@ -397,11 +411,11 @@ export default function RequestDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['progress', requestId] });
       queryClient.invalidateQueries({ queryKey: ['changelog', requestId] });
       queryClient.invalidateQueries({ queryKey: ['activity-log', requestId] });
-      toast('Returned domains resubmitted for review', 'success');
+      toast(t('govDetail.resubmitted'), 'success');
     },
     onError: (err: unknown) => {
       const detail = (err as { detail?: string })?.detail;
-      toast(detail || 'Failed to resubmit', 'error');
+      toast(detail || t('govDetail.failedResubmit'), 'error');
     },
   });
 
@@ -414,29 +428,29 @@ export default function RequestDetailPage() {
     // Validate required fields only when explicitly requested (Submit / Save Changes)
     if (validate) {
       const errors: Record<string, string> = {};
-      if (!govProjectType) errors.govProjectType = 'Project Type is required';
-      if (!businessUnit) errors.businessUnit = 'Business Unit is required';
+      if (!govProjectType) errors.govProjectType = t('govDetail.projectTypeRequired');
+      if (!businessUnit) errors.businessUnit = t('govDetail.businessUnitRequired');
       if (projectType === 'mspo' && !selectedProject) {
-        errors.projectId = 'Please select an MSPO project';
+        errors.projectId = t('govDetail.selectMspoProject');
       }
       if (projectType === 'non_mspo') {
-        if (!nonMspo.projectCode) errors.projectCode = 'Project Code is required';
-        if (!nonMspo.projectName) errors.projectName = 'Project Name is required';
-        if (!nonMspo.projectPm) errors.projectPm = 'Project Manager is required';
-        if (!nonMspo.projectStartDate) errors.projectStartDate = 'Start Date is required';
-        if (!nonMspo.projectGoLiveDate) errors.projectGoLiveDate = 'Go Live Date is required';
+        if (!nonMspo.projectCode) errors.projectCode = t('govDetail.projectCodeRequired');
+        if (!nonMspo.projectName) errors.projectName = t('govDetail.projectNameRequired');
+        if (!nonMspo.projectPm) errors.projectPm = t('govDetail.projectPmRequired');
+        if (!nonMspo.projectStartDate) errors.projectStartDate = t('govDetail.startDateRequired');
+        if (!nonMspo.projectGoLiveDate) errors.projectGoLiveDate = t('govDetail.goLiveDateRequired');
       }
-      if (!productSoftwareType) errors.productSoftwareType = 'Product/Software Type is required';
-      if (productSoftwareType === 'Other' && !productSoftwareTypeOther.trim()) errors.productSoftwareTypeOther = 'Please specify the type';
-      if (productEndUser.length === 0) errors.productEndUser = 'At least one end user must be selected';
-      if (userRegion.length === 0) errors.userRegion = 'At least one region must be selected';
-      if (request?.status === 'Draft' && triggeredDomainsRef.current.length === 0 && selectedRules.length === 0) errors.domains = 'At least one governance domain must be triggered by the selected rules';
+      if (!productSoftwareType) errors.productSoftwareType = t('govDetail.productTypeRequired');
+      if (productSoftwareType === 'Other' && !productSoftwareTypeOther.trim()) errors.productSoftwareTypeOther = t('govDetail.specifyType');
+      if (productEndUser.length === 0) errors.productEndUser = t('govDetail.endUserRequired');
+      if (userRegion.length === 0) errors.userRegion = t('govDetail.regionRequired');
+      if (request?.status === 'Draft' && triggeredDomainsRef.current.length === 0 && selectedRules.length === 0) errors.domains = t('govDetail.domainsRequired');
       // Validate domain questionnaires completion
       if (request?.status === 'Draft' && questionnaireRef.current) {
         const incomplete = questionnaireRef.current.getIncompleteDomains();
-        if (incomplete.length > 0) errors.questionnaires = `Incomplete domain questionnaires: ${incomplete.join(', ')}`;
+        if (incomplete.length > 0) errors.questionnaires = `${t('govDetail.incompleteQuestionnaires')} ${incomplete.join(', ')}`;
       }
-      if (Object.keys(errors).length > 0) { setValidationErrors(errors); toast('Please fill in all required fields', 'error'); return false; }
+      if (Object.keys(errors).length > 0) { setValidationErrors(errors); toast(t('govDetail.fillRequired'), 'error'); return false; }
       setValidationErrors({});
     }
 
@@ -477,7 +491,7 @@ export default function RequestDetailPage() {
         try {
           await api.upload(`/governance-requests/${requestId}/attachments`, formData);
         } catch {
-          toast(`Failed to upload ${file.name}`, 'error');
+          toast(`${t('govDetail.failedUpload')} ${file.name}`, 'error');
         }
       }
       setAttachments([]);
@@ -486,10 +500,10 @@ export default function RequestDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['changelog', requestId] });
       queryClient.invalidateQueries({ queryKey: ['activity-log', requestId] });
       queryClient.invalidateQueries({ queryKey: ['attachments', requestId] });
-      toast('Changes saved', 'success');
+      toast(t('govDetail.changesSaved'), 'success');
       return true;
     } catch {
-      toast('Failed to save changes', 'error');
+      toast(t('govDetail.failedSave'), 'error');
       return false;
     } finally {
       setSaving(false);
@@ -498,8 +512,8 @@ export default function RequestDetailPage() {
 
   const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
-  if (isLoading) return <PageLayout><p>Loading...</p></PageLayout>;
-  if (!request) return <PageLayout><p>Request not found</p></PageLayout>;
+  if (isLoading) return <PageLayout><p>{t('common.loading')}</p></PageLayout>;
+  if (!request) return <PageLayout><p>{t('govDetail.requestNotFound')}</p></PageLayout>;
 
   return (
     <PageLayout>
@@ -512,7 +526,7 @@ export default function RequestDetailPage() {
           data-testid="back-to-list-btn"
         >
           <ArrowLeftOutlined />
-          Back to Requests
+          {t('govDetail.backToRequests')}
         </button>
 
         {/* Header */}
@@ -545,15 +559,15 @@ export default function RequestDetailPage() {
         {/* Request Activity Log — shown after submit */}
         {request.status !== 'Draft' && activityLog.length > 0 && (
           <div className="bg-white rounded-lg border border-border-light p-4 mb-4" data-testid="request-activity-log-section">
-            <label className="block text-sm font-medium mb-3 text-text-secondary">Request Activity Log</label>
+            <label className="block text-sm font-medium mb-3 text-text-secondary">{t('govDetail.requestActivityLog')}</label>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border-light text-left text-text-secondary">
-                    <th className="pb-2 pr-4 font-medium">Action</th>
-                    <th className="pb-2 pr-4 font-medium">User</th>
-                    <th className="pb-2 pr-4 font-medium">Time</th>
-                    <th className="pb-2 font-medium">Details</th>
+                    <th className="pb-2 pr-4 font-medium">{t('domainReview.actionCol')}</th>
+                    <th className="pb-2 pr-4 font-medium">{t('domainReview.userCol')}</th>
+                    <th className="pb-2 pr-4 font-medium">{t('domainReview.timeCol')}</th>
+                    <th className="pb-2 font-medium">{t('domainReview.detailsCol')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -582,7 +596,7 @@ export default function RequestDetailPage() {
         {/* Applicable Governance Domains — shown after submit */}
         {request.status !== 'Draft' && (
           <div className="bg-white rounded-lg border border-border-light p-4 mb-4" data-testid="applicable-domains-section">
-            <label className="block text-sm font-medium mb-2 text-text-secondary">Applicable Governance Domains</label>
+            <label className="block text-sm font-medium mb-2 text-text-secondary">{t('govDetail.applicableGovernanceDomains')}</label>
             <ApplicableDomainsDisplay ruleCodes={request.ruleCodes} />
           </div>
         )}
@@ -594,14 +608,14 @@ export default function RequestDetailPage() {
               wizardStep === 1 ? 'bg-egm-teal text-white' : 'bg-gray-100 text-text-secondary'
             )}>
               <span className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center text-xs font-bold">1</span>
-              Project Information
+              {t('govCreate.projectInfo')}
             </div>
             <div className="text-text-secondary">→</div>
             <div className={clsx('flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium',
               wizardStep === 2 ? 'bg-egm-teal text-white' : 'bg-gray-100 text-text-secondary'
             )}>
               <span className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center text-xs font-bold">2</span>
-              Domain Questionnaires
+              {t('govCreate.domainQuestionnaires')}
             </div>
           </div>
         )}
@@ -611,7 +625,7 @@ export default function RequestDetailPage() {
           {/* === WIZARD STEP 1 (or non-wizard: always show) === */}
           {(!showWizard || wizardStep === 1) && (<>
           {/* Section 1: Governance Scope Determination */}
-          <SectionCard title="Governance Scope Determination" subtitle="Select applicable compliance rules to determine governance domains">
+          <SectionCard title={t('govCreate.scopeDetermination')} subtitle={t('govCreate.scopeSubtitle')}>
             {isScopeReadOnly ? (
               <div data-testid="rules-readonly">
                 <ReadOnlyRulesDisplay ruleCodes={request.ruleCodes || []} />
@@ -629,41 +643,41 @@ export default function RequestDetailPage() {
           </SectionCard>
 
           {/* Section: Requestor Information (read-only, from employee_info) */}
-          <SectionCard title="Requestor Information" defaultOpen>
+          <SectionCard title={t('domainReview.requestorInfo')} defaultOpen>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-1 text-text-secondary">IT Code</label>
+                <label className="block text-sm font-medium mb-1 text-text-secondary">{t('domainReview.itCode')}</label>
                 <div className="px-3 py-2 rounded-lg border border-border-light bg-gray-50 text-sm">{request.requestor || '-'}</div>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1 text-text-secondary">Name</label>
+                <label className="block text-sm font-medium mb-1 text-text-secondary">{t('common.name')}</label>
                 <div className="px-3 py-2 rounded-lg border border-border-light bg-gray-50 text-sm">{request.requestorName || '-'}</div>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1 text-text-secondary">Email Address</label>
+                <label className="block text-sm font-medium mb-1 text-text-secondary">{t('domainReview.emailAddress')}</label>
                 <div className="px-3 py-2 rounded-lg border border-border-light bg-gray-50 text-sm">{request.requestorEmail || '-'}</div>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1 text-text-secondary">Line Manager</label>
+                <label className="block text-sm font-medium mb-1 text-text-secondary">{t('domainReview.lineManager')}</label>
                 <div className="px-3 py-2 rounded-lg border border-border-light bg-gray-50 text-sm">{request.requestorManagerName || '-'}</div>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1 text-text-secondary">T1 Organization</label>
+                <label className="block text-sm font-medium mb-1 text-text-secondary">{t('domainReview.t1Org')}</label>
                 <div className="px-3 py-2 rounded-lg border border-border-light bg-gray-50 text-sm">{request.requestorTier1Org || '-'}</div>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1 text-text-secondary">T2 Organization</label>
+                <label className="block text-sm font-medium mb-1 text-text-secondary">{t('domainReview.t2Org')}</label>
                 <div className="px-3 py-2 rounded-lg border border-border-light bg-gray-50 text-sm">{request.requestorTier2Org || '-'}</div>
               </div>
             </div>
           </SectionCard>
 
           {/* Section 2: Project Information */}
-          <SectionCard title="Project Information">
+          <SectionCard title={t('govCreate.projectInfo')}>
             <div className="space-y-4">
               {/* Request ID */}
               <div>
-                <label className="block text-sm font-medium mb-1">Request ID</label>
+                <label className="block text-sm font-medium mb-1">{t('col.requestId')}</label>
                 <div className="px-3 py-2 rounded-lg border border-border-light bg-gray-50 text-sm text-text-secondary" data-testid="request-id-value">
                   {request.requestId}
                 </div>
@@ -673,7 +687,7 @@ export default function RequestDetailPage() {
               <div className="grid grid-cols-2 gap-4">
                 <ChangeHighlight fieldName="govProjectType" changelog={changelog}>
                   <div>
-                    <label className="block text-sm font-medium mb-1">Project Type <span className="text-red-500">*</span></label>
+                    <label className="block text-sm font-medium mb-1">{t('govCreate.projectType')} <span className="text-red-500">*</span></label>
                     {isReadOnly ? (
                       <div className="px-3 py-2 rounded-lg border border-border-light bg-gray-50 text-sm">{govProjectType || '-'}</div>
                     ) : (
@@ -684,7 +698,7 @@ export default function RequestDetailPage() {
                           onChange={(e) => { setGovProjectType(e.target.value); setValidationErrors((v) => { const { govProjectType: _, ...rest } = v; return rest; }); }}
                           data-testid="select-gov-project-type"
                         >
-                          <option value="">-- Select Project Type --</option>
+                          <option value="">{t('govCreate.selectProjectType')}</option>
                           {projectTypes.map((pt) => (
                             <option key={pt.value} value={pt.value}>{pt.label}</option>
                           ))}
@@ -696,7 +710,7 @@ export default function RequestDetailPage() {
                 </ChangeHighlight>
                 <ChangeHighlight fieldName="businessUnit" changelog={changelog}>
                   <div>
-                    <label className="block text-sm font-medium mb-1">Business Unit <span className="text-red-500">*</span></label>
+                    <label className="block text-sm font-medium mb-1">{t('govCreate.businessUnit')} <span className="text-red-500">*</span></label>
                     {isReadOnly ? (
                       <div className="px-3 py-2 rounded-lg border border-border-light bg-gray-50 text-sm">{businessUnit || '-'}</div>
                     ) : (
@@ -707,7 +721,7 @@ export default function RequestDetailPage() {
                           onChange={(e) => { setBusinessUnit(e.target.value); setValidationErrors((v) => { const { businessUnit: _, ...rest } = v; return rest; }); }}
                           data-testid="select-business-unit"
                         >
-                          <option value="">-- Select Business Unit --</option>
+                          <option value="">{t('govCreate.selectBusinessUnit')}</option>
                           {businessUnits.map((bu) => (
                             <option key={bu.value} value={bu.value}>{bu.label}</option>
                           ))}
@@ -722,30 +736,30 @@ export default function RequestDetailPage() {
               {/* Project Type Toggle */}
               {isReadOnly ? (
                 <div>
-                  <label className="block text-sm font-medium mb-2">Project</label>
+                  <label className="block text-sm font-medium mb-2">{t('govCreate.project')}</label>
                   <span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-text-secondary">
                     {request.projectType === 'mspo' ? 'MSPO' : 'Non-MSPO'}
                   </span>
                   <div className="grid grid-cols-2 gap-3 p-3 mt-2 bg-gray-50 rounded-lg border border-border-light">
-                    {request.projectCode && <ReadOnlyField label="Project Code" value={request.projectCode} />}
-                    {request.projectName && <ReadOnlyField label="Project Name" value={request.projectName} />}
-                    {request.projectProjType && <ReadOnlyField label="Type" value={request.projectProjType} />}
-                    {request.projectStatus && <ReadOnlyField label="Status" value={request.projectStatus} />}
+                    {request.projectCode && <ReadOnlyField label={t('govCreate.projectCode')} value={request.projectCode} />}
+                    {request.projectName && <ReadOnlyField label={t('col.projectName')} value={request.projectName} />}
+                    {request.projectProjType && <ReadOnlyField label={t('common.type')} value={request.projectProjType} />}
+                    {request.projectStatus && <ReadOnlyField label={t('common.status')} value={request.projectStatus} />}
                     {request.projectPm && <ReadOnlyField label="PM" value={`${request.projectPm}${request.projectPmItcode ? ` (${request.projectPmItcode})` : ''}`} />}
                     {request.projectDtLead && <ReadOnlyField label="DT Lead" value={request.projectDtLead} />}
                     {request.projectItLead && <ReadOnlyField label="IT Lead" value={request.projectItLead} />}
-                    {request.projectStartDate && <ReadOnlyField label="Start Date" value={request.projectStartDate} />}
-                    {request.projectGoLiveDate && <ReadOnlyField label="Go Live Date" value={request.projectGoLiveDate} />}
-                    {request.projectEndDate && <ReadOnlyField label="End Date" value={request.projectEndDate} />}
+                    {request.projectStartDate && <ReadOnlyField label={t('govCreate.startDate')} value={request.projectStartDate} />}
+                    {request.projectGoLiveDate && <ReadOnlyField label={t('govCreate.goLiveDate')} value={request.projectGoLiveDate} />}
+                    {request.projectEndDate && <ReadOnlyField label={t('govCreate.endDate')} value={request.projectEndDate} />}
                     {request.projectAiRelated && <ReadOnlyField label="AI Related" value={request.projectAiRelated} />}
                     {request.projectDescription && (
-                      <div className="col-span-2"><ReadOnlyField label="Description" value={request.projectDescription} /></div>
+                      <div className="col-span-2"><ReadOnlyField label={t('common.description')} value={request.projectDescription} /></div>
                     )}
                   </div>
                 </div>
               ) : (
                 <div>
-                  <label className="block text-sm font-medium mb-2">Project <span className="text-red-500">*</span></label>
+                  <label className="block text-sm font-medium mb-2">{t('govCreate.project')} <span className="text-red-500">*</span></label>
                   <div className="flex gap-2 mb-3" data-testid="project-type-toggle">
                     <button
                       type="button"
@@ -755,7 +769,7 @@ export default function RequestDetailPage() {
                       )}
                       data-testid="btn-mspo"
                     >
-                      MSPO Project
+                      {t('govCreate.mspoProject')}
                     </button>
                     <button
                       type="button"
@@ -765,7 +779,7 @@ export default function RequestDetailPage() {
                       )}
                       data-testid="btn-non-mspo"
                     >
-                      Non-MSPO Project
+                      {t('govCreate.nonMspoProject')}
                     </button>
                   </div>
 
@@ -777,12 +791,12 @@ export default function RequestDetailPage() {
                             <span className="flex-1 px-3 py-2 rounded-lg border border-border-light bg-gray-50 text-sm">
                               {selectedProject.projectId} — {selectedProject.projectName || 'Untitled'}
                             </span>
-                            <button type="button" onClick={clearProject} className="text-sm text-red-500 hover:text-red-700">Clear</button>
+                            <button type="button" onClick={clearProject} className="text-sm text-red-500 hover:text-red-700">{t('domainReview.clear')}</button>
                           </div>
                         ) : (
                           <input
                             className={`input-field ${validationErrors.projectId ? 'border-red-400' : ''}`}
-                            placeholder="Search by project ID or name..."
+                            placeholder={t('govCreate.searchProject')}
                             value={projectSearch}
                             onChange={(e) => { handleProjectSearchChange(e.target.value); setValidationErrors(prev => { const { projectId: _, ...rest } = prev; return rest; }); }}
                             onFocus={() => { if (projectSearch.trim()) setShowDropdown(true); }}
@@ -791,8 +805,8 @@ export default function RequestDetailPage() {
                         )}
                         {showDropdown && (
                           <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-border-light rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                            {projectLoading && <div className="px-3 py-2 text-sm text-text-secondary">Searching...</div>}
-                            {!projectLoading && projects.length === 0 && projectSearch.trim() && <div className="px-3 py-2 text-sm text-text-secondary">No projects found</div>}
+                            {projectLoading && <div className="px-3 py-2 text-sm text-text-secondary">{t('govCreate.searching')}</div>}
+                            {!projectLoading && projects.length === 0 && projectSearch.trim() && <div className="px-3 py-2 text-sm text-text-secondary">{t('govCreate.noProjects')}</div>}
                             {projects.map((p) => (
                               <button key={p.projectId} type="button" onClick={() => selectProject(p)} className="w-full text-left px-3 py-2 hover:bg-gray-50 transition-colors border-b border-border-light last:border-0">
                                 <div className="text-sm font-medium">{p.projectId}</div>
@@ -805,16 +819,16 @@ export default function RequestDetailPage() {
                       {validationErrors.projectId && <p className="text-xs text-red-500 mt-1">{validationErrors.projectId}</p>}
                       {selectedProject && (
                         <div className="grid grid-cols-2 gap-3 p-3 bg-gray-50 rounded-lg border border-border-light" data-testid="mspo-project-details">
-                          <ReadOnlyField label="Project Code" value={selectedProject.projectId} />
-                          <ReadOnlyField label="Project Name" value={selectedProject.projectName} />
-                          <ReadOnlyField label="Type" value={selectedProject.type} />
-                          <ReadOnlyField label="Status" value={selectedProject.status} />
+                          <ReadOnlyField label={t('govCreate.projectCode')} value={selectedProject.projectId} />
+                          <ReadOnlyField label={t('col.projectName')} value={selectedProject.projectName} />
+                          <ReadOnlyField label={t('common.type')} value={selectedProject.type} />
+                          <ReadOnlyField label={t('common.status')} value={selectedProject.status} />
                           <ReadOnlyField label="PM" value={selectedProject.pm} />
                           <ReadOnlyField label="DT Lead" value={selectedProject.dtLead} />
                           <ReadOnlyField label="IT Lead" value={selectedProject.itLead} />
-                          <ReadOnlyField label="Start Date" value={selectedProject.startDate} />
-                          <ReadOnlyField label="Go Live Date" value={selectedProject.goLiveDate} />
-                          <ReadOnlyField label="End Date" value={selectedProject.endDate} />
+                          <ReadOnlyField label={t('govCreate.startDate')} value={selectedProject.startDate} />
+                          <ReadOnlyField label={t('govCreate.goLiveDate')} value={selectedProject.goLiveDate} />
+                          <ReadOnlyField label={t('govCreate.endDate')} value={selectedProject.endDate} />
                           <ReadOnlyField label="AI Related" value={selectedProject.aiRelated} />
                         </div>
                       )}
@@ -824,14 +838,14 @@ export default function RequestDetailPage() {
                       <div className="grid grid-cols-2 gap-3">
                         <ChangeHighlight fieldName="projectCode" changelog={changelog}>
                           <div>
-                            <label className="block text-xs font-medium text-text-secondary mb-1">Project Code <span className="text-red-500">*</span></label>
+                            <label className="block text-xs font-medium text-text-secondary mb-1">{t('govCreate.projectCode')} <span className="text-red-500">*</span></label>
                             <input className={`input-field ${validationErrors.projectCode ? 'border-red-400' : ''}`} value={nonMspo.projectCode} onChange={(e) => { setNonMspo({ ...nonMspo, projectCode: e.target.value }); setValidationErrors((v) => { const { projectCode: _, ...rest } = v; return rest; }); }} data-testid="input-project-code" />
                             {validationErrors.projectCode && <p className="text-xs text-red-500 mt-1">{validationErrors.projectCode}</p>}
                           </div>
                         </ChangeHighlight>
                         <ChangeHighlight fieldName="projectName" changelog={changelog}>
                           <div>
-                            <label className="block text-xs font-medium text-text-secondary mb-1">Project Name <span className="text-red-500">*</span></label>
+                            <label className="block text-xs font-medium text-text-secondary mb-1">{t('col.projectName')} <span className="text-red-500">*</span></label>
                             <input className={`input-field ${validationErrors.projectName ? 'border-red-400' : ''}`} value={nonMspo.projectName} onChange={(e) => { setNonMspo({ ...nonMspo, projectName: e.target.value }); setValidationErrors((v) => { const { projectName: _, ...rest } = v; return rest; }); }} data-testid="input-project-name" />
                             {validationErrors.projectName && <p className="text-xs text-red-500 mt-1">{validationErrors.projectName}</p>}
                           </div>
@@ -839,13 +853,13 @@ export default function RequestDetailPage() {
                       </div>
                       <ChangeHighlight fieldName="projectDescription" changelog={changelog}>
                         <div>
-                          <label className="block text-xs font-medium text-text-secondary mb-1">Description</label>
+                          <label className="block text-xs font-medium text-text-secondary mb-1">{t('common.description')}</label>
                           <textarea className="input-field h-20" value={nonMspo.projectDescription} onChange={(e) => setNonMspo({ ...nonMspo, projectDescription: e.target.value })} data-testid="input-project-description" />
                         </div>
                       </ChangeHighlight>
                       <ChangeHighlight fieldName="projectPm" changelog={changelog}>
                         <div>
-                          <label className="block text-xs font-medium text-text-secondary mb-1">Project Manager <span className="text-red-500">*</span></label>
+                          <label className="block text-xs font-medium text-text-secondary mb-1">{t('govCreate.projectManager')} <span className="text-red-500">*</span></label>
                           {validationErrors.projectPm && <p className="text-xs text-red-500 mb-1">{validationErrors.projectPm}</p>}
                           <div ref={pmDropdownRef} className="relative">
                             {nonMspo.projectPmItcode ? (
@@ -853,15 +867,15 @@ export default function RequestDetailPage() {
                                 <span className="flex-1 px-3 py-2 rounded-lg border border-border-light bg-gray-50 text-sm" data-testid="pm-selected">
                                   {nonMspo.projectPm} ({nonMspo.projectPmItcode})
                                 </span>
-                                <button type="button" onClick={clearPm} className="text-sm text-red-500 hover:text-red-700">Clear</button>
+                                <button type="button" onClick={clearPm} className="text-sm text-red-500 hover:text-red-700">{t('domainReview.clear')}</button>
                               </div>
                             ) : (
-                              <input className="input-field" placeholder="Search by itcode or name..." value={pmSearch} onChange={(e) => handlePmSearchChange(e.target.value)} onFocus={() => { if (pmSearch.trim()) setShowPmDropdown(true); }} data-testid="input-project-pm" />
+                              <input className="input-field" placeholder={t('govCreate.searchEmployee')} value={pmSearch} onChange={(e) => handlePmSearchChange(e.target.value)} onFocus={() => { if (pmSearch.trim()) setShowPmDropdown(true); }} data-testid="input-project-pm" />
                             )}
                             {showPmDropdown && (
                               <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-border-light rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                                {pmLoading && <div className="px-3 py-2 text-sm text-text-secondary">Searching...</div>}
-                                {!pmLoading && pmResults.length === 0 && pmSearch.trim() && <div className="px-3 py-2 text-sm text-text-secondary">No employees found</div>}
+                                {pmLoading && <div className="px-3 py-2 text-sm text-text-secondary">{t('govCreate.searching')}</div>}
+                                {!pmLoading && pmResults.length === 0 && pmSearch.trim() && <div className="px-3 py-2 text-sm text-text-secondary">{t('govCreate.noEmployees')}</div>}
                                 {pmResults.map((emp) => (
                                   <button key={emp.itcode} type="button" onClick={() => selectPm(emp)} className="w-full text-left px-3 py-2 hover:bg-gray-50 transition-colors border-b border-border-light last:border-0" data-testid={`pm-option-${emp.itcode}`}>
                                     <div className="text-sm font-medium">{emp.itcode}</div>
@@ -876,21 +890,21 @@ export default function RequestDetailPage() {
                       <div className="grid grid-cols-3 gap-3">
                         <ChangeHighlight fieldName="projectStartDate" changelog={changelog}>
                           <div>
-                            <label className="block text-xs font-medium text-text-secondary mb-1">Start Date <span className="text-red-500">*</span></label>
+                            <label className="block text-xs font-medium text-text-secondary mb-1">{t('govCreate.startDate')} <span className="text-red-500">*</span></label>
                             <input type="date" className={`input-field ${validationErrors.projectStartDate ? 'border-red-400' : ''}`} value={nonMspo.projectStartDate} onChange={(e) => { setNonMspo({ ...nonMspo, projectStartDate: e.target.value }); setValidationErrors((v) => { const { projectStartDate: _, ...rest } = v; return rest; }); }} data-testid="input-project-start-date" />
                             {validationErrors.projectStartDate && <p className="text-xs text-red-500 mt-1">{validationErrors.projectStartDate}</p>}
                           </div>
                         </ChangeHighlight>
                         <ChangeHighlight fieldName="projectGoLiveDate" changelog={changelog}>
                           <div>
-                            <label className="block text-xs font-medium text-text-secondary mb-1">Go Live Date <span className="text-red-500">*</span></label>
+                            <label className="block text-xs font-medium text-text-secondary mb-1">{t('govCreate.goLiveDate')} <span className="text-red-500">*</span></label>
                             <input type="date" className={`input-field ${validationErrors.projectGoLiveDate ? 'border-red-400' : ''}`} value={nonMspo.projectGoLiveDate} onChange={(e) => { setNonMspo({ ...nonMspo, projectGoLiveDate: e.target.value }); setValidationErrors((v) => { const { projectGoLiveDate: _, ...rest } = v; return rest; }); }} data-testid="input-project-go-live-date" />
                             {validationErrors.projectGoLiveDate && <p className="text-xs text-red-500 mt-1">{validationErrors.projectGoLiveDate}</p>}
                           </div>
                         </ChangeHighlight>
                         <ChangeHighlight fieldName="projectEndDate" changelog={changelog}>
                           <div>
-                            <label className="block text-xs font-medium text-text-secondary mb-1">End Date</label>
+                            <label className="block text-xs font-medium text-text-secondary mb-1">{t('govCreate.endDate')}</label>
                             <input type="date" className="input-field" value={nonMspo.projectEndDate} onChange={(e) => setNonMspo({ ...nonMspo, projectEndDate: e.target.value })} data-testid="input-project-end-date" />
                           </div>
                         </ChangeHighlight>
@@ -904,7 +918,7 @@ export default function RequestDetailPage() {
               {isEditable && <FileUpload files={attachments} onChange={setAttachments} />}
               {attachmentsData && attachmentsData.data.length > 0 && (
                 <div data-testid="attachments-card">
-                  <label className="block text-sm font-medium mb-2">Existing Attachments</label>
+                  <label className="block text-sm font-medium mb-2">{t('govDetail.existingAttachments')}</label>
                   <ul className="space-y-1">
                     {attachmentsData.data.map((att) => (
                       <li key={att.id} className="flex items-center justify-between text-sm p-2 bg-gray-50 rounded">
@@ -913,7 +927,7 @@ export default function RequestDetailPage() {
                           <span className="text-text-secondary text-xs">
                             {att.fileSize < 1024 ? `${att.fileSize} B` : att.fileSize < 1048576 ? `${(att.fileSize / 1024).toFixed(1)} KB` : `${(att.fileSize / 1048576).toFixed(1)} MB`}
                           </span>
-                          <a href={`${API_BASE}/governance-requests/${requestId}/attachments/${att.id}`} className="text-egm-teal hover:underline text-xs" download>Download</a>
+                          <a href={`${API_BASE}/governance-requests/${requestId}/attachments/${att.id}`} className="text-egm-teal hover:underline text-xs" download>{t('common.download')}</a>
                         </div>
                       </li>
                     ))}
@@ -924,11 +938,11 @@ export default function RequestDetailPage() {
           </SectionCard>
 
           {/* Section 3: Business & Product Information */}
-          <SectionCard title="Business & Product Information">
+          <SectionCard title={t('govCreate.businessProductInfo')}>
             <div className="space-y-4">
               <ChangeHighlight fieldName="productSoftwareType" changelog={changelog}>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Product/Software Type <span className="text-red-500">*</span></label>
+                  <label className="block text-sm font-medium mb-1">{t('govCreate.productType')} <span className="text-red-500">*</span></label>
                   {isReadOnly ? (
                     <div className="px-3 py-2 rounded-lg border border-border-light bg-gray-50 text-sm">
                       {productSoftwareType === 'Other' ? productSoftwareTypeOther : productSoftwareType || '-'}
@@ -945,11 +959,11 @@ export default function RequestDetailPage() {
                           setValidationErrors(prev => { const n = {...prev}; delete n.productSoftwareType; delete n.productSoftwareTypeOther; return n; });
                         }}
                       >
-                        <option value="">-- Select --</option>
-                        <option value="Hardware">Hardware</option>
-                        <option value="Software-Client based">Software-Client based</option>
-                        <option value="Software-Web Based">Software-Web Based</option>
-                        <option value="Other">Other</option>
+                        <option value="">{t('govCreate.selectOption')}</option>
+                        <option value="Hardware">{t('govCreate.hardware')}</option>
+                        <option value="Software-Client based">{t('govCreate.softwareClient')}</option>
+                        <option value="Software-Web Based">{t('govCreate.softwareWeb')}</option>
+                        <option value="Other">{t('govCreate.other')}</option>
                       </select>
                       {validationErrors.productSoftwareType && <p className="text-red-500 text-xs mt-1">{validationErrors.productSoftwareType}</p>}
                       {productSoftwareType === 'Other' && (
@@ -957,7 +971,7 @@ export default function RequestDetailPage() {
                           <input
                             data-testid="input-product-software-type-other"
                             className={`input-field ${validationErrors.productSoftwareTypeOther ? 'border-red-400' : ''}`}
-                            placeholder="Please specify..."
+                            placeholder={t('govCreate.pleaseSpecify')}
                             value={productSoftwareTypeOther}
                             onChange={(e) => {
                               setProductSoftwareTypeOther(e.target.value);
@@ -974,17 +988,17 @@ export default function RequestDetailPage() {
 
               <ChangeHighlight fieldName="productEndUser" changelog={changelog}>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Product/Project End User <span className="text-red-500">*</span></label>
+                  <label className="block text-sm font-medium mb-1">{t('govCreate.productEndUser')} <span className="text-red-500">*</span></label>
                   {isReadOnly ? (
                     <div className="px-3 py-2 rounded-lg border border-border-light bg-gray-50 text-sm">{productEndUser.join(', ') || '-'}</div>
                   ) : (
                     <>
                       <div className="space-y-2">
                         {[
-                          { value: 'Lenovo internal employee/contractors', id: 'internal' },
-                          { value: 'Lenovo partners (such as distributors, resellers, service partner, etc.)', id: 'partners' },
-                          { value: 'External customer-facing', id: 'external' },
-                        ].map(({ value: option, id }) => (
+                          { value: 'Lenovo internal employee/contractors', label: t('govCreate.endUserInternal'), id: 'internal' },
+                          { value: 'Lenovo partners (such as distributors, resellers, service partner, etc.)', label: t('govCreate.endUserPartners'), id: 'partners' },
+                          { value: 'External customer-facing', label: t('govCreate.endUserExternal'), id: 'external' },
+                        ].map(({ value: option, label, id }) => (
                           <label key={option} className="flex items-start gap-2 text-sm cursor-pointer">
                             <input
                               type="checkbox"
@@ -996,7 +1010,7 @@ export default function RequestDetailPage() {
                                 setValidationErrors(prev => { const n = {...prev}; delete n.productEndUser; return n; });
                               }}
                             />
-                            <span>{option}</span>
+                            <span>{label}</span>
                           </label>
                         ))}
                       </div>
@@ -1008,7 +1022,7 @@ export default function RequestDetailPage() {
 
               <ChangeHighlight fieldName="userRegion" changelog={changelog}>
                 <div>
-                  <label className="block text-sm font-medium mb-1">User Region <span className="text-red-500">*</span></label>
+                  <label className="block text-sm font-medium mb-1">{t('govCreate.userRegion')} <span className="text-red-500">*</span></label>
                   {isReadOnly ? (
                     <div className="px-3 py-2 rounded-lg border border-border-light bg-gray-50 text-sm">{userRegion.join(', ') || '-'}</div>
                   ) : (
@@ -1037,14 +1051,14 @@ export default function RequestDetailPage() {
 
               <ChangeHighlight fieldName="thirdPartyVendor" changelog={changelog}>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Third-party Vendor Involvement</label>
+                  <label className="block text-sm font-medium mb-1">{t('govCreate.thirdPartyVendor')}</label>
                   {isReadOnly ? (
                     <div className="px-3 py-2 rounded-lg border border-border-light bg-gray-50 text-sm">{thirdPartyVendor || '-'}</div>
                   ) : (
                     <input
                       data-testid="input-third-party-vendor"
                       className="input-field"
-                      placeholder="Describe any third-party vendor involvement..."
+                      placeholder={t('govCreate.thirdPartyPlaceholder')}
                       value={thirdPartyVendor}
                       onChange={(e) => setThirdPartyVendor(e.target.value)}
                     />
@@ -1059,9 +1073,9 @@ export default function RequestDetailPage() {
           {/* === WIZARD STEP 2 (or non-wizard Draft: always show) === */}
           {(!showWizard || wizardStep === 2) && (
             <>
-            {/* Domain Questionnaires */}
+            {/* Domain Questionnaires — Draft: fully editable */}
             {request.status === 'Draft' && (
-              <SectionCard title="Domain Questionnaires" subtitle="Please answer the following questions for each triggered domain">
+              <SectionCard title={t('govDetail.domainQuestionnaires')} subtitle={t('govDetail.domainQuestionnairesSubtitle')}>
                 <DomainQuestionnaires
                   ref={questionnaireRef}
                   requestId={requestId}
@@ -1074,29 +1088,32 @@ export default function RequestDetailPage() {
             </>
           )}
 
-          {/* Domain Questionnaires — when any domain is returned for additional info */}
-          {isOwner && request.status !== 'Draft' && progress?.domains.some(d => d.status === 'Return for Additional Information') && (
-            <SectionCard title="Domain Questionnaires" subtitle="Please review and update your answers, then resubmit the returned domains">
+          {/* Domain Questionnaires — always visible for non-Draft, per-domain editability */}
+          {request.status !== 'Draft' && (
+            <SectionCard title={t('govDetail.domainQuestionnaires')} subtitle={t('govDetail.domainQuestionnairesSubtitle')}>
               <DomainQuestionnaires
                 requestId={requestId}
+                readOnly={!isOwner}
+                domainReadOnly={domainEditabilityMap}
+                changelog={changelog}
               />
             </SectionCard>
           )}
 
           {/* Governance Domain Actions — action items grouped by domain */}
           {request.status !== 'Draft' && (
-            <SectionCard title="Governance Domain Actions" subtitle="Action items assigned by domain reviewers" defaultOpen>
+            <SectionCard title={t('govDetail.governanceDomainActions')} subtitle={t('govDetail.governanceDomainActionsSubtitle')} defaultOpen>
               <GovernanceDomainActions requestId={requestId} />
             </SectionCard>
           )}
 
           {/* Review Progress */}
           {progress && progress.totalDomains > 0 && (
-            <SectionCard title="Review Progress">
+            <SectionCard title={t('govDetail.reviewProgress')}>
               <div>
                 <div className="mb-4">
                   <div className="flex justify-between text-sm mb-1">
-                    <span>{progress.completedDomains}/{progress.totalDomains} domains complete</span>
+                    <span>{progress.completedDomains}/{progress.totalDomains} {t('govDetail.domainsComplete')}</span>
                     <span>{progress.progressPercent}%</span>
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-2">
@@ -1129,7 +1146,7 @@ export default function RequestDetailPage() {
                   onClick={() => copyMutation.mutate()}
                   data-testid="copy-request-btn"
                 >
-                  {copyMutation.isPending ? 'Copying...' : 'Copy Request'}
+                  {copyMutation.isPending ? t('govDetail.copying') : t('govDetail.copyRequest')}
                 </Button>
               )}
               {isOwner && request.status === 'Draft' && request.lifecycleStatus === 'Active' && (
@@ -1137,10 +1154,10 @@ export default function RequestDetailPage() {
                   danger
                   icon={<CloseCircleOutlined />}
                   disabled={cancelMutation.isPending}
-                  onClick={() => { if (confirm('Cancel this request? This cannot be undone.')) cancelMutation.mutate(); }}
+                  onClick={() => { if (confirm(t('govDetail.cancelConfirm'))) cancelMutation.mutate(); }}
                   data-testid="cancel-request-btn"
                 >
-                  {cancelMutation.isPending ? 'Cancelling...' : 'Cancel Request'}
+                  {cancelMutation.isPending ? t('govDetail.cancelling') : t('govDetail.cancelRequest')}
                 </Button>
               )}
               {hasRole('admin', 'governance_lead') && request.status === 'Complete' && request.lifecycleStatus === 'Active' && (
@@ -1148,10 +1165,10 @@ export default function RequestDetailPage() {
                   type="default"
                   icon={<InboxOutlined />}
                   disabled={archiveMutation.isPending}
-                  onClick={() => { if (confirm('Archive this completed request?')) archiveMutation.mutate(); }}
+                  onClick={() => { if (confirm(t('govDetail.archiveConfirm'))) archiveMutation.mutate(); }}
                   data-testid="archive-request-btn"
                 >
-                  {archiveMutation.isPending ? 'Archiving...' : 'Archive'}
+                  {archiveMutation.isPending ? t('govDetail.archiving') : t('govDetail.archive')}
                 </Button>
               )}
             </div>
@@ -1160,14 +1177,14 @@ export default function RequestDetailPage() {
               {/* Wizard Step 1 buttons */}
               {showWizard && wizardStep === 1 && (
                 <>
-                  <Button type="default" onClick={() => router.push('/requests')} data-testid="back-btn">Back</Button>
+                  <Button type="default" onClick={() => router.push('/requests')} data-testid="back-btn">{t('common.back')}</Button>
                   <Button
                     type="default"
                     disabled={saving}
                     onClick={() => handleSave(false)}
                     data-testid="save-draft-btn"
                   >
-                    {saving ? 'Saving...' : 'Save'}
+                    {saving ? t('common.saving') : t('common.save')}
                   </Button>
                   <Button
                     type="primary"
@@ -1179,21 +1196,21 @@ export default function RequestDetailPage() {
                     }}
                     data-testid="next-step-btn"
                   >
-                    {saving ? 'Saving...' : 'Next'}
+                    {saving ? t('common.saving') : t('common.next')}
                   </Button>
                 </>
               )}
               {/* Wizard Step 2 buttons */}
               {showWizard && wizardStep === 2 && (
                 <>
-                  <Button type="default" onClick={() => setWizardStep(1)} data-testid="back-step-btn">Back</Button>
+                  <Button type="default" onClick={() => setWizardStep(1)} data-testid="back-step-btn">{t('common.back')}</Button>
                   <Button
                     type="default"
                     disabled={saving}
                     onClick={() => handleSave(false)}
                     data-testid="save-draft-btn"
                   >
-                    {saving ? 'Saving...' : 'Save'}
+                    {saving ? t('common.saving') : t('common.save')}
                   </Button>
                   <Button
                     type="primary"
@@ -1205,14 +1222,14 @@ export default function RequestDetailPage() {
                     }}
                     data-testid="submit-request-btn"
                   >
-                    {submitMutation.isPending ? 'Submitting...' : 'Submit Request'}
+                    {submitMutation.isPending ? t('govDetail.submitting') : t('govDetail.submitRequest')}
                   </Button>
                 </>
               )}
               {/* Non-wizard buttons (non-Draft or read-only) */}
               {!showWizard && (
                 <>
-                  <Button type="default" onClick={() => router.push('/requests')} data-testid="back-btn">Back</Button>
+                  <Button type="default" onClick={() => router.push('/requests')} data-testid="back-btn">{t('common.back')}</Button>
                   {isEditable && (
                     <>
                       {request.status === 'Draft' && (
@@ -1223,7 +1240,7 @@ export default function RequestDetailPage() {
                             onClick={() => handleSave(false)}
                             data-testid="save-draft-btn"
                           >
-                            {saving ? 'Saving...' : 'Save'}
+                            {saving ? t('common.saving') : t('common.save')}
                           </Button>
                           <Button
                             type="primary"
@@ -1235,7 +1252,7 @@ export default function RequestDetailPage() {
                             }}
                             data-testid="submit-request-btn"
                           >
-                            {submitMutation.isPending ? 'Submitting...' : 'Submit Request'}
+                            {submitMutation.isPending ? t('govDetail.submitting') : t('govDetail.submitRequest')}
                           </Button>
                         </>
                       )}
@@ -1247,7 +1264,7 @@ export default function RequestDetailPage() {
                           onClick={() => handleSave()}
                           data-testid="save-changes-btn"
                         >
-                          {saving ? 'Saving...' : 'Save Changes'}
+                          {saving ? t('common.saving') : t('govDetail.saveChanges')}
                         </Button>
                       )}
                       {progress?.domains.some(d => d.status === 'Return for Additional Information') && (
@@ -1256,11 +1273,11 @@ export default function RequestDetailPage() {
                           style={{ background: '#13C2C2', borderColor: '#13C2C2' }}
                           disabled={resubmitMutation.isPending}
                           onClick={() => {
-                            if (confirm('Resubmit all returned domains for review?')) resubmitMutation.mutate();
+                            if (confirm(t('govDetail.resubmitConfirm'))) resubmitMutation.mutate();
                           }}
                           data-testid="resubmit-btn"
                         >
-                          {resubmitMutation.isPending ? 'Resubmitting...' : 'Resubmit'}
+                          {resubmitMutation.isPending ? t('govDetail.resubmitting') : t('govDetail.resubmit')}
                         </Button>
                       )}
                     </>
@@ -1291,13 +1308,14 @@ interface MatrixData {
 }
 
 function ReadOnlyRulesDisplay({ ruleCodes }: { ruleCodes: string[] }) {
+  const { t } = useLocale();
   const { data: matrixData, isLoading } = useQuery<MatrixData>({
     queryKey: ['dispatch-rules-matrix'],
     queryFn: () => api.get('/dispatch-rules/matrix'),
   });
 
-  if (isLoading) return <span className="text-xs text-text-secondary">Loading rules...</span>;
-  if (!ruleCodes.length) return <span className="text-sm text-text-secondary">No rules selected</span>;
+  if (isLoading) return <span className="text-xs text-text-secondary">{t('domainReview.loadingRules')}</span>;
+  if (!ruleCodes.length) return <span className="text-sm text-text-secondary">{t('domainReview.noRulesSelected')}</span>;
 
   // Build lookup and group by L1/L2
   const ruleMap = new Map(matrixData?.rules.map((r) => [r.ruleCode, r]) || []);
@@ -1363,6 +1381,7 @@ function ReadOnlyRulesDisplay({ ruleCodes }: { ruleCodes: string[] }) {
 }
 
 function ApplicableDomainsDisplay({ ruleCodes }: { ruleCodes: string[] }) {
+  const { t } = useLocale();
   const { data: matrixData, isLoading } = useQuery<MatrixData>({
     queryKey: ['dispatch-rules-matrix'],
     queryFn: () => api.get('/dispatch-rules/matrix'),
@@ -1400,10 +1419,10 @@ function ApplicableDomainsDisplay({ ruleCodes }: { ruleCodes: string[] }) {
     return matrixData.domains.filter((d) => domainSet.has(d.domainCode));
   }, [ruleCodes, matrixData]);
 
-  if (isLoading) return <span className="text-xs text-text-secondary">Loading domains...</span>;
+  if (isLoading) return <span className="text-xs text-text-secondary">{t('domainReview.loadingDomains')}</span>;
 
   if (triggeredDomains.length === 0) {
-    return <span className="text-xs text-text-secondary italic">No domains triggered</span>;
+    return <span className="text-xs text-text-secondary italic">{t('domainReview.noDomainsTriggered')}</span>;
   }
 
   return (

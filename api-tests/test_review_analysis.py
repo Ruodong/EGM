@@ -51,11 +51,9 @@ class TestReviewAnalysisGet:
             assert data["version"] >= 1
 
     def test_get_nonexistent_review(self, client: httpx.Client):
-        """Should return placeholder for non-existent review."""
+        """Should return 404 for non-existent review (object-level auth)."""
         resp = client.get("/review-analysis/00000000-0000-0000-0000-000000000000")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data.get("data") is None or data.get("status") is not None
+        assert resp.status_code == 404
 
 
 class TestReviewAnalysisVersions:
@@ -127,3 +125,23 @@ class TestAnalysisJsonSchema:
                 aa = data["accuracyAnalysis"]
                 assert "factualIssues" in aa
                 assert isinstance(aa["factualIssues"], list)
+
+
+class TestReviewAnalysisAuthorization:
+    """P1-1: Object-level authorization tests for Review Analysis endpoints."""
+
+    def test_nonexistent_review_returns_404(self, client: httpx.Client):
+        """Non-existent review → 404 (not leak data as 200 placeholder)."""
+        resp = client.get("/review-analysis/00000000-0000-0000-0000-000000000000")
+        assert resp.status_code == 404
+
+    def test_nonexistent_versions_returns_404(self, client: httpx.Client):
+        """Non-existent review → 404 on versions list."""
+        resp = client.get("/review-analysis/00000000-0000-0000-0000-000000000000/versions")
+        assert resp.status_code == 404
+
+    def test_admin_can_access(self, client: httpx.Client, submitted_request_with_reviews):
+        """Admin always has access to analysis."""
+        review_id = submitted_request_with_reviews["reviewId"]
+        resp = client.get(f"/review-analysis/{review_id}")
+        assert resp.status_code == 200

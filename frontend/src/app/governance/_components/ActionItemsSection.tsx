@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/lib/auth-context';
+import { useLocale } from '@/lib/locale-context';
 import { Button, DatePicker, Image } from 'antd';
 import dayjs from 'dayjs';
 import { DEFAULT_DUE_DATE_OFFSET_DAYS } from '@/lib/constants';
@@ -97,6 +98,7 @@ const ACTION_STATUS_HEX: Record<string, string> = {
 
 export function ActionItemsSection({ domainReviewId, requestId, reviewStatus, requestorItcode, requestorName }: ActionItemsSectionProps) {
   const { user } = useAuth();
+  const { t } = useLocale();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -132,9 +134,9 @@ export function ActionItemsSection({ domainReviewId, requestId, reviewStatus, re
     <div className="bg-white rounded-lg border border-border-light p-6 mt-4">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h2 className="text-base font-semibold">Action Items</h2>
+          <h2 className="text-base font-semibold">{t('actionItems.title')}</h2>
           <p className="text-xs text-text-secondary mt-0.5">
-            {actions.length} action item{actions.length !== 1 ? 's' : ''}
+            {actions.length} {actions.length !== 1 ? t('actionItems.plural') : t('actionItems.singular')}
           </p>
         </div>
         {canCreate && (
@@ -144,7 +146,7 @@ export function ActionItemsSection({ domainReviewId, requestId, reviewStatus, re
             onClick={() => setShowCreateModal(true)}
             size="small"
           >
-            Create Action
+            {t('actionItems.createAction')}
           </Button>
         )}
       </div>
@@ -170,7 +172,7 @@ export function ActionItemsSection({ domainReviewId, requestId, reviewStatus, re
 
       {actions.length === 0 && canCreate && (
         <p className="text-sm text-text-secondary text-center py-4">
-          No action items yet. Click &quot;Create Action&quot; to add one.
+          {t('actionItems.noItems')}
         </p>
       )}
 
@@ -192,7 +194,7 @@ export function ActionItemsSection({ domainReviewId, requestId, reviewStatus, re
   );
 }
 
-/* ─── Action Row ─── */
+/* --- Action Row --- */
 
 function ActionRow({
   action,
@@ -213,6 +215,7 @@ function ActionRow({
   currentUser: string;
   onInvalidate: () => void;
 }) {
+  const { t } = useLocale();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -240,18 +243,18 @@ function ActionRow({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['action-attachments', action.id] });
-      toast('File uploaded', 'success');
+      toast(t('actionItems.fileUploaded'), 'success');
     },
-    onError: () => toast('Failed to upload file', 'error'),
+    onError: () => toast(t('actionItems.failedUpload'), 'error'),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (attId: string) => api.delete(`/review-actions/${action.id}/attachments/${attId}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['action-attachments', action.id] });
-      toast('Attachment deleted', 'success');
+      toast(t('actionItems.attachmentDeleted'), 'success');
     },
-    onError: () => toast('Failed to delete attachment', 'error'),
+    onError: () => toast(t('actionItems.failedDeleteAttachment'), 'error'),
   });
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -264,20 +267,20 @@ function ActionRow({
 
   const closeMutation = useMutation({
     mutationFn: () => api.put(`/review-actions/${action.id}/close`, {}),
-    onSuccess: () => { onInvalidate(); toast('Action closed', 'success'); },
-    onError: () => toast('Failed to close action', 'error'),
+    onSuccess: () => { onInvalidate(); toast(t('actionItems.actionClosed'), 'success'); },
+    onError: () => toast(t('actionItems.failedClose'), 'error'),
   });
 
   const cancelMutation = useMutation({
     mutationFn: () => api.put(`/review-actions/${action.id}/cancel`, {}),
-    onSuccess: () => { onInvalidate(); toast('Action cancelled', 'success'); },
-    onError: () => toast('Failed to cancel action', 'error'),
+    onSuccess: () => { onInvalidate(); toast(t('actionItems.actionCancelled'), 'success'); },
+    onError: () => toast(t('actionItems.failedCancel'), 'error'),
   });
 
   const copyMutation = useMutation({
     mutationFn: () => api.post(`/review-actions/${action.id}/copy`, {}),
-    onSuccess: () => { onInvalidate(); toast('Action copied', 'success'); },
-    onError: () => toast('Failed to copy action', 'error'),
+    onSuccess: () => { onInvalidate(); toast(t('actionItems.actionCopied'), 'success'); },
+    onError: () => toast(t('actionItems.failedCopy'), 'error'),
   });
 
   const isTerminal = action.status === 'Closed' || action.status === 'Cancelled';
@@ -329,11 +332,11 @@ function ActionRow({
           )}
 
           <div className="flex items-center gap-4 text-xs text-text-secondary mt-2">
-            <span>Created by {action.createByName || action.createBy}</span>
+            <span>{t('actionItems.createdBy')}{action.createByName || action.createBy}</span>
             {action.createAt && <span>{new Date(action.createAt).toLocaleString()}</span>}
-            {action.dueDate && <span>Due: {action.dueDate}</span>}
-            {action.closedAt && <span>Closed: {new Date(action.closedAt).toLocaleString()}</span>}
-            {action.cancelledAt && <span>Cancelled: {new Date(action.cancelledAt).toLocaleString()}</span>}
+            {action.dueDate && <span>{t('actionItems.due')}{action.dueDate}</span>}
+            {action.closedAt && <span>{t('actionItems.closed')}{new Date(action.closedAt).toLocaleString()}</span>}
+            {action.cancelledAt && <span>{t('actionItems.cancelled')}{new Date(action.cancelledAt).toLocaleString()}</span>}
           </div>
 
           {/* Action buttons */}
@@ -346,7 +349,7 @@ function ActionRow({
                   onClick={() => copyMutation.mutate()}
                   disabled={copyMutation.isPending}
                 >
-                  Copy
+                  {t('actionItems.copy')}
                 </Button>
               )}
               {action.status === 'Assigned' && (
@@ -358,7 +361,7 @@ function ActionRow({
                   onClick={() => closeMutation.mutate()}
                   disabled={closeMutation.isPending}
                 >
-                  Close
+                  {t('common.close')}
                 </Button>
               )}
               <Button
@@ -368,7 +371,7 @@ function ActionRow({
                 onClick={() => cancelMutation.mutate()}
                 disabled={cancelMutation.isPending}
               >
-                Cancel
+                {t('common.cancel')}
               </Button>
             </div>
           )}
@@ -377,7 +380,7 @@ function ActionRow({
           <div className="mt-4 border border-border-light rounded-lg p-3">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-medium text-text-secondary flex items-center gap-1">
-                <PaperClipOutlined /> Attachments{attachments.length > 0 ? ` (${attachments.length})` : ''}
+                <PaperClipOutlined /> {t('actionItems.attachments')}{attachments.length > 0 ? ` (${attachments.length})` : ''}
               </span>
               {!isTerminal && (
                 <>
@@ -395,7 +398,7 @@ function ActionRow({
                     disabled={uploadMutation.isPending}
                     style={{ fontSize: 11, height: 22, padding: '0 6px' }}
                   >
-                    {uploadMutation.isPending ? 'Uploading...' : 'Upload'}
+                    {uploadMutation.isPending ? t('common.uploading') : t('common.upload')}
                   </Button>
                 </>
               )}
@@ -429,7 +432,7 @@ function ActionRow({
                         {att.createByName && (
                           <span className="text-text-secondary whitespace-nowrap">{att.createByName}</span>
                         )}
-                        <a href={attUrl} download={att.fileName} title="Download">
+                        <a href={attUrl} download={att.fileName} title={t('common.download')}>
                           <DownloadOutlined style={{ fontSize: 12, color: '#1890FF' }} />
                         </a>
                         {att.createBy === currentUser && (
@@ -437,7 +440,7 @@ function ActionRow({
                             type="button"
                             onClick={() => deleteMutation.mutate(att.id)}
                             className="text-red-400 hover:text-red-600"
-                            title="Delete"
+                            title={t('common.delete')}
                           >
                             <DeleteOutlined style={{ fontSize: 12 }} />
                           </button>
@@ -448,7 +451,7 @@ function ActionRow({
                 })}
               </div>
             ) : (
-              <p className="text-xs text-text-secondary italic">No attachments</p>
+              <p className="text-xs text-text-secondary italic">{t('actionItems.noAttachments')}</p>
             )}
           </div>
 
@@ -467,7 +470,7 @@ function ActionRow({
   );
 }
 
-/* ─── Create Action Modal ─── */
+/* --- Create Action Modal --- */
 
 function CreateActionModal({
   domainReviewId,
@@ -484,6 +487,7 @@ function CreateActionModal({
   onClose: () => void;
   onCreated: () => void;
 }) {
+  const { t } = useLocale();
   const { toast } = useToast();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -521,15 +525,15 @@ function CreateActionModal({
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-lg p-6">
-        <h3 className="text-lg font-semibold mb-4">Create Action Item</h3>
+        <h3 className="text-lg font-semibold mb-4">{t('actionItems.createTitle')}</h3>
 
         <div className="space-y-4">
           {/* Title */}
           <div>
-            <label className="text-sm font-medium">Title <span className="text-red-500">*</span></label>
+            <label className="text-sm font-medium">{t('actionItems.titleLabel')} <span className="text-red-500">*</span></label>
             <input
               className="input-field w-full mt-1"
-              placeholder="Action item title"
+              placeholder={t('actionItems.titlePlaceholder')}
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               autoFocus
@@ -538,11 +542,11 @@ function CreateActionModal({
 
           {/* Description */}
           <div>
-            <label className="text-sm font-medium">Description</label>
+            <label className="text-sm font-medium">{t('common.description')}</label>
             <textarea
               className="input-field w-full mt-1 resize-none"
               rows={3}
-              placeholder="Describe the action item..."
+              placeholder={t('actionItems.descPlaceholder')}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
             />
@@ -551,33 +555,33 @@ function CreateActionModal({
           {/* Priority + Type row */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="text-sm font-medium">Priority</label>
+              <label className="text-sm font-medium">{t('col.priority')}</label>
               <select
                 className="input-field w-full mt-1"
                 value={priority}
                 onChange={(e) => setPriority(e.target.value)}
               >
-                <option value="High">High</option>
-                <option value="Medium">Medium</option>
-                <option value="Low">Low</option>
+                <option value="High">{t('actionItems.high')}</option>
+                <option value="Medium">{t('actionItems.medium')}</option>
+                <option value="Low">{t('actionItems.low')}</option>
               </select>
             </div>
             <div>
-              <label className="text-sm font-medium">Type</label>
+              <label className="text-sm font-medium">{t('common.type')}</label>
               <select
                 className="input-field w-full mt-1"
                 value={actionType}
                 onChange={(e) => setActionType(e.target.value)}
               >
-                <option value="Mandatory">Mandatory</option>
-                <option value="Long Term">Long Term</option>
+                <option value="Mandatory">{t('actionItems.mandatory')}</option>
+                <option value="Long Term">{t('actionItems.longTerm')}</option>
               </select>
             </div>
           </div>
 
           {/* Due Date */}
           <div>
-            <label className="text-sm font-medium">Due Date</label>
+            <label className="text-sm font-medium">{t('col.dueDate')}</label>
             <div className="mt-1">
               <DatePicker
                 className="w-full"
@@ -591,7 +595,7 @@ function CreateActionModal({
 
           {/* Assignee — read-only, always the requestor */}
           <div>
-            <label className="text-sm font-medium">Assignee</label>
+            <label className="text-sm font-medium">{t('col.assignee')}</label>
             <div className="mt-1 px-3 py-2 rounded-lg border border-border-light bg-gray-50 text-sm text-text-secondary">
               {requestorName || requestorItcode || 'Requestor'}
             </div>
@@ -599,13 +603,13 @@ function CreateActionModal({
         </div>
 
         <div className="flex justify-end gap-2 mt-6">
-          <Button type="default" onClick={onClose}>Cancel</Button>
+          <Button type="default" onClick={onClose}>{t('common.cancel')}</Button>
           <Button
             type="primary"
             onClick={handleSubmit}
             disabled={!title.trim() || createMutation.isPending}
           >
-            {createMutation.isPending ? 'Creating...' : 'Create'}
+            {createMutation.isPending ? t('actionItems.creating') : t('common.create')}
           </Button>
         </div>
       </div>

@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/auth-context';
 import clsx from 'clsx';
 import { Button, Input, Select } from 'antd';
 import { PlusCircleOutlined } from '@ant-design/icons';
+import { useLocale } from '@/lib/locale-context';
 
 interface Template {
   id: string;
@@ -38,6 +39,7 @@ const emptyForm = {
 };
 
 export default function ScopingTemplatesPage() {
+  const { t } = useLocale();
   const qc = useQueryClient();
   const { hasPermission } = useAuth();
   const canWrite = hasPermission('intake_template', 'write');
@@ -72,18 +74,18 @@ export default function ScopingTemplatesPage() {
     setForm(emptyForm);
   }
 
-  function openEdit(t: Template) {
-    setEditing(t);
+  function openEdit(tmpl: Template) {
+    setEditing(tmpl);
     setForm({
-      section: t.section,
-      questionNo: t.questionNo,
-      questionText: t.questionText,
-      answerType: t.answerType,
-      options: t.options ? t.options.join(', ') : '',
-      isRequired: t.isRequired,
-      helpText: t.helpText || '',
-      triggersDomain: t.triggersDomain ? t.triggersDomain.join(', ') : '',
-      sortOrder: t.sortOrder,
+      section: tmpl.section,
+      questionNo: tmpl.questionNo,
+      questionText: tmpl.questionText,
+      answerType: tmpl.answerType,
+      options: tmpl.options ? tmpl.options.join(', ') : '',
+      isRequired: tmpl.isRequired,
+      helpText: tmpl.helpText || '',
+      triggersDomain: tmpl.triggersDomain ? tmpl.triggersDomain.join(', ') : '',
+      sortOrder: tmpl.sortOrder,
     });
     setShowForm(true);
   }
@@ -109,14 +111,14 @@ export default function ScopingTemplatesPage() {
   }
 
   const templates = data?.data || [];
-  const sections = [...new Set(templates.map((t) => t.section))];
+  const sections = [...new Set(templates.map((tmpl) => tmpl.section))];
 
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl font-bold">Scoping Templates</h1>
-          <p className="text-sm text-text-secondary mt-1">Manage scoping questions used to determine applicable domains</p>
+          <h1 className="text-xl font-bold">{t('scopingTemplates.title')}</h1>
+          <p className="text-sm text-text-secondary mt-1">{t('scopingTemplates.subtitle')}</p>
         </div>
         {canWrite && (
           <Button
@@ -125,7 +127,7 @@ export default function ScopingTemplatesPage() {
             icon={<PlusCircleOutlined />}
             onClick={() => { resetForm(); setShowForm(true); }}
           >
-            Add Question
+            {t('scopingTemplates.addQuestion')}
           </Button>
         )}
       </div>
@@ -133,56 +135,56 @@ export default function ScopingTemplatesPage() {
       {/* Form modal */}
       {showForm && (
         <div className="bg-white rounded-lg border border-border-light p-6 mb-6">
-          <h2 className="font-medium mb-4">{editing ? 'Edit Question' : 'New Scoping Question'}</h2>
+          <h2 className="font-medium mb-4">{editing ? t('scopingTemplates.editQuestion') : t('scopingTemplates.newQuestion')}</h2>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-1">Section</label>
+                <label className="block text-sm font-medium mb-1">{t('common.section')}</label>
                 <Input value={form.section} onChange={(e) => setForm({ ...form, section: e.target.value })} required />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Question #</label>
+                <label className="block text-sm font-medium mb-1">{t('scopingTemplates.questionNo')}</label>
                 <Input type="number" value={form.questionNo} onChange={(e) => setForm({ ...form, questionNo: Number(e.target.value) })} />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Sort Order</label>
+                <label className="block text-sm font-medium mb-1">{t('common.sortOrder')}</label>
                 <Input type="number" value={form.sortOrder} onChange={(e) => setForm({ ...form, sortOrder: Number(e.target.value) })} />
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-1">Question Text</label>
+              <label className="block text-sm font-medium mb-1">{t('scopingTemplates.questionText')}</label>
               <Input.TextArea rows={2} value={form.questionText} onChange={(e) => setForm({ ...form, questionText: e.target.value })} required />
             </div>
 
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-1">Answer Type</label>
+                <label className="block text-sm font-medium mb-1">{t('scopingTemplates.answerType')}</label>
                 <Select
                   className="w-full"
                   value={form.answerType}
                   onChange={(value) => setForm({ ...form, answerType: value })}
-                  options={ANSWER_TYPES.map((t) => ({ label: t, value: t }))}
+                  options={ANSWER_TYPES.map((at) => ({ label: at, value: at }))}
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Options (comma-separated)</label>
-                <Input value={form.options} onChange={(e) => setForm({ ...form, options: e.target.value })} placeholder="Yes, No" />
+                <label className="block text-sm font-medium mb-1">{t('scopingTemplates.optionsLabel')}</label>
+                <Input value={form.options} onChange={(e) => setForm({ ...form, options: e.target.value })} placeholder={t('scopingTemplates.optionsPlaceholder')} />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Triggers Domain (comma-separated)</label>
-                <Input value={form.triggersDomain} onChange={(e) => setForm({ ...form, triggersDomain: e.target.value })} placeholder="BIA, RAI" />
+                <label className="block text-sm font-medium mb-1">{t('scopingTemplates.triggersDomain')}</label>
+                <Input value={form.triggersDomain} onChange={(e) => setForm({ ...form, triggersDomain: e.target.value })} placeholder={t('scopingTemplates.triggersDomainPlaceholder')} />
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-1">Help Text</label>
+                <label className="block text-sm font-medium mb-1">{t('scopingTemplates.helpText')}</label>
                 <Input value={form.helpText} onChange={(e) => setForm({ ...form, helpText: e.target.value })} />
               </div>
               <div className="flex items-center gap-2 pt-6">
                 <input type="checkbox" id="isRequired" checked={form.isRequired} onChange={(e) => setForm({ ...form, isRequired: e.target.checked })} />
-                <label htmlFor="isRequired" className="text-sm">Required</label>
+                <label htmlFor="isRequired" className="text-sm">{t('common.required')}</label>
               </div>
             </div>
 
@@ -193,10 +195,10 @@ export default function ScopingTemplatesPage() {
                 htmlType="submit"
                 disabled={saveMutation.isPending}
               >
-                {saveMutation.isPending ? 'Saving...' : editing ? 'Update' : 'Create'}
+                {saveMutation.isPending ? t('common.saving') : editing ? t('common.update') : t('common.create')}
               </Button>
               <Button onClick={resetForm}>
-                Cancel
+                {t('common.cancel')}
               </Button>
             </div>
           </form>
@@ -205,7 +207,7 @@ export default function ScopingTemplatesPage() {
 
       {/* Table */}
       {isLoading ? (
-        <p className="text-text-secondary">Loading...</p>
+        <p className="text-text-secondary">{t('common.loading')}</p>
       ) : (
         sections.map((section) => (
           <div key={section} className="mb-6">
@@ -215,41 +217,41 @@ export default function ScopingTemplatesPage() {
                 <thead className="bg-bg-gray border-b border-border-light">
                   <tr>
                     <th className="text-left px-4 py-2 font-medium">#</th>
-                    <th className="text-left px-4 py-2 font-medium">Question</th>
-                    <th className="text-left px-4 py-2 font-medium">Type</th>
-                    <th className="text-left px-4 py-2 font-medium">Required</th>
-                    <th className="text-left px-4 py-2 font-medium">Triggers Domain</th>
-                    <th className="text-left px-4 py-2 font-medium">Status</th>
-                    {canWrite && <th className="text-left px-4 py-2 font-medium">Actions</th>}
+                    <th className="text-left px-4 py-2 font-medium">{t('scopingTemplates.question')}</th>
+                    <th className="text-left px-4 py-2 font-medium">{t('common.type')}</th>
+                    <th className="text-left px-4 py-2 font-medium">{t('common.required')}</th>
+                    <th className="text-left px-4 py-2 font-medium">{t('scopingTemplates.triggersCol')}</th>
+                    <th className="text-left px-4 py-2 font-medium">{t('common.status')}</th>
+                    {canWrite && <th className="text-left px-4 py-2 font-medium">{t('common.actions')}</th>}
                   </tr>
                 </thead>
                 <tbody>
                   {templates
-                    .filter((t) => t.section === section)
+                    .filter((tmpl) => tmpl.section === section)
                     .sort((a, b) => a.questionNo - b.questionNo)
-                    .map((t) => (
-                      <tr key={t.id} className={clsx('border-b border-border-light last:border-0', !t.isActive && 'opacity-50')}>
-                        <td className="px-4 py-2">{t.questionNo}</td>
-                        <td className="px-4 py-2">{t.questionText}</td>
+                    .map((tmpl) => (
+                      <tr key={tmpl.id} className={clsx('border-b border-border-light last:border-0', !tmpl.isActive && 'opacity-50')}>
+                        <td className="px-4 py-2">{tmpl.questionNo}</td>
+                        <td className="px-4 py-2">{tmpl.questionText}</td>
                         <td className="px-4 py-2">
-                          <span className="px-2 py-0.5 rounded text-xs bg-blue-50 text-blue-700">{t.answerType}</span>
+                          <span className="px-2 py-0.5 rounded text-xs bg-blue-50 text-blue-700">{tmpl.answerType}</span>
                         </td>
-                        <td className="px-4 py-2">{t.isRequired ? 'Yes' : 'No'}</td>
+                        <td className="px-4 py-2">{tmpl.isRequired ? t('common.yes') : t('common.no')}</td>
                         <td className="px-4 py-2">
-                          {t.triggersDomain?.map((d) => (
+                          {tmpl.triggersDomain?.map((d) => (
                             <span key={d} className="px-1.5 py-0.5 rounded text-xs bg-purple-50 text-purple-700 mr-1">{d}</span>
                           ))}
                         </td>
                         <td className="px-4 py-2">
-                          <span className={clsx('px-2 py-0.5 rounded text-xs', t.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500')}>
-                            {t.isActive ? 'Active' : 'Inactive'}
+                          <span className={clsx('px-2 py-0.5 rounded text-xs', tmpl.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500')}>
+                            {tmpl.isActive ? t('common.active') : t('common.inactive')}
                           </span>
                         </td>
                         {canWrite && (
                           <td className="px-4 py-2">
-                            <button onClick={() => openEdit(t)} className="text-primary-blue hover:underline text-xs mr-2">Edit</button>
-                            {t.isActive && (
-                              <button onClick={() => deleteMutation.mutate(t.id)} className="text-red-500 hover:underline text-xs">Deactivate</button>
+                            <button onClick={() => openEdit(tmpl)} className="text-primary-blue hover:underline text-xs mr-2">{t('common.edit')}</button>
+                            {tmpl.isActive && (
+                              <button onClick={() => deleteMutation.mutate(tmpl.id)} className="text-red-500 hover:underline text-xs">{t('scopingTemplates.deactivate')}</button>
                             )}
                           </td>
                         )}
@@ -264,7 +266,7 @@ export default function ScopingTemplatesPage() {
 
       {!isLoading && templates.length === 0 && (
         <div className="bg-white rounded-lg border border-border-light p-8 text-center text-text-secondary">
-          No scoping templates yet. Click &quot;+ Add Question&quot; to create one.
+          {t('scopingTemplates.noTemplates')}
         </div>
       )}
     </div>

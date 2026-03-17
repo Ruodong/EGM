@@ -4,12 +4,9 @@ import { useState, useEffect, useCallback, useRef, useImperativeHandle, forwardR
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useLocale } from '@/lib/locale-context';
-import clsx from 'clsx';
 import { DownOutlined, RightOutlined, CheckCircleOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
-import { getDomainIcon } from '@/lib/domain-icons';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { ChangeHighlight, ChangeEntry } from './ChangeHighlight';
 
 interface Question {
   id: string;
@@ -39,32 +36,23 @@ function bilingualText(locale: Locale, en?: string | null, zh?: string | null): 
   return en || zh || '';
 }
 
-interface DomainGroup {
-  domainCode: string;
-  domainName: string;
-  questions: Question[];
-}
-
 interface SavedResponse {
+  id: string;
+  domainReviewId: string;
   templateId: string;
-  domainCode: string;
   answer: { value?: string | string[]; otherText?: string; descriptionText?: string } | null;
 }
 
-export interface DomainQuestionnairesRef {
-  /** Returns list of domain codes with incomplete required questions */
-  getIncompleteDomains: () => string[];
+export interface ReviewerQuestionnairesRef {
+  /** Returns count of incomplete required questions */
+  getIncompleteCount: () => number;
   /** Flush all pending debounced saves immediately */
   flushPendingSaves: () => Promise<void>;
 }
 
-interface DomainQuestionnairesProps {
-  requestId: string;
+interface ReviewerQuestionnairesProps {
+  domainReviewId: string;
   readOnly?: boolean;
-  /** Per-domain read-only override: domainCode -> true means locked */
-  domainReadOnly?: Record<string, boolean>;
-  /** Change log entries for showing change indicators on questions */
-  changelog?: ChangeEntry[];
 }
 
 function isAnswerComplete(answer: SavedResponse['answer']): boolean {
@@ -79,7 +67,7 @@ function isDependencyMet(
   question: Question,
   answers: Record<string, SavedResponse['answer']>,
 ): boolean {
-  if (!question.dependency) return true; // No dependency — always visible
+  if (!question.dependency) return true;
   const depAnswer = answers[question.dependency.questionId];
   if (!depAnswer || depAnswer.value === undefined || depAnswer.value === null) return false;
   const val = depAnswer.value;
@@ -88,34 +76,33 @@ function isDependencyMet(
   return false;
 }
 
-export const DomainQuestionnaires = forwardRef<DomainQuestionnairesRef, DomainQuestionnairesProps>(
-  function DomainQuestionnaires({ requestId, readOnly = false, domainReadOnly, changelog }, ref) {
+export const ReviewerQuestionnaires = forwardRef<ReviewerQuestionnairesRef, ReviewerQuestionnairesProps>(
+  function ReviewerQuestionnaires({ domainReviewId, readOnly = false }, ref) {
     const { locale, t } = useLocale();
     const qc = useQueryClient();
-    const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
     const [sectionCollapsed, setSectionCollapsed] = useState<Record<string, boolean>>({});
     const [answers, setAnswers] = useState<Record<string, SavedResponse['answer']>>({});
     const pendingSaves = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
-    // Fetch templates for this request's triggered internal domains
-    const { data: templatesData } = useQuery<{ data: DomainGroup[] }>({
-      queryKey: ['request-questionnaire-templates', requestId],
-      queryFn: () => api.get(`/request-questionnaire/templates/${requestId}`),
-      enabled: !!requestId,
+    // Fetch templates for this domain review
+    const { data: templatesData } = useQuery<{ data: Question[] }>({
+      queryKey: ['domain-questionnaire-templates', domainReviewId],
+      queryFn: () => api.get(`/domain-questionnaire/templates/${domainReviewId}`),
+      enabled: !!domainReviewId,
     });
 
     // Fetch saved responses
     const { data: responsesData } = useQuery<{ data: SavedResponse[] }>({
-      queryKey: ['request-questionnaire', requestId],
-      queryFn: () => api.get(`/request-questionnaire/${requestId}`),
-      enabled: !!requestId,
+      queryKey: ['domain-questionnaire', domainReviewId],
+      queryFn: () => api.get(`/domain-questionnaire/${domainReviewId}`),
+      enabled: !!domainReviewId,
     });
 
     const saveMutation = useMutation({
-      mutationFn: (payload: { responses: { templateId: string; domainCode: string; answer: unknown }[] }) =>
-        api.post(`/request-questionnaire/${requestId}`, payload),
+      mutationFn: (payload: { responses: { templateId: string; answer: unknown }[] }) =>
+        api.post(`/domain-questionnaire/${domainReviewId}`, payload),
       onSuccess: () => {
-        qc.invalidateQueries({ queryKey: ['request-questionnaire', requestId] });
+        qc.invalidateQueries({ queryKey: ['domain-questionnaire', domainReviewId] });
       },
     });
 
@@ -129,34 +116,14 @@ export const DomainQuestionnaires = forwardRef<DomainQuestionnairesRef, DomainQu
       setAnswers(initial);
     }, [responsesData]);
 
-    // Auto-expand first incomplete domain
-    useEffect(() => {
-      if (!templatesData?.data) return;
-      const groups = templatesData.data;
-      const newCollapsed: Record<string, boolean> = {};
-      let foundIncomplete = false;
-      for (const g of groups) {
-        const hasIncomplete = g.questions.some(
-          (q) => q.isRequired && isDependencyMet(q, answers) && !isAnswerComplete(answers[q.id]),
-        );
-        newCollapsed[g.domainCode] = !hasIncomplete || foundIncomplete;
-        if (hasIncomplete && !foundIncomplete) foundIncomplete = true;
-      }
-      if (!foundIncomplete && groups.length > 0) {
-        newCollapsed[groups[0].domainCode] = false;
-      }
-      setCollapsed(newCollapsed);
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [templatesData]);
-
     const saveAnswer = useCallback(
-      (templateId: string, domainCode: string, answer: SavedResponse['answer']) => {
+      (templateId: string, answer: SavedResponse['answer']) => {
         if (pendingSaves.current[templateId]) {
           clearTimeout(pendingSaves.current[templateId]);
         }
         pendingSaves.current[templateId] = setTimeout(() => {
           saveMutation.mutate({
-            responses: [{ templateId, domainCode, answer }],
+            responses: [{ templateId, answer }],
           });
           delete pendingSaves.current[templateId];
         }, 500);
@@ -165,46 +132,37 @@ export const DomainQuestionnaires = forwardRef<DomainQuestionnairesRef, DomainQu
     );
 
     const updateAnswer = useCallback(
-      (templateId: string, domainCode: string, answer: SavedResponse['answer']) => {
+      (templateId: string, answer: SavedResponse['answer']) => {
         setAnswers((prev) => ({ ...prev, [templateId]: answer }));
-        const isDomainLocked = domainReadOnly?.[domainCode] ?? readOnly;
-        if (!isDomainLocked) {
-          saveAnswer(templateId, domainCode, answer);
+        if (!readOnly) {
+          saveAnswer(templateId, answer);
         }
       },
-      [readOnly, domainReadOnly, saveAnswer],
+      [readOnly, saveAnswer],
     );
 
     // Expose validation + flush methods to parent
     useImperativeHandle(ref, () => ({
-      getIncompleteDomains: () => {
-        if (!templatesData?.data) return [];
-        const incomplete: string[] = [];
-        for (const g of templatesData.data) {
-          const hasIncomplete = g.questions.some(
-            (q) => q.isRequired && isDependencyMet(q, answers) && !isAnswerComplete(answers[q.id]),
-          );
-          if (hasIncomplete) incomplete.push(g.domainCode);
-        }
-        return incomplete;
+      getIncompleteCount: () => {
+        if (!templatesData?.data) return 0;
+        return templatesData.data.filter(
+          (q) => q.isRequired && isDependencyMet(q, answers) && !isAnswerComplete(answers[q.id]),
+        ).length;
       },
-      /** Flush all pending debounced saves immediately. Returns a promise that resolves when saves complete. */
       flushPendingSaves: () => {
         const pending = Object.entries(pendingSaves.current);
         if (pending.length === 0) return Promise.resolve();
-        // Clear all timers and fire saves immediately
+        // Clear all timers
         for (const [tid, timer] of pending) {
           clearTimeout(timer);
           delete pendingSaves.current[tid];
         }
         // Collect all unsaved answers and batch-save them
-        const toSave: { templateId: string; domainCode: string; answer: SavedResponse['answer'] }[] = [];
+        const toSave: { templateId: string; answer: SavedResponse['answer'] }[] = [];
         if (templatesData?.data) {
-          for (const g of templatesData.data) {
-            for (const q of g.questions) {
-              if (answers[q.id] !== undefined) {
-                toSave.push({ templateId: q.id, domainCode: g.domainCode, answer: answers[q.id] });
-              }
+          for (const q of templatesData.data) {
+            if (answers[q.id] !== undefined) {
+              toSave.push({ templateId: q.id, answer: answers[q.id] });
             }
           }
         }
@@ -215,123 +173,94 @@ export const DomainQuestionnaires = forwardRef<DomainQuestionnairesRef, DomainQu
       },
     }));
 
-    const groups = templatesData?.data || [];
+    const questions = templatesData?.data || [];
 
-    if (groups.length === 0) return null;
+    if (questions.length === 0) return null;
+
+    // Group questions by section
+    const sections: { name: string | null; questions: Question[] }[] = [];
+    for (const q of questions) {
+      const sName = q.section || null;
+      const last = sections[sections.length - 1];
+      if (last && last.name === sName) {
+        last.questions.push(q);
+      } else {
+        sections.push({ name: sName, questions: [q] });
+      }
+    }
+    const hasSections = sections.some((s) => s.name);
+
+    // Progress counts — only visible (dependency-met) required questions
+    const visibleRequired = questions.filter(
+      (q) => q.isRequired && isDependencyMet(q, answers),
+    );
+    const total = visibleRequired.length;
+    const answered = visibleRequired.filter(
+      (q) => isAnswerComplete(answers[q.id]),
+    ).length;
+    const isComplete = total > 0 && answered === total;
 
     return (
-      <div className="space-y-3">
-        {groups.map((group) => {
-          const isCollapsed = collapsed[group.domainCode] ?? false;
-          const { Icon, colors } = getDomainIcon(group.domainCode);
-          // Only count visible (dependency-met) required questions
-          const visibleRequired = group.questions.filter(
-            (q) => q.isRequired && isDependencyMet(q, answers),
-          );
-          const total = visibleRequired.length;
-          const answered = visibleRequired.filter(
-            (q) => isAnswerComplete(answers[q.id]),
-          ).length;
-          const isComplete = total > 0 && answered === total;
+      <div className="space-y-1">
+        {/* Progress summary */}
+        {total > 0 && (
+          <div className="flex items-center gap-1.5 text-xs px-1 mb-2">
+            {isComplete ? (
+              <span className="flex items-center gap-1 text-green-600">
+                <CheckCircleOutlined style={{ fontSize: 14 }} /> {answered}/{total} {t('domainQ.answered')}
+              </span>
+            ) : (
+              <span className="flex items-center gap-1 text-amber-600">
+                <ExclamationCircleOutlined style={{ fontSize: 14 }} /> {answered}/{total} {t('domainQ.answered')}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Questions grouped by section */}
+        {sections.map((sec, si) => {
+          const sectionKey = `${domainReviewId}::${sec.name ?? si}`;
+          const isSectionCollapsed = sectionCollapsed[sectionKey] ?? false;
+
+          const renderQuestions = (qs: Question[]) =>
+            qs.map((q) => {
+              if (!isDependencyMet(q, answers)) return null;
+              return (
+                <QuestionInput
+                  key={q.id}
+                  question={q}
+                  answer={answers[q.id] || null}
+                  onChange={(answer) => updateAnswer(q.id, answer)}
+                  readOnly={readOnly}
+                  locale={locale as Locale}
+                />
+              );
+            });
+
+          if (!hasSections || !sec.name) {
+            return (
+              <div key={sectionKey} className="space-y-4">
+                {renderQuestions(sec.questions)}
+              </div>
+            );
+          }
 
           return (
-            <div key={group.domainCode} className="border border-border-light rounded-lg bg-white">
-              {/* Domain header */}
+            <div key={sectionKey} className="border border-border-light rounded-lg bg-white">
               <button
                 type="button"
-                onClick={() => setCollapsed((prev) => ({ ...prev, [group.domainCode]: !prev[group.domainCode] }))}
-                className="w-full flex items-center gap-2 px-4 py-3 hover:bg-gray-50 transition-colors rounded-lg"
+                onClick={() => setSectionCollapsed((prev) => ({ ...prev, [sectionKey]: !prev[sectionKey] }))}
+                className="w-full flex items-center gap-2 px-4 py-2.5 bg-gray-50 hover:bg-gray-100 transition-colors rounded-t-lg text-left"
               >
-                {isCollapsed ? <RightOutlined style={{ fontSize: 12 }} /> : <DownOutlined style={{ fontSize: 12 }} />}
-                <span className={clsx('inline-flex items-center justify-center w-7 h-7 rounded-lg flex-shrink-0', colors)}>
-                  <Icon style={{ fontSize: 15 }} />
-                </span>
-                <span className="font-medium">{group.domainName}</span>
-                <span className="text-xs text-text-secondary">({group.domainCode})</span>
-                <span className="ml-auto flex items-center gap-1.5 text-xs">
-                  {isComplete ? (
-                    <span className="flex items-center gap-1 text-green-600">
-                      <CheckCircleOutlined style={{ fontSize: 14 }} /> {answered}/{total} {t('domainQ.answered')}
-                    </span>
-                  ) : total > 0 ? (
-                    <span className="flex items-center gap-1 text-amber-600">
-                      <ExclamationCircleOutlined style={{ fontSize: 14 }} /> {answered}/{total} {t('domainQ.answered')}
-                    </span>
-                  ) : (
-                    <span className="text-text-secondary">{group.questions.length} {group.questions.length !== 1 ? t('domainQ.questions') : t('domainQ.question')}</span>
-                  )}
+                {isSectionCollapsed ? <RightOutlined style={{ fontSize: 10 }} /> : <DownOutlined style={{ fontSize: 10 }} />}
+                <span className="text-sm font-medium text-text-secondary">{sec.name}</span>
+                <span className="text-xs text-text-secondary ml-auto">
+                  {sec.questions.length} {sec.questions.length !== 1 ? t('domainQ.questions') : t('domainQ.question')}
                 </span>
               </button>
-
-              {/* Questions — grouped by section */}
-              {!isCollapsed && (
-                <div className="border-t border-border-light">
-                  {(() => {
-                    const sections: { name: string | null; questions: Question[] }[] = [];
-                    for (const q of group.questions) {
-                      const sName = q.section || null;
-                      const last = sections[sections.length - 1];
-                      if (last && last.name === sName) {
-                        last.questions.push(q);
-                      } else {
-                        sections.push({ name: sName, questions: [q] });
-                      }
-                    }
-                    const hasSections = sections.some(s => s.name);
-
-                    return sections.map((sec, si) => {
-                      const sectionKey = `${group.domainCode}::${sec.name ?? si}`;
-                      const isSectionCollapsed = sectionCollapsed[sectionKey] ?? false;
-
-                      const effectiveReadOnly = domainReadOnly?.[group.domainCode] ?? readOnly ?? false;
-
-                    const renderQuestions = (questions: Question[]) =>
-                        questions.map((q) => {
-                          // Check dependency — hide if not met
-                          if (!isDependencyMet(q, answers)) return null;
-                          const fieldName = `questionnaire:${group.domainCode}:${q.questionText}`;
-                          return (
-                            <ChangeHighlight key={q.id} fieldName={fieldName} changelog={changelog || []}>
-                              <QuestionInput
-                                question={q}
-                                domainCode={group.domainCode}
-                                answer={answers[q.id] || null}
-                                onChange={(answer) => updateAnswer(q.id, group.domainCode, answer)}
-                                readOnly={effectiveReadOnly}
-                                locale={locale as Locale}
-                              />
-                            </ChangeHighlight>
-                          );
-                        });
-
-                      if (!hasSections || !sec.name) {
-                        return (
-                          <div key={sectionKey} className="px-4 pb-4 pt-3 space-y-4">
-                            {renderQuestions(sec.questions)}
-                          </div>
-                        );
-                      }
-
-                      return (
-                        <div key={sectionKey}>
-                          <button
-                            type="button"
-                            onClick={() => setSectionCollapsed(prev => ({ ...prev, [sectionKey]: !prev[sectionKey] }))}
-                            className="w-full flex items-center gap-2 px-4 py-2.5 bg-gray-50 hover:bg-gray-100 transition-colors border-t border-border-light first:border-t-0 text-left"
-                          >
-                            {isSectionCollapsed ? <RightOutlined style={{ fontSize: 10 }} /> : <DownOutlined style={{ fontSize: 10 }} />}
-                            <span className="text-sm font-medium text-text-secondary">{sec.name}</span>
-                            <span className="text-xs text-text-secondary ml-auto">{sec.questions.length} {sec.questions.length !== 1 ? t('domainQ.questions') : t('domainQ.question')}</span>
-                          </button>
-                          {!isSectionCollapsed && (
-                            <div className="px-4 pb-4 pt-3 space-y-4">
-                              {renderQuestions(sec.questions)}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    });
-                  })()}
+              {!isSectionCollapsed && (
+                <div className="px-4 pb-4 pt-3 space-y-4">
+                  {renderQuestions(sec.questions)}
                 </div>
               )}
             </div>
@@ -344,14 +273,12 @@ export const DomainQuestionnaires = forwardRef<DomainQuestionnairesRef, DomainQu
 
 function QuestionInput({
   question,
-  domainCode,
   answer,
   onChange,
   readOnly,
   locale = 'en',
 }: {
   question: Question;
-  domainCode: string;
   answer: SavedResponse['answer'];
   onChange: (answer: SavedResponse['answer']) => void;
   readOnly: boolean;
@@ -373,7 +300,6 @@ function QuestionInput({
   const displayOptions = (() => {
     if (locale === 'zh' && zhOptions.length === enOptions.length && zhOptions.length > 0) return zhOptions;
     if (locale === 'en' && enOptions.length > 0) return enOptions;
-    // Fallback: show whichever exists
     return enOptions.length > 0 ? enOptions : zhOptions;
   })();
 

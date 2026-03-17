@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Select, Button } from 'antd';
+import { useLocale } from '@/lib/locale-context';
 
 interface AuditEntry {
   id: string;
@@ -35,6 +36,7 @@ const ENTITY_TYPES = [
 ];
 
 export default function AuditLogPage() {
+  const { t } = useLocale();
   const [entityType, setEntityType] = useState('');
   const [page, setPage] = useState(1);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -57,8 +59,8 @@ export default function AuditLogPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl font-bold">Audit Log</h1>
-          <p className="text-sm text-text-secondary mt-1">View system activity and change history</p>
+          <h1 className="text-xl font-bold">{t('auditLog.title')}</h1>
+          <p className="text-sm text-text-secondary mt-1">{t('auditLog.subtitle')}</p>
         </div>
       </div>
 
@@ -69,17 +71,17 @@ export default function AuditLogPage() {
           value={entityType || undefined}
           onChange={(value) => { setEntityType(value || ''); setPage(1); }}
           allowClear
-          placeholder="All Entity Types"
+          placeholder={t('auditLog.allEntityTypes')}
           options={ENTITY_TYPES.map((t) => ({ label: t, value: t }))}
         />
       </div>
 
       {/* Table */}
       {isLoading ? (
-        <p className="text-text-secondary">Loading...</p>
+        <p className="text-text-secondary">{t('common.loading')}</p>
       ) : entries.length === 0 ? (
         <div className="bg-white rounded-lg border border-border-light p-8 text-center text-text-secondary">
-          No audit log entries found.
+          {t('auditLog.noEntries')}
         </div>
       ) : (
         <>
@@ -87,12 +89,12 @@ export default function AuditLogPage() {
             <table className="w-full text-sm">
               <thead className="bg-bg-gray border-b border-border-light">
                 <tr>
-                  <th className="text-left px-4 py-2 font-medium">Timestamp</th>
-                  <th className="text-left px-4 py-2 font-medium">Entity Type</th>
-                  <th className="text-left px-4 py-2 font-medium">Entity ID</th>
-                  <th className="text-left px-4 py-2 font-medium">Action</th>
-                  <th className="text-left px-4 py-2 font-medium">Performed By</th>
-                  <th className="text-left px-4 py-2 font-medium">Details</th>
+                  <th className="text-left px-4 py-2 font-medium">{t('auditLog.timestamp')}</th>
+                  <th className="text-left px-4 py-2 font-medium">{t('auditLog.entityType')}</th>
+                  <th className="text-left px-4 py-2 font-medium">{t('auditLog.entityId')}</th>
+                  <th className="text-left px-4 py-2 font-medium">{t('auditLog.action')}</th>
+                  <th className="text-left px-4 py-2 font-medium">{t('auditLog.performedBy')}</th>
+                  <th className="text-left px-4 py-2 font-medium">{t('auditLog.details')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -111,7 +113,7 @@ export default function AuditLogPage() {
                       </td>
                       <td className="px-4 py-2">{e.performedBy || '-'}</td>
                       <td className="px-4 py-2 text-primary-blue text-xs">
-                        {(e.oldValue || e.newValue) ? (expanded === e.id ? 'Hide' : 'Show') : '-'}
+                        {(e.oldValue || e.newValue) ? (expanded === e.id ? t('common.hide') : t('common.show')) : '-'}
                       </td>
                     </tr>
                     {expanded === e.id && (e.oldValue || e.newValue) && (
@@ -120,7 +122,7 @@ export default function AuditLogPage() {
                           <div className="grid grid-cols-2 gap-4">
                             {e.oldValue && (
                               <div>
-                                <h4 className="text-xs font-semibold text-text-secondary mb-1">Old Value</h4>
+                                <h4 className="text-xs font-semibold text-text-secondary mb-1">{t('auditLog.oldValue')}</h4>
                                 <pre className="text-xs bg-white p-2 rounded border overflow-auto max-h-40">
                                   {JSON.stringify(e.oldValue, null, 2)}
                                 </pre>
@@ -128,7 +130,7 @@ export default function AuditLogPage() {
                             )}
                             {e.newValue && (
                               <div>
-                                <h4 className="text-xs font-semibold text-text-secondary mb-1">New Value</h4>
+                                <h4 className="text-xs font-semibold text-text-secondary mb-1">{t('auditLog.newValue')}</h4>
                                 <pre className="text-xs bg-white p-2 rounded border overflow-auto max-h-40">
                                   {JSON.stringify(e.newValue, null, 2)}
                                 </pre>
@@ -148,7 +150,7 @@ export default function AuditLogPage() {
           {totalPages > 1 && (
             <div className="flex items-center justify-between mt-4">
               <p className="text-sm text-text-secondary">
-                Page {page} of {totalPages} ({data?.total || 0} entries)
+                {t('common.pageOf').replace('{page}', String(page)).replace('{totalPages}', String(totalPages))} ({data?.total || 0} entries)
               </p>
               <div className="flex gap-2">
                 <Button
@@ -156,14 +158,14 @@ export default function AuditLogPage() {
                   disabled={page === 1}
                   size="small"
                 >
-                  Previous
+                  {t('common.previous')}
                 </Button>
                 <Button
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                   disabled={page === totalPages}
                   size="small"
                 >
-                  Next
+                  {t('common.next')}
                 </Button>
               </div>
             </div>

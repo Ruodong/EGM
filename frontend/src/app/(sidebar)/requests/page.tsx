@@ -4,24 +4,17 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { statusHex } from '@/lib/constants';
 import Link from 'next/link';
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Button, Input, Select, Typography, Tooltip, DatePicker } from 'antd';
 import { PlusOutlined, SearchOutlined, UndoOutlined } from '@ant-design/icons';
 import DataTable, { type Column } from '@/components/shared/DataTable';
 import MultiSelect, { type MultiSelectOption } from '@/components/shared/MultiSelect';
 import { useAuth } from '@/lib/auth-context';
+import { useLocale } from '@/lib/locale-context';
 import dayjs from 'dayjs';
 
 const { Title } = Typography;
-
-const DATE_PRESETS = [
-  { label: 'All Time', value: 'all' },
-  { label: '1 Day', value: '1d' },
-  { label: '7 Days', value: '7d' },
-  { label: '1 Month', value: '1m' },
-  { label: '3 Months', value: '3m' },
-  { label: 'Custom', value: 'custom' },
-];
 
 /** Review status labels shown in legend. */
 const REVIEW_STATUSES = [
@@ -72,19 +65,6 @@ interface PaginatedResponse {
   totalPages: number;
 }
 
-const STATUS_OPTIONS: MultiSelectOption[] = [
-  { value: 'Draft', label: 'Draft' },
-  { value: 'Submitted', label: 'Submitted' },
-  { value: 'In Progress', label: 'In Progress' },
-  { value: 'Complete', label: 'Complete' },
-];
-
-const LIFECYCLE_OPTIONS: MultiSelectOption[] = [
-  { value: 'Active', label: 'Active' },
-  { value: 'Archived', label: 'Archived' },
-  { value: 'Cancelled', label: 'Cancelled' },
-];
-
 /* ─── Applied filter state (only used for API queries) ─── */
 interface AppliedFilters {
   search: string;
@@ -126,7 +106,31 @@ function computeDateRange(preset: string, customFrom: string, customTo: string) 
 
 export default function RequestsPage() {
   const { hasRole } = useAuth();
+  const { t } = useLocale();
+  const searchParams = useSearchParams();
   const isRequestorOnly = !hasRole('admin', 'governance_lead', 'domain_reviewer');
+
+  const DATE_PRESETS = [
+    { label: t('date.allTime'), value: 'all' },
+    { label: t('date.1day'), value: '1d' },
+    { label: t('date.7days'), value: '7d' },
+    { label: t('date.1month'), value: '1m' },
+    { label: t('date.3months'), value: '3m' },
+    { label: t('date.custom'), value: 'custom' },
+  ];
+
+  const STATUS_OPTIONS: MultiSelectOption[] = [
+    { value: 'Draft', label: t('status.draft') },
+    { value: 'Submitted', label: t('status.submitted') },
+    { value: 'In Progress', label: t('status.inProgress') },
+    { value: 'Complete', label: t('status.complete') },
+  ];
+
+  const LIFECYCLE_OPTIONS: MultiSelectOption[] = [
+    { value: 'Active', label: t('status.active') },
+    { value: 'Archived', label: t('status.archived') },
+    { value: 'Cancelled', label: t('status.cancelled') },
+  ];
 
   const [page, setPage] = useState(1);
   const [sortField, setSortField] = useState('create_at');
@@ -145,6 +149,19 @@ export default function RequestsPage() {
 
   // ── Applied filters (drives API query, updated only on Search click) ──
   const [applied, setApplied] = useState<AppliedFilters>(INITIAL_FILTERS);
+
+  // ── Read URL query params on mount (e.g. from dashboard stat cards) ──
+  const [urlParamsApplied, setUrlParamsApplied] = useState(false);
+  useEffect(() => {
+    if (urlParamsApplied) return;
+    const urlStatus = searchParams.get('status');
+    if (urlStatus) {
+      const statuses = urlStatus.split(',').map(s => s.trim());
+      setStatusFilter(statuses);
+      setApplied(prev => ({ ...prev, status: statuses }));
+    }
+    setUrlParamsApplied(true);
+  }, [searchParams, urlParamsApplied]);
 
   const handleSearch = useCallback(() => {
     const { dateFrom, dateTo } = computeDateRange(datePreset, customDateFrom, customDateTo);
@@ -224,7 +241,7 @@ export default function RequestsPage() {
   const columns: Column<GovRequest>[] = [
     {
       key: 'request_id',
-      label: 'Request ID',
+      label: t('col.requestId'),
       sortable: true,
       render: (r) => (
         <Link href={`/governance/${r.requestId}`} className="text-primary-blue hover:underline">
@@ -235,7 +252,7 @@ export default function RequestsPage() {
     },
     {
       key: 'project_name',
-      label: 'Project Name',
+      label: t('col.projectName'),
       sortable: true,
       render: (r) => (
         <Tooltip title={r.projectName || ''}>
@@ -248,7 +265,7 @@ export default function RequestsPage() {
     },
     {
       key: 'status',
-      label: 'Status',
+      label: t('col.status'),
       sortable: true,
       render: (r) => (
         <div className="flex justify-center">
@@ -264,7 +281,7 @@ export default function RequestsPage() {
     },
     {
       key: 'domainReviews',
-      label: 'Review Status',
+      label: t('col.reviewStatus'),
       render: (r) => {
         if (!r.domainReviews?.length) return <span className="text-text-secondary">-</span>;
         return (
@@ -291,14 +308,14 @@ export default function RequestsPage() {
     },
     ...(!isRequestorOnly ? [{
       key: 'requestor',
-      label: 'Requestor',
+      label: t('col.requestor'),
       sortable: true,
       render: (r: GovRequest) => <span className="whitespace-nowrap">{r.requestorName || r.requestor}</span>,
       exportValue: (r: GovRequest) => r.requestorName || r.requestor,
     }] : []),
     {
       key: 'create_at',
-      label: 'Created',
+      label: t('col.created'),
       sortable: true,
       render: (r) => (
         <span className="text-text-secondary">
@@ -312,11 +329,11 @@ export default function RequestsPage() {
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-        <Title level={4} style={{ margin: 0 }}>Governance Requests</Title>
+        <Title level={4} style={{ margin: 0 }}>{t('requests.title')}</Title>
         {isRequestorOnly && (
           <Link href="/governance/create">
             <Button type="primary" icon={<PlusOutlined />} size="small" style={{ background: '#13C2C2', borderColor: '#13C2C2' }}>
-              New Request
+              {t('requests.newRequest')}
             </Button>
           </Link>
         )}
@@ -329,7 +346,7 @@ export default function RequestsPage() {
           {/* Row 1 */}
           <div className="flex flex-wrap items-center gap-2 mb-2">
             <Input
-              placeholder="Request ID / Project Name"
+              placeholder={t('requests.searchPlaceholder')}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               onPressEnter={handleSearch}
@@ -342,7 +359,7 @@ export default function RequestsPage() {
               options={LIFECYCLE_OPTIONS}
               selected={lifecycleFilter}
               onChange={setLifecycleFilter}
-              placeholder="Lifecycle"
+              placeholder={t('requests.lifecycle')}
               size="small"
               data-testid="lifecycle-filter"
             />
@@ -350,7 +367,7 @@ export default function RequestsPage() {
               options={STATUS_OPTIONS}
               selected={statusFilter}
               onChange={setStatusFilter}
-              placeholder="Request Status"
+              placeholder={t('col.requestStatus')}
               size="small"
               data-testid="status-filter"
             />
@@ -359,7 +376,7 @@ export default function RequestsPage() {
                 size="small"
                 value={datePreset || undefined}
                 onChange={(v) => setDatePreset(v ?? '')}
-                placeholder="Period"
+                placeholder={t('requests.period')}
                 allowClear
                 style={{ minWidth: 110 }}
                 options={DATE_PRESETS.map((p) => ({ value: p.value, label: p.label }))}
@@ -385,7 +402,7 @@ export default function RequestsPage() {
               options={domainOptions}
               selected={domainFilter}
               onChange={setDomainFilter}
-              placeholder="Domain"
+              placeholder={t('col.domain')}
               size="small"
               data-testid="domain-filter"
             />
@@ -393,13 +410,13 @@ export default function RequestsPage() {
               options={REVIEW_STATUS_OPTIONS}
               selected={reviewStatusFilter}
               onChange={setReviewStatusFilter}
-              placeholder="Review Status"
+              placeholder={t('col.reviewStatus')}
               size="small"
               data-testid="review-status-filter"
             />
             {!isRequestorOnly && (
               <Input
-                placeholder="Requestor"
+                placeholder={t('requests.requestorPlaceholder')}
                 size="small"
                 value={requestor}
                 onChange={(e) => setRequestor(e.target.value)}
@@ -410,10 +427,10 @@ export default function RequestsPage() {
               />
             )}
             <Button type="primary" size="small" icon={<SearchOutlined />} onClick={handleSearch} data-testid="search-button">
-              Search
+              {t('common.search')}
             </Button>
             <Button size="small" icon={<UndoOutlined />} onClick={handleReset}>
-              Reset
+              {t('common.reset')}
             </Button>
           </div>
         </div>
@@ -422,7 +439,7 @@ export default function RequestsPage() {
         {domainList.length > 0 && (
           <div className="border border-border-light rounded-lg px-3 py-2 text-[11px] text-text-secondary">
             <div className="flex items-center gap-2 flex-wrap mb-1">
-              <span className="font-semibold text-text-primary" style={{ fontSize: 11 }}>Governance Domains:</span>
+              <span className="font-semibold text-text-primary" style={{ fontSize: 11 }}>{t('requests.governanceDomains')}</span>
               {domainList.map((d) => (
                 <span key={d.domainCode} className="inline-flex items-center gap-0.5">
                   <span className="font-semibold text-text-primary">{d.domainCode}</span>
@@ -431,7 +448,7 @@ export default function RequestsPage() {
               ))}
             </div>
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-semibold text-text-primary" style={{ fontSize: 11 }}>Domain Review Status:</span>
+              <span className="font-semibold text-text-primary" style={{ fontSize: 11 }}>{t('requests.domainReviewStatus')}</span>
               {REVIEW_STATUSES.map((status) => (
                 <span key={status} className="inline-flex items-center gap-0.5">
                   <span

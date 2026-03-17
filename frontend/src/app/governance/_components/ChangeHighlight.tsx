@@ -21,8 +21,21 @@ interface ChangeHighlightProps {
 
 function formatValue(val: unknown): string {
   if (val === null || val === undefined) return '(empty)';
+  // Handle questionnaire answer objects like { value: "Yes", otherText: "...", descriptionText: "..." }
+  if (typeof val === 'object' && !Array.isArray(val)) {
+    const obj = val as Record<string, unknown>;
+    if ('value' in obj) {
+      const v = obj.value;
+      const parts: string[] = [];
+      if (Array.isArray(v)) parts.push(v.join(', '));
+      else if (v) parts.push(String(v));
+      if (obj.otherText) parts.push(`(Other: ${String(obj.otherText)})`);
+      if (obj.descriptionText) parts.push(`[${String(obj.descriptionText)}]`);
+      return parts.length > 0 ? parts.join(' ') : '(empty)';
+    }
+    return JSON.stringify(val);
+  }
   if (Array.isArray(val)) return val.join(', ');
-  if (typeof val === 'object') return JSON.stringify(val);
   return String(val);
 }
 

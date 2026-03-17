@@ -63,7 +63,7 @@ async def get_templates_for_request(
     # Get active templates for those domains
     tmpl_rows = (await db.execute(text("""
         SELECT * FROM domain_questionnaire_template
-        WHERE domain_code = ANY(:codes) AND is_active = true
+        WHERE domain_code = ANY(:codes) AND is_active = true AND audience = 'requestor'
         ORDER BY domain_code, sort_order, question_no
     """), {"codes": codes})).mappings().all()
 
@@ -89,6 +89,11 @@ async def get_templates_for_request(
             "dependency": r.get("dependency"),
             "hasDescriptionBox": r.get("has_description_box", False),
             "descriptionBoxTitle": r.get("description_box_title") or default_desc_title,
+            "questionTextZh": r.get("question_text_zh"),
+            "questionDescriptionZh": r.get("question_description_zh"),
+            "optionsZh": r.get("options_zh"),
+            "descriptionBoxTitleZh": r.get("description_box_title_zh"),
+            "questionImages": r.get("question_images"),
         })
 
     domain_map = {d["domain_code"]: d["domain_name"] for d in domain_rows}
@@ -139,9 +144,7 @@ async def save_responses(
     gr_row = (await db.execute(text(
         "SELECT status FROM governance_request WHERE id = :rid"
     ), {"rid": rid})).mappings().first()
-    track_changes = gr_row and gr_row["status"] in (
-        "Submitted", "In Progress"
-    )
+    track_changes = gr_row and gr_row["status"] not in ("Draft",)
 
     # Pre-fetch existing answers for change tracking
     old_answers: dict[str, dict] = {}
@@ -173,6 +176,13 @@ async def save_responses(
         domain_code = resp.get("domainCode")
         answer = resp.get("answer")
         if not tid or not domain_code:
+            continue
+
+        # Guard: skip if domain review is in a terminal status
+        dr_row = (await db.execute(text(
+            "SELECT status FROM domain_review WHERE request_id = :rid AND domain_code = :dc"
+        ), {"rid": str(rid), "dc": domain_code})).mappings().first()
+        if dr_row and dr_row["status"] in ("Approved", "Approved with Exception", "Not Passed"):
             continue
 
         # Track changes before upsert

@@ -16,11 +16,49 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import require_permission, get_current_user, AuthUser
+from app.auth import require_permission, get_current_user, AuthUser, Role
 from app.config import settings
 from app.database import get_db
 
 logger = logging.getLogger(__name__)
+
+
+async def _check_review_access(
+    db: AsyncSession, user: AuthUser, domain_review_id: str
+) -> dict:
+    """Verify user has access to this domain review's AI analysis.
+
+    - Admin / Governance Lead: always allowed
+    - Domain Reviewer: only if the review's domain_code is in user.domain_codes
+    - Requestor: only if they own the governance request (read-only access)
+
+    Returns the review lookup dict.  Raises 404 / 403 on failure.
+    """
+    row = (await db.execute(text("""
+        SELECT dr.id, dr.domain_code, dr.request_id, gr.requestor
+        FROM domain_review dr
+        JOIN governance_request gr ON dr.request_id = gr.id
+        WHERE dr.id = :rid
+    """), {"rid": domain_review_id})).mappings().first()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Domain review not found")
+
+    r = dict(row)
+
+    if Role.ADMIN in user.roles:
+        return r
+    if Role.GOVERNANCE_LEAD in user.roles:
+        return r
+    if Role.DOMAIN_REVIEWER in user.roles and r["domain_code"] in (user.domain_codes or []):
+        return r
+    if Role.REQUESTOR in user.roles and r["requestor"] == user.id:
+        return r
+
+    raise HTTPException(
+        status_code=403,
+        detail="Access denied: you don't have permission for this domain review",
+    )
 
 router = APIRouter()
 
@@ -74,12 +112,8 @@ async def trigger_analysis(
             detail="LLM is not configured. Set LLM_BASE_URL and LLM_API_KEY.",
         )
 
-    # Validate domain review exists
-    review = (await db.execute(text(
-        "SELECT id FROM domain_review WHERE id = :id"
-    ), {"id": domain_review_id})).scalar()
-    if not review:
-        raise HTTPException(status_code=404, detail="Domain review not found")
+    # Object-level access check (also validates review exists)
+    await _check_review_access(db, user, domain_review_id)
 
     # Run analysis in background task (returns immediately)
     import asyncio
@@ -115,9 +149,11 @@ async def trigger_analysis(
 )
 async def get_latest_analysis(
     domain_review_id: str,
+    user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get the latest completed analysis for a domain review."""
+    await _check_review_access(db, user, domain_review_id)
     row = (await db.execute(text("""
         SELECT * FROM ai_review_analysis
         WHERE domain_review_id = :rid AND status = 'completed'
@@ -144,9 +180,11 @@ async def get_latest_analysis(
 )
 async def get_analysis_versions(
     domain_review_id: str,
+    user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """List all analysis versions for a domain review."""
+    await _check_review_access(db, user, domain_review_id)
     rows = (await db.execute(text("""
         SELECT * FROM ai_review_analysis
         WHERE domain_review_id = :rid
@@ -163,9 +201,11 @@ async def get_analysis_versions(
 async def get_analysis_version(
     domain_review_id: str,
     version: int,
+    user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get a specific version of the analysis."""
+    await _check_review_access(db, user, domain_review_id)
     row = (await db.execute(text("""
         SELECT * FROM ai_review_analysis
         WHERE domain_review_id = :rid AND version = :ver

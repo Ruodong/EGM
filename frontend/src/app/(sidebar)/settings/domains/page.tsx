@@ -8,6 +8,7 @@ import clsx from 'clsx';
 import { Button, Input, Select, Switch } from 'antd';
 import { PlusCircleOutlined, EditOutlined } from '@ant-design/icons';
 import { getDomainIcon } from '@/lib/domain-icons';
+import { useLocale } from '@/lib/locale-context';
 
 interface Domain {
   id: string;
@@ -30,6 +31,7 @@ const emptyForm = {
 };
 
 export default function DomainManagementPage() {
+  const { t } = useLocale();
   const qc = useQueryClient();
   const { hasPermission } = useAuth();
   const canWrite = hasPermission('domain_registry', 'write');
@@ -97,8 +99,8 @@ export default function DomainManagementPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl font-bold">Domain Management</h1>
-          <p className="text-sm text-text-secondary mt-1">Create, edit and manage governance domain definitions</p>
+          <h1 className="text-xl font-bold">{t('domainMgmt.title')}</h1>
+          <p className="text-sm text-text-secondary mt-1">{t('domainMgmt.subtitle')}</p>
         </div>
         {canWrite && (
           <Button
@@ -108,7 +110,7 @@ export default function DomainManagementPage() {
             onClick={() => { resetForm(); setShowForm(true); }}
             data-testid="add-domain-btn"
           >
-            Add Domain
+            {t('domainMgmt.addDomain')}
           </Button>
         )}
       </div>
@@ -116,41 +118,41 @@ export default function DomainManagementPage() {
       {/* Form */}
       {showForm && (
         <div className="bg-white rounded-lg border border-border-light p-6 mb-6">
-          <h2 className="font-medium mb-4">{editing ? 'Edit Domain' : 'New Domain'}</h2>
+          <h2 className="font-medium mb-4">{editing ? t('domainMgmt.editDomain') : t('domainMgmt.newDomain')}</h2>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-1">Domain Code</label>
+                <label className="block text-sm font-medium mb-1">{t('domainMgmt.domainCode')}</label>
                 <Input
                   className={clsx(editing && 'bg-gray-50 text-text-secondary')}
                   value={form.domainCode}
                   onChange={(e) => setForm({ ...form, domainCode: e.target.value.toUpperCase() })}
                   disabled={!!editing}
                   required
-                  placeholder="e.g. EA, BIA"
+                  placeholder={t('domainMgmt.domainCodePlaceholder')}
                   data-testid="domain-code-input"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Domain Name</label>
+                <label className="block text-sm font-medium mb-1">{t('domainMgmt.domainName')}</label>
                 <Input
                   value={form.domainName}
                   onChange={(e) => setForm({ ...form, domainName: e.target.value })}
                   required
-                  placeholder="Enterprise Architecture"
+                  placeholder={t('domainMgmt.domainNamePlaceholder')}
                   data-testid="domain-name-input"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Integration Type</label>
+                <label className="block text-sm font-medium mb-1">{t('domainMgmt.integrationType')}</label>
                 <Select
                   className="w-full"
                   value={form.integrationType}
                   onChange={(value) => setForm({ ...form, integrationType: value })}
                   data-testid="integration-type-select"
                   options={[
-                    { label: 'Internal', value: 'internal' },
-                    { label: 'External', value: 'external' },
+                    { label: t('domainMgmt.internal'), value: 'internal' },
+                    { label: t('domainMgmt.external'), value: 'external' },
                   ]}
                 />
               </div>
@@ -158,17 +160,17 @@ export default function DomainManagementPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-1">Description</label>
+                <label className="block text-sm font-medium mb-1">{t('common.description')}</label>
                 <Input.TextArea
                   value={form.description}
                   onChange={(e) => setForm({ ...form, description: e.target.value })}
                   rows={2}
-                  placeholder="Brief description of this governance domain..."
+                  placeholder={t('domainMgmt.descriptionPlaceholder')}
                 />
               </div>
               {form.integrationType === 'external' && (
                 <div>
-                  <label className="block text-sm font-medium mb-1">External Base URL</label>
+                  <label className="block text-sm font-medium mb-1">{t('domainMgmt.externalBaseUrl')}</label>
                   <Input
                     value={form.externalBaseUrl}
                     onChange={(e) => setForm({ ...form, externalBaseUrl: e.target.value })}
@@ -186,10 +188,10 @@ export default function DomainManagementPage() {
                 disabled={saveMutation.isPending}
                 data-testid="save-domain-btn"
               >
-                {saveMutation.isPending ? 'Saving...' : editing ? 'Update' : 'Create'}
+                {saveMutation.isPending ? t('common.saving') : editing ? t('common.update') : t('common.create')}
               </Button>
               <Button onClick={resetForm}>
-                Cancel
+                {t('common.cancel')}
               </Button>
             </div>
           </form>
@@ -206,30 +208,30 @@ export default function DomainManagementPage() {
             className="rounded"
             data-testid="show-inactive-toggle"
           />
-          Show inactive domains
+          {t('domainMgmt.showInactive')}
         </label>
       </div>
 
       {/* Table */}
       {isLoading ? (
-        <p className="text-text-secondary">Loading...</p>
+        <p className="text-text-secondary">{t('common.loading')}</p>
       ) : (
         <div className="bg-white rounded-lg border border-border-light overflow-hidden">
           <table className="w-full text-sm" data-testid="domains-table">
             <thead className="bg-bg-gray border-b border-border-light">
               <tr>
-                <th className="text-left px-4 py-2 font-medium">Code</th>
-                <th className="text-left px-4 py-2 font-medium">Name</th>
-                <th className="text-left px-4 py-2 font-medium">Type</th>
-                <th className="text-left px-4 py-2 font-medium">Status</th>
-                {canWrite && <th className="text-left px-4 py-2 font-medium">Operation</th>}
+                <th className="text-left px-4 py-2 font-medium">{t('common.code')}</th>
+                <th className="text-left px-4 py-2 font-medium">{t('common.name')}</th>
+                <th className="text-left px-4 py-2 font-medium">{t('common.type')}</th>
+                <th className="text-left px-4 py-2 font-medium">{t('common.status')}</th>
+                {canWrite && <th className="text-left px-4 py-2 font-medium">{t('common.operation')}</th>}
               </tr>
             </thead>
             <tbody>
               {domains.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="px-4 py-8 text-center text-text-secondary">
-                    No domains found. Click &quot;+ Add Domain&quot; to create one.
+                    {t('domainMgmt.noDomains')}
                   </td>
                 </tr>
               ) : (
@@ -266,13 +268,13 @@ export default function DomainManagementPage() {
                           'px-2 py-0.5 rounded text-xs',
                           d.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
                         )}>
-                          {d.isActive ? 'Active' : 'Inactive'}
+                          {d.isActive ? t('common.active') : t('common.inactive')}
                         </span>
                       </td>
                       {canWrite && (
                         <td className="px-4 py-2">
                           <div className="flex items-center gap-1">
-                            <button onClick={() => openEdit(d)} title="Edit" className="text-primary-blue hover:text-blue-700 p-1">
+                            <button onClick={() => openEdit(d)} title={t('common.edit')} className="text-primary-blue hover:text-blue-700 p-1">
                               <EditOutlined />
                             </button>
                             <Switch

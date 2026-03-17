@@ -173,6 +173,42 @@ async def _build_analysis_context(db: AsyncSession, domain_review_id: str) -> Op
             "answer": answer_str,
         })
 
+    # Action items + feedback (P2-4: align analysis context with Ask EGM)
+    action_rows = (await db.execute(text("""
+        SELECT a.action_no, a.title, a.description, a.priority, a.action_type,
+               a.status, a.assignee_name, a.id AS action_id
+        FROM review_action a
+        WHERE a.domain_review_id = :rid
+        ORDER BY a.action_no
+    """), {"rid": domain_review_id})).mappings().all()
+
+    action_items = []
+    if action_rows:
+        action_ids = [str(a["action_id"]) for a in action_rows]
+        fb_rows = (await db.execute(text("""
+            SELECT action_id, round_no, feedback_type, content, created_by_name
+            FROM review_action_feedback
+            WHERE action_id = ANY(:ids)
+            ORDER BY create_at
+        """), {"ids": action_ids})).mappings().all()
+        feedback_by_action: dict[str, list[dict]] = {}
+        for fb in fb_rows:
+            aid = str(fb["action_id"])
+            feedback_by_action.setdefault(aid, []).append(dict(fb))
+
+        for a in action_rows:
+            aid = str(a["action_id"])
+            action_items.append({
+                "actionNo": a.get("action_no"),
+                "title": a["title"],
+                "description": a.get("description"),
+                "priority": a["priority"],
+                "actionType": a["action_type"],
+                "status": a["status"],
+                "assigneeName": a.get("assignee_name"),
+                "feedback": feedback_by_action.get(aid, []),
+            })
+
     return {
         "review": {
             "id": str(r["id"]),
@@ -198,6 +234,7 @@ async def _build_analysis_context(db: AsyncSession, domain_review_id: str) -> Op
         },
         "questionnaire": qa_pairs,
         "crossDomainQuestionnaire": cross_domain_qa,
+        "actionItems": action_items,
     }
 
 
@@ -240,6 +277,19 @@ def _build_context_text(ctx: dict) -> str:
             parts.append(f"  Q{qa['questionNo']}. {qa['questionText']}")
             parts.append(f"  A: {qa['answer']}")
 
+    if ctx.get("actionItems"):
+        parts.append("\nAction Items:")
+        for a in ctx["actionItems"]:
+            parts.append(f"\n  Action #{a.get('actionNo', '?')}: {a['title']} [{a['status']}]")
+            parts.append(f"    Priority: {a['priority']}, Type: {a['actionType']}")
+            if a.get("description"):
+                parts.append(f"    Description: {a['description']}")
+            if a.get("assigneeName"):
+                parts.append(f"    Assignee: {a['assigneeName']}")
+            for fb in a.get("feedback", []):
+                role_label = "Reviewer" if fb.get("feedback_type") == "follow_up" else "Assignee"
+                parts.append(f"    [{role_label}] {fb.get('content', '')}")
+
     return "\n".join(parts)
 
 
@@ -257,7 +307,11 @@ def _compute_content_hash(ctx: dict) -> tuple[str, dict]:
     cross_str = json.dumps(ctx.get("crossDomainQuestionnaire", []), sort_keys=True, ensure_ascii=False)
     cross_hash = hashlib.sha256(cross_str.encode()).hexdigest()[:16]
 
-    combined = f"{answers_hash}:{project_hash}:{cross_hash}"
+    # Hash action items
+    actions_str = json.dumps(ctx.get("actionItems", []), sort_keys=True, ensure_ascii=False, default=str)
+    actions_hash = hashlib.sha256(actions_str.encode()).hexdigest()[:16]
+
+    combined = f"{answers_hash}:{project_hash}:{cross_hash}:{actions_hash}"
     overall_hash = hashlib.sha256(combined.encode()).hexdigest()[:32]
 
     return overall_hash, {

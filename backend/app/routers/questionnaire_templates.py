@@ -28,6 +28,12 @@ def _map(r: dict) -> dict:
         "dependency": r.get("dependency"),
         "hasDescriptionBox": r.get("has_description_box", False),
         "descriptionBoxTitle": r.get("description_box_title"),
+        "questionTextZh": r.get("question_text_zh"),
+        "questionDescriptionZh": r.get("question_description_zh"),
+        "optionsZh": r.get("options_zh"),
+        "descriptionBoxTitleZh": r.get("description_box_title_zh"),
+        "questionImages": r.get("question_images"),
+        "audience": r.get("audience", "requestor"),
     }
 
 
@@ -139,8 +145,8 @@ async def create_template(
         raise HTTPException(status_code=400, detail="Only internal domains can have questionnaire templates")
 
     answer_type = body.get("answerType", "textarea")
-    if answer_type not in ("radio", "multiselect", "dropdown", "textarea"):
-        raise HTTPException(status_code=400, detail="answerType must be radio, multiselect, dropdown, or textarea")
+    if answer_type not in ("radio", "multiselect", "dropdown", "textarea", "text"):
+        raise HTTPException(status_code=400, detail="answerType must be radio, multiselect, dropdown, textarea, or text")
 
     options = body.get("options")
     if answer_type in ("radio", "multiselect", "dropdown") and not options:
@@ -149,14 +155,25 @@ async def create_template(
     dependency = body.get("dependency")
     has_description_box = body.get("hasDescriptionBox", False)
     description_box_title = body.get("descriptionBoxTitle")
+    options_zh = body.get("optionsZh")
+    question_images = body.get("questionImages")
+
+    audience = body.get("audience", "requestor")
+    if audience not in ("requestor", "reviewer"):
+        raise HTTPException(status_code=400, detail="audience must be 'requestor' or 'reviewer'")
 
     row = (await db.execute(text("""
         INSERT INTO domain_questionnaire_template
             (domain_code, section, question_no, question_text, question_description, answer_type, options,
-             is_required, sort_order, dependency, has_description_box, description_box_title)
+             is_required, sort_order, dependency, has_description_box, description_box_title,
+             question_text_zh, question_description_zh, options_zh, description_box_title_zh, question_images,
+             audience)
         VALUES (:domain_code, :section, :question_no, :question_text, :question_description, :answer_type,
                 CAST(:options AS jsonb), :is_required, :sort_order,
-                CAST(:dependency AS jsonb), :has_description_box, :description_box_title)
+                CAST(:dependency AS jsonb), :has_description_box, :description_box_title,
+                :question_text_zh, :question_description_zh,
+                CAST(:options_zh AS jsonb), :description_box_title_zh, CAST(:question_images AS jsonb),
+                :audience)
         RETURNING *
     """), {
         "domain_code": domain_code,
@@ -171,6 +188,12 @@ async def create_template(
         "dependency": json.dumps(dependency) if dependency else None,
         "has_description_box": has_description_box,
         "description_box_title": description_box_title or None,
+        "question_text_zh": body.get("questionTextZh"),
+        "question_description_zh": body.get("questionDescriptionZh"),
+        "options_zh": json.dumps(options_zh) if options_zh else None,
+        "description_box_title_zh": body.get("descriptionBoxTitleZh"),
+        "question_images": json.dumps(question_images) if question_images else None,
+        "audience": audience,
     })).mappings().first()
     await db.commit()
     return _map(dict(row))
@@ -187,6 +210,15 @@ async def reorder_templates(
     if not orders:
         raise HTTPException(status_code=400, detail="orders array is required")
 
+    # Verify all templates belong to domains the user can access
+    tids = [item["id"] for item in orders if item.get("id")]
+    if tids:
+        rows = (await db.execute(text(
+            "SELECT id, domain_code FROM domain_questionnaire_template WHERE id = ANY(:ids)"
+        ), {"ids": tids})).mappings().all()
+        for r in rows:
+            _check_domain_access(user, r["domain_code"])
+
     for item in orders:
         tid = item.get("id")
         sort = item.get("sortOrder")
@@ -195,6 +227,38 @@ async def reorder_templates(
         await db.execute(text(
             "UPDATE domain_questionnaire_template SET sort_order = :sort WHERE id = :id"
         ), {"id": tid, "sort": sort})
+    await db.commit()
+    return {"ok": True}
+
+
+@router.put("/section-audience", dependencies=[Depends(require_permission("domain_questionnaire", "write"))])
+async def update_section_audience(
+    body: dict,
+    user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Batch update audience for all questions in a domain section."""
+    domain_code = body.get("domainCode")
+    section = body.get("section")
+    audience = body.get("audience")
+
+    if not domain_code:
+        raise HTTPException(status_code=400, detail="domainCode is required")
+    if audience not in ("requestor", "reviewer"):
+        raise HTTPException(status_code=400, detail="audience must be 'requestor' or 'reviewer'")
+    _check_domain_access(user, domain_code)
+
+    if section is None:
+        # Update questions with NULL section
+        await db.execute(text(
+            "UPDATE domain_questionnaire_template SET audience = :audience "
+            "WHERE domain_code = :dc AND section IS NULL"
+        ), {"audience": audience, "dc": domain_code})
+    else:
+        await db.execute(text(
+            "UPDATE domain_questionnaire_template SET audience = :audience "
+            "WHERE domain_code = :dc AND section = :section"
+        ), {"audience": audience, "dc": domain_code, "section": section})
     await db.commit()
     return {"ok": True}
 
@@ -226,18 +290,25 @@ async def update_template(
         ("sortOrder", "sort_order"),
         ("hasDescriptionBox", "has_description_box"),
         ("descriptionBoxTitle", "description_box_title"),
+        ("questionTextZh", "question_text_zh"),
+        ("questionDescriptionZh", "question_description_zh"),
+        ("descriptionBoxTitleZh", "description_box_title_zh"),
+        ("audience", "audience"),
     ]:
         if field in body:
             sets.append(f"{col} = :{col}")
             params[col] = body[field]
 
-    if "options" in body:
-        sets.append("options = CAST(:options AS jsonb)")
-        params["options"] = json.dumps(body["options"]) if body["options"] else None
-
-    if "dependency" in body:
-        sets.append("dependency = CAST(:dependency AS jsonb)")
-        params["dependency"] = json.dumps(body["dependency"]) if body["dependency"] else None
+    # JSONB fields need CAST
+    for field, col in [
+        ("options", "options"),
+        ("dependency", "dependency"),
+        ("optionsZh", "options_zh"),
+        ("questionImages", "question_images"),
+    ]:
+        if field in body:
+            sets.append(f"{col} = CAST(:{col} AS jsonb)")
+            params[col] = json.dumps(body[field]) if body[field] else None
 
     if not sets:
         raise HTTPException(status_code=400, detail="No fields to update")

@@ -8,6 +8,7 @@ import { PageLayout } from '@/components/layout/PageLayout';
 import { statusColors } from '@/lib/constants';
 import Link from 'next/link';
 import { Button } from 'antd';
+import { useLocale } from '@/lib/locale-context';
 import clsx from 'clsx';
 
 interface DomainReview {
@@ -41,6 +42,7 @@ export default function ReviewsPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const requestId = params.requestId as string;
+  const { t } = useLocale();
 
   const { data: reviews, isLoading } = useQuery<{ data: DomainReview[] }>({
     queryKey: ['domain-reviews', requestId],
@@ -56,9 +58,9 @@ export default function ReviewsPage() {
     mutationFn: () => api.post(`/dispatch/execute/${requestId}`, {}),
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ['domain-reviews', requestId] });
-      toast(`Dispatched to ${data.created?.length || 0} domain(s)`, 'success');
+      toast(`${t('reviewDetail.dispatchedTo')}${data.created?.length || 0} ${t('reviewDetail.domainCount')}`, 'success');
     },
-    onError: () => toast('Dispatch failed', 'error'),
+    onError: () => toast(t('reviewDetail.dispatchFailed'), 'error'),
   });
 
   const openInfoRequests = infoRequests?.data?.filter((ir) => ir.status === 'Open' || ir.status === 'Acknowledged') || [];
@@ -68,9 +70,9 @@ export default function ReviewsPage() {
       <div className="max-w-4xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-xl font-bold">Domain Reviews</h1>
+            <h1 className="text-xl font-bold">{t('reviewDetail.title')}</h1>
             <p className="text-sm text-text-secondary mt-1">
-              Track the status of all domain reviews for this governance request.
+              {t('reviewDetail.subtitle')}
             </p>
           </div>
           {(!reviews?.data || reviews.data.length === 0) && (
@@ -80,7 +82,7 @@ export default function ReviewsPage() {
               disabled={dispatchMutation.isPending}
               onClick={() => dispatchMutation.mutate()}
             >
-              {dispatchMutation.isPending ? 'Dispatching...' : 'Dispatch Reviews'}
+              {dispatchMutation.isPending ? t('reviewDetail.dispatching') : t('reviewDetail.dispatchReviews')}
             </Button>
           )}
         </div>
@@ -88,7 +90,7 @@ export default function ReviewsPage() {
         {openInfoRequests.length > 0 && (
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
             <h3 className="text-sm font-semibold text-amber-800 mb-2">
-              {openInfoRequests.length} Open Information Request(s)
+              {openInfoRequests.length} {t('reviewDetail.openInfoRequests')}
             </h3>
             <div className="space-y-2">
               {openInfoRequests.map((ir) => (
@@ -107,17 +109,17 @@ export default function ReviewsPage() {
               className="mt-3 text-sm text-primary-blue hover:underline"
               onClick={() => router.push(`/governance/${requestId}/common-questionnaire`)}
             >
-              Update Common Questionnaire
+              {t('reviewDetail.updateCommonQuestionnaire')}
             </button>
           </div>
         )}
 
         {isLoading ? (
-          <p className="text-text-secondary">Loading reviews...</p>
+          <p className="text-text-secondary">{t('reviewDetail.loadingReviews')}</p>
         ) : !reviews?.data || reviews.data.length === 0 ? (
           <div className="bg-white rounded-lg border border-border-light p-8 text-center">
-            <p className="text-text-secondary">No domain reviews have been created yet.</p>
-            <p className="text-sm text-text-secondary mt-1">Complete scoping and dispatch to create domain reviews.</p>
+            <p className="text-text-secondary">{t('reviewDetail.noReviews')}</p>
+            <p className="text-sm text-text-secondary mt-1">{t('reviewDetail.noReviewsSubtitle')}</p>
           </div>
         ) : (
           <div className="space-y-4">
@@ -144,15 +146,15 @@ export default function ReviewsPage() {
                   </div>
                   <div className="flex items-center gap-3">
                     {review.reviewer && (
-                      <span className="text-sm text-text-secondary">Reviewer: {review.reviewerName || review.reviewer}</span>
+                      <span className="text-sm text-text-secondary">{t('reviewDetail.reviewerLabel')}{review.reviewerName || review.reviewer}</span>
                     )}
                     <Link href={`/governance/${requestId}/reviews/${review.domainCode}`}>
-                      <Button type="default" size="small">View Details</Button>
+                      <Button type="default" size="small">{t('reviewDetail.viewDetails')}</Button>
                     </Link>
                   </div>
                 </div>
                 {review.externalRefId && (
-                  <p className="text-xs text-text-secondary mt-2">External Ref: {review.externalRefId}</p>
+                  <p className="text-xs text-text-secondary mt-2">{t('reviewDetail.externalRef')}{review.externalRefId}</p>
                 )}
               </div>
             ))}
@@ -161,10 +163,10 @@ export default function ReviewsPage() {
 
         <div className="flex justify-between mt-8">
           <Button type="default" onClick={() => router.push(`/governance/${requestId}/common-questionnaire`)}>
-            Back to Questionnaire
+            {t('reviewDetail.backToQuestionnaire')}
           </Button>
           <Button type="primary" style={{ background: '#13C2C2', borderColor: '#13C2C2' }} onClick={() => router.push(`/governance/${requestId}/summary`)}>
-            View Summary
+            {t('reviewDetail.viewSummary')}
           </Button>
         </div>
       </div>

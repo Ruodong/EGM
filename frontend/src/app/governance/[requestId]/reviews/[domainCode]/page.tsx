@@ -2,19 +2,22 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, useRouter } from 'next/navigation';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { api } from '@/lib/api';
 import { useToast } from '@/components/ui/Toast';
 import { PageLayout } from '@/components/layout/PageLayout';
 import { statusColors } from '@/lib/constants';
 import { SectionCard } from '../../../_components/SectionCard';
 import { DomainQuestionnaires } from '../../../_components/DomainQuestionnaires';
+import { type ChangeEntry } from '../../../_components/ChangeHighlight';
+import { ReviewerQuestionnaires, type ReviewerQuestionnairesRef } from '../../../_components/ReviewerQuestionnaires';
 import { ProcessingLogStepper } from '../../../_components/ProcessingLogStepper';
 import { DomainPreviewChip } from '../../../_components/DomainPreviewChip';
 import { ActionItemsSection } from '../../../_components/ActionItemsSection';
 import { AskEgmFloating } from '../../../_components/AskEgmFloating';
 import { AIAnalysisSection } from '../../../_components/AIAnalysisSection';
 import { Button } from 'antd';
+import { useLocale } from '@/lib/locale-context';
 import clsx from 'clsx';
 
 interface ActivityLogEntry {
@@ -91,13 +94,14 @@ function InfoField({ label, value }: { label: string; value: string | null | und
 }
 
 function ReadOnlyRulesDisplay({ ruleCodes }: { ruleCodes: string[] }) {
+  const { t } = useLocale();
   const { data: matrixData, isLoading } = useQuery<MatrixData>({
     queryKey: ['dispatch-rules-matrix'],
     queryFn: () => api.get('/dispatch-rules/matrix'),
   });
 
-  if (isLoading) return <span className="text-xs text-text-secondary">Loading rules...</span>;
-  if (!ruleCodes.length) return <span className="text-sm text-text-secondary">No rules selected</span>;
+  if (isLoading) return <span className="text-xs text-text-secondary">{t('domainReview.loadingRules')}</span>;
+  if (!ruleCodes.length) return <span className="text-sm text-text-secondary">{t('domainReview.noRulesSelected')}</span>;
 
   const ruleMap = new Map(matrixData?.rules.map((r) => [r.ruleCode, r]) || []);
 
@@ -155,6 +159,7 @@ function ReadOnlyRulesDisplay({ ruleCodes }: { ruleCodes: string[] }) {
 }
 
 function ApplicableDomainsDisplay({ ruleCodes }: { ruleCodes: string[] }) {
+  const { t } = useLocale();
   const { data: matrixData, isLoading } = useQuery<MatrixData>({
     queryKey: ['dispatch-rules-matrix'],
     queryFn: () => api.get('/dispatch-rules/matrix'),
@@ -189,10 +194,10 @@ function ApplicableDomainsDisplay({ ruleCodes }: { ruleCodes: string[] }) {
     return matrixData.domains.filter((d) => domainSet.has(d.domainCode));
   }, [ruleCodes, matrixData]);
 
-  if (isLoading) return <span className="text-xs text-text-secondary">Loading domains...</span>;
+  if (isLoading) return <span className="text-xs text-text-secondary">{t('domainReview.loadingDomains')}</span>;
 
   if (triggeredDomains.length === 0) {
-    return <span className="text-xs text-text-secondary italic">No domains triggered</span>;
+    return <span className="text-xs text-text-secondary italic">{t('domainReview.noDomainsTriggered')}</span>;
   }
 
   return (
@@ -211,6 +216,7 @@ export default function DomainReviewDetailPage() {
   const queryClient = useQueryClient();
   const requestId = params.requestId as string;
   const domainCode = params.domainCode as string;
+  const { t } = useLocale();
 
   const [showReturnDialog, setShowReturnDialog] = useState(false);
   const [returnReason, setReturnReason] = useState('');
@@ -218,6 +224,7 @@ export default function DomainReviewDetailPage() {
   const [exceptionNotes, setExceptionNotes] = useState('');
   const [showNotPassDialog, setShowNotPassDialog] = useState(false);
   const [notPassNotes, setNotPassNotes] = useState('');
+  const reviewerQRef = useRef<ReviewerQuestionnairesRef>(null);
 
   // Get all reviews for this request, then find the one for this domain
   const { data: reviews } = useQuery<{ data: DomainReview[] }>({
@@ -243,17 +250,25 @@ export default function DomainReviewDetailPage() {
   // Show all request-level and domain-level activity (no domain filtering)
   const activityLog: ActivityLogEntry[] = activityLogData?.data ?? [];
 
+  // Fetch changelog for questionnaire change indicators
+  const { data: changelogData } = useQuery<{ data: ChangeEntry[] }>({
+    queryKey: ['changelog', requestId],
+    queryFn: () => api.get(`/governance-requests/${requestId}/changelog`),
+    enabled: !!requestId,
+  });
+  const changelog: ChangeEntry[] = changelogData?.data ?? [];
+
   const returnMutation = useMutation({
     mutationFn: (reason: string) => api.put(`/domain-reviews/${review?.id}/return`, { reason }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['domain-reviews', requestId] });
       queryClient.invalidateQueries({ queryKey: ['governance-request', requestId] });
       queryClient.invalidateQueries({ queryKey: ['activity-log', requestId] });
-      toast('Request returned to requestor', 'success');
+      toast(t('domainReview.requestReturned'), 'success');
       setShowReturnDialog(false);
       setReturnReason('');
     },
-    onError: () => toast('Failed to return request', 'error'),
+    onError: () => toast(t('domainReview.failedReturn'), 'error'),
   });
 
   const acceptMutation = useMutation({
@@ -262,9 +277,9 @@ export default function DomainReviewDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['domain-reviews', requestId] });
       queryClient.invalidateQueries({ queryKey: ['governance-request', requestId] });
       queryClient.invalidateQueries({ queryKey: ['activity-log', requestId] });
-      toast('Request accepted', 'success');
+      toast(t('domainReview.requestAccepted'), 'success');
     },
-    onError: () => toast('Failed to accept request', 'error'),
+    onError: () => toast(t('domainReview.failedAccept'), 'error'),
   });
 
   const approveMutation = useMutation({
@@ -273,9 +288,9 @@ export default function DomainReviewDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['domain-reviews', requestId] });
       queryClient.invalidateQueries({ queryKey: ['governance-request', requestId] });
       queryClient.invalidateQueries({ queryKey: ['activity-log', requestId] });
-      toast('Review approved', 'success');
+      toast(t('domainReview.reviewApproved'), 'success');
     },
-    onError: () => toast('Failed to approve review', 'error'),
+    onError: () => toast(t('domainReview.failedApprove'), 'error'),
   });
 
   const approveWithExceptionMutation = useMutation({
@@ -284,11 +299,11 @@ export default function DomainReviewDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['domain-reviews', requestId] });
       queryClient.invalidateQueries({ queryKey: ['governance-request', requestId] });
       queryClient.invalidateQueries({ queryKey: ['activity-log', requestId] });
-      toast('Review approved with exception', 'success');
+      toast(t('domainReview.approvedWithExceptionSuccess'), 'success');
       setShowExceptionDialog(false);
       setExceptionNotes('');
     },
-    onError: () => toast('Failed to approve review', 'error'),
+    onError: () => toast(t('domainReview.failedApprove'), 'error'),
   });
 
   const notPassMutation = useMutation({
@@ -297,18 +312,18 @@ export default function DomainReviewDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['domain-reviews', requestId] });
       queryClient.invalidateQueries({ queryKey: ['governance-request', requestId] });
       queryClient.invalidateQueries({ queryKey: ['activity-log', requestId] });
-      toast('Review marked as not passed', 'success');
+      toast(t('domainReview.reviewNotPassed'), 'success');
       setShowNotPassDialog(false);
       setNotPassNotes('');
     },
-    onError: () => toast('Failed to update review', 'error'),
+    onError: () => toast(t('domainReview.failedNotPass'), 'error'),
   });
 
   if (!review) {
     return (
       <PageLayout>
         <div className="max-w-4xl mx-auto">
-          <p className="text-text-secondary">Loading review for {domainCode}...</p>
+          <p className="text-text-secondary">{t('domainReview.loadingReview')} {domainCode}...</p>
         </div>
       </PageLayout>
     );
@@ -320,7 +335,7 @@ export default function DomainReviewDetailPage() {
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-xl font-bold">{review.domainName || review.domainCode} Review</h1>
+            <h1 className="text-xl font-bold">{review.domainName || review.domainCode} {t('domainReview.review')}</h1>
             <p className="text-sm text-text-secondary mt-0.5">
               {requestId} {govRequest?.projectName ? `· ${govRequest.projectName}` : ''}
             </p>
@@ -341,7 +356,7 @@ export default function DomainReviewDetailPage() {
                 style={{ background: '#f59e0b', borderColor: '#f59e0b', color: '#fff' }}
                 onClick={() => setShowReturnDialog(true)}
               >
-                Return to Requestor
+                {t('domainReview.returnToRequestor')}
               </Button>
               <Button
                 type="primary"
@@ -349,7 +364,7 @@ export default function DomainReviewDetailPage() {
                 onClick={() => acceptMutation.mutate()}
                 disabled={acceptMutation.isPending}
               >
-                {acceptMutation.isPending ? 'Accepting...' : 'Accept Request'}
+                {acceptMutation.isPending ? t('domainReview.accepting') : t('domainReview.acceptRequest')}
               </Button>
             </div>
           )}
@@ -359,27 +374,27 @@ export default function DomainReviewDetailPage() {
         {showReturnDialog && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
-              <h3 className="text-lg font-semibold mb-2">Return to Requestor</h3>
+              <h3 className="text-lg font-semibold mb-2">{t('domainReview.returnToRequestor')}</h3>
               <p className="text-sm text-text-secondary mb-4">
-                Please provide a reason for returning this request. The requestor will be notified and can update the submission.
+                {t('domainReview.returnReason')}
               </p>
               <textarea
                 className="input-field w-full h-28 resize-none"
-                placeholder="Enter the reason or information needed from the requestor..."
+                placeholder={t('domainReview.returnPlaceholder')}
                 value={returnReason}
                 onChange={(e) => setReturnReason(e.target.value)}
                 autoFocus
               />
               <div className="flex justify-end gap-2 mt-4">
                 <Button type="default" onClick={() => { setShowReturnDialog(false); setReturnReason(''); }}>
-                  Cancel
+                  {t('common.cancel')}
                 </Button>
                 <Button
                   style={{ background: '#f59e0b', borderColor: '#f59e0b', color: '#fff' }}
                   onClick={() => returnMutation.mutate(returnReason)}
                   disabled={!returnReason.trim() || returnMutation.isPending}
                 >
-                  {returnMutation.isPending ? 'Submitting...' : 'Confirm Return'}
+                  {returnMutation.isPending ? t('domainReview.submitting') : t('domainReview.confirmReturn')}
                 </Button>
               </div>
             </div>
@@ -389,8 +404,8 @@ export default function DomainReviewDetailPage() {
         {review.commonDataUpdatedAt && (
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
             <p className="text-sm text-blue-800">
-              Common questionnaire data was updated on {new Date(review.commonDataUpdatedAt).toLocaleString()}.
-              Review the changes before continuing.
+              {t('domainReview.dataUpdatedOn')}{new Date(review.commonDataUpdatedAt).toLocaleString()}.
+              {' '}{t('domainReview.reviewChanges')}
             </p>
           </div>
         )}
@@ -407,7 +422,7 @@ export default function DomainReviewDetailPage() {
         {/* Applicable Domains */}
         {govRequest && govRequest.status !== 'Draft' && (
           <div className="bg-white rounded-lg border border-border-light p-4 mb-4">
-            <label className="block text-sm font-medium mb-2 text-text-secondary">Applicable Domains</label>
+            <label className="block text-sm font-medium mb-2 text-text-secondary">{t('domainReview.applicableDomains')}</label>
             <ApplicableDomainsDisplay ruleCodes={govRequest.ruleCodes || []} />
           </div>
         )}
@@ -415,47 +430,47 @@ export default function DomainReviewDetailPage() {
         <div className="space-y-4">
           {/* Governance Scope Determination (read-only) */}
           {govRequest && (
-            <SectionCard title="Governance Scope Determination" subtitle="Compliance rules selected by requestor">
+            <SectionCard title={t('domainReview.scopeDetermination')} subtitle={t('domainReview.scopeSubtitle')}>
               <ReadOnlyRulesDisplay ruleCodes={govRequest.ruleCodes || []} />
             </SectionCard>
           )}
 
           {/* Requestor Information (read-only) */}
           {govRequest && (
-            <SectionCard title="Requestor Information" defaultOpen>
+            <SectionCard title={t('domainReview.requestorInfo')} defaultOpen>
               <div className="grid grid-cols-2 gap-4">
-                <InfoField label="IT Code" value={govRequest.requestor} />
-                <InfoField label="Name" value={govRequest.requestorName} />
-                <InfoField label="Email Address" value={govRequest.requestorEmail} />
-                <InfoField label="Line Manager" value={govRequest.requestorManagerName} />
-                <InfoField label="T1 Organization" value={govRequest.requestorTier1Org} />
-                <InfoField label="T2 Organization" value={govRequest.requestorTier2Org} />
+                <InfoField label={t('domainReview.itCode')} value={govRequest.requestor} />
+                <InfoField label={t('common.name')} value={govRequest.requestorName} />
+                <InfoField label={t('domainReview.emailAddress')} value={govRequest.requestorEmail} />
+                <InfoField label={t('domainReview.lineManager')} value={govRequest.requestorManagerName} />
+                <InfoField label={t('domainReview.t1Org')} value={govRequest.requestorTier1Org} />
+                <InfoField label={t('domainReview.t2Org')} value={govRequest.requestorTier2Org} />
               </div>
             </SectionCard>
           )}
 
           {/* Project Information (inherited from governance request) */}
           {govRequest && (
-            <SectionCard title="Project Information" subtitle="Inherited from governance request" defaultOpen={false}>
+            <SectionCard title={t('domainReview.projectInfo')} subtitle={t('domainReview.inheritedInfo')} defaultOpen={false}>
               <div className="grid grid-cols-2 gap-4">
-                <InfoField label="Request ID" value={govRequest.requestId} />
-                <InfoField label="Requestor" value={govRequest.requestorName || govRequest.requestor} />
-                <InfoField label="Project Type" value={govRequest.govProjectType} />
-                <InfoField label="Business Unit" value={govRequest.businessUnit} />
-                <InfoField label="Project Mode" value={govRequest.projectType === 'mspo' ? 'MSPO Project' : 'Non-MSPO Project'} />
-                <InfoField label="Project Name" value={govRequest.projectName} />
+                <InfoField label={t('col.requestId')} value={govRequest.requestId} />
+                <InfoField label={t('col.requestor')} value={govRequest.requestorName || govRequest.requestor} />
+                <InfoField label={t('govCreate.projectType')} value={govRequest.govProjectType} />
+                <InfoField label={t('govCreate.businessUnit')} value={govRequest.businessUnit} />
+                <InfoField label={t('domainReview.projectMode')} value={govRequest.projectType === 'mspo' ? t('govCreate.mspoProject') : t('govCreate.nonMspoProject')} />
+                <InfoField label={t('col.projectName')} value={govRequest.projectName} />
                 {govRequest.projectType === 'non_mspo' && (
                   <>
-                    <InfoField label="Project Code" value={govRequest.projectCode} />
-                    <InfoField label="Project Manager" value={govRequest.projectPm} />
-                    <InfoField label="Start Date" value={govRequest.projectStartDate} />
-                    <InfoField label="Go-Live Date" value={govRequest.projectGoLiveDate} />
-                    {govRequest.projectEndDate && <InfoField label="End Date" value={govRequest.projectEndDate} />}
+                    <InfoField label={t('govCreate.projectCode')} value={govRequest.projectCode} />
+                    <InfoField label={t('govCreate.projectManager')} value={govRequest.projectPm} />
+                    <InfoField label={t('govCreate.startDate')} value={govRequest.projectStartDate} />
+                    <InfoField label={t('govCreate.goLiveDate')} value={govRequest.projectGoLiveDate} />
+                    {govRequest.projectEndDate && <InfoField label={t('govCreate.endDate')} value={govRequest.projectEndDate} />}
                   </>
                 )}
                 {govRequest.projectDescription && (
                   <div className="col-span-2">
-                    <InfoField label="Description" value={govRequest.projectDescription} />
+                    <InfoField label={t('common.description')} value={govRequest.projectDescription} />
                   </div>
                 )}
               </div>
@@ -464,12 +479,12 @@ export default function DomainReviewDetailPage() {
 
           {/* Business & Product Information */}
           {govRequest && (
-            <SectionCard title="Business & Product Information" defaultOpen={false}>
+            <SectionCard title={t('domainReview.businessProductInfo')} defaultOpen={false}>
               <div className="grid grid-cols-2 gap-4">
-                <InfoField label="Product/Software Type" value={govRequest.productSoftwareType === 'Other' ? `Other: ${govRequest.productSoftwareTypeOther}` : govRequest.productSoftwareType} />
-                <InfoField label="Third-party Vendor" value={govRequest.thirdPartyVendor} />
+                <InfoField label={t('govCreate.productType')} value={govRequest.productSoftwareType === 'Other' ? `${t('domainReview.otherPrefix')}${govRequest.productSoftwareTypeOther}` : govRequest.productSoftwareType} />
+                <InfoField label={t('domainReview.thirdPartyVendor')} value={govRequest.thirdPartyVendor} />
                 <div>
-                  <label className="text-xs text-text-secondary">Product End User</label>
+                  <label className="text-xs text-text-secondary">{t('domainReview.productEndUser')}</label>
                   <div className="flex flex-wrap gap-1 mt-0.5">
                     {govRequest.productEndUser?.length ? govRequest.productEndUser.map((u) => (
                       <span key={u} className="text-xs bg-gray-100 px-2 py-0.5 rounded">{u}</span>
@@ -477,7 +492,7 @@ export default function DomainReviewDetailPage() {
                   </div>
                 </div>
                 <div>
-                  <label className="text-xs text-text-secondary">User Region</label>
+                  <label className="text-xs text-text-secondary">{t('domainReview.userRegion')}</label>
                   <div className="flex flex-wrap gap-1 mt-0.5">
                     {govRequest.userRegion?.length ? govRequest.userRegion.map((r) => (
                       <span key={r} className="text-xs bg-gray-100 px-2 py-0.5 rounded">{r}</span>
@@ -489,9 +504,21 @@ export default function DomainReviewDetailPage() {
           )}
 
           {/* Domain Questionnaire Answers (read-only) */}
-          <SectionCard title="Domain Questionnaire" subtitle={`Answers submitted by the requestor for ${review.domainName || review.domainCode}`} defaultOpen>
-            <DomainQuestionnaires requestId={requestId} readOnly />
+          <SectionCard title={t('domainReview.domainQuestionnaire')} subtitle={`${t('domainReview.answersSubmittedBy')}${review.domainName || review.domainCode}`} defaultOpen>
+            <DomainQuestionnaires requestId={requestId} readOnly changelog={changelog} />
           </SectionCard>
+
+          {/* Reviewer Questionnaire */}
+          {review && review.status === 'Accept' && (
+            <SectionCard title={t('domainReview.reviewerQuestionnaire')} subtitle={t('domainReview.reviewerQSubtitle')} defaultOpen>
+              <ReviewerQuestionnaires ref={reviewerQRef} domainReviewId={review.id} />
+            </SectionCard>
+          )}
+          {review && ['Approved', 'Approved with Exception', 'Not Passed'].includes(review.status) && (
+            <SectionCard title={t('domainReview.reviewerQuestionnaire')} subtitle={t('domainReview.reviewerQSubtitle')} defaultOpen>
+              <ReviewerQuestionnaires domainReviewId={review.id} readOnly />
+            </SectionCard>
+          )}
 
           {/* AI Analysis — between Questionnaire and Activity Log */}
           {review && (
@@ -500,15 +527,15 @@ export default function DomainReviewDetailPage() {
 
           {/* Activity Log */}
           {activityLog.length > 0 && (
-            <SectionCard title="Activity Log" subtitle={`${activityLog.length} event(s) recorded`} defaultOpen={false}>
+            <SectionCard title={t('domainReview.activityLog')} subtitle={`${activityLog.length} ${t('domainReview.eventsRecorded')}`} defaultOpen={false}>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border-light text-left text-text-secondary">
-                      <th className="pb-2 pr-4 font-medium">Action</th>
-                      <th className="pb-2 pr-4 font-medium">User</th>
-                      <th className="pb-2 pr-4 font-medium">Time</th>
-                      <th className="pb-2 font-medium">Details</th>
+                      <th className="pb-2 pr-4 font-medium">{t('domainReview.actionCol')}</th>
+                      <th className="pb-2 pr-4 font-medium">{t('domainReview.userCol')}</th>
+                      <th className="pb-2 pr-4 font-medium">{t('domainReview.timeCol')}</th>
+                      <th className="pb-2 font-medium">{t('domainReview.detailsCol')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -549,29 +576,59 @@ export default function DomainReviewDetailPage() {
         {/* Review Action Buttons — Accept status: terminal actions */}
         {review.status === 'Accept' && (
           <div className="bg-white rounded-lg border border-border-light p-6 mt-4">
-            <h2 className="text-base font-semibold mb-3">Review Decision</h2>
-            <p className="text-sm text-text-secondary mb-4">Select a final outcome for this domain review.</p>
+            <h2 className="text-base font-semibold mb-3">{t('domainReview.reviewDecision')}</h2>
+            <p className="text-sm text-text-secondary mb-4">{t('domainReview.selectOutcome')}</p>
             <div className="flex gap-2">
               <Button
                 type="primary"
                 style={{ background: '#52c41a', borderColor: '#52c41a' }}
-                onClick={() => approveMutation.mutate()}
+                onClick={async () => {
+                  if (reviewerQRef.current) {
+                    await reviewerQRef.current.flushPendingSaves();
+                    const incomplete = reviewerQRef.current.getIncompleteCount();
+                    if (incomplete > 0) {
+                      toast(t('domainReview.answerRequiredQuestions'), 'error');
+                      return;
+                    }
+                  }
+                  approveMutation.mutate();
+                }}
                 disabled={approveMutation.isPending}
               >
-                {approveMutation.isPending ? 'Approving...' : 'Approve'}
+                {approveMutation.isPending ? t('domainReview.approving') : t('domainReview.approve')}
               </Button>
               <Button
                 style={{ background: '#f59e0b', borderColor: '#f59e0b', color: '#fff' }}
-                onClick={() => setShowExceptionDialog(true)}
+                onClick={async () => {
+                  if (reviewerQRef.current) {
+                    await reviewerQRef.current.flushPendingSaves();
+                    const incomplete = reviewerQRef.current.getIncompleteCount();
+                    if (incomplete > 0) {
+                      toast(t('domainReview.answerRequiredQuestions'), 'error');
+                      return;
+                    }
+                  }
+                  setShowExceptionDialog(true);
+                }}
               >
-                Approve with Exception
+                {t('domainReview.approveWithException')}
               </Button>
               <Button
                 danger
                 type="primary"
-                onClick={() => setShowNotPassDialog(true)}
+                onClick={async () => {
+                  if (reviewerQRef.current) {
+                    await reviewerQRef.current.flushPendingSaves();
+                    const incomplete = reviewerQRef.current.getIncompleteCount();
+                    if (incomplete > 0) {
+                      toast(t('domainReview.answerRequiredQuestions'), 'error');
+                      return;
+                    }
+                  }
+                  setShowNotPassDialog(true);
+                }}
               >
-                Not Pass
+                {t('domainReview.notPass')}
               </Button>
             </div>
           </div>
@@ -580,7 +637,7 @@ export default function DomainReviewDetailPage() {
         {/* Return for Additional Information banner */}
         {review.status === 'Return for Additional Information' && review.returnReason && (
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mt-4">
-            <h3 className="text-sm font-semibold text-amber-800 mb-1">Returned for Additional Information</h3>
+            <h3 className="text-sm font-semibold text-amber-800 mb-1">{t('domainReview.returnedForInfo')}</h3>
             <p className="text-sm text-amber-700">{review.returnReason}</p>
           </div>
         )}
@@ -589,27 +646,27 @@ export default function DomainReviewDetailPage() {
         {showExceptionDialog && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
-              <h3 className="text-lg font-semibold mb-2">Approve with Exception</h3>
+              <h3 className="text-lg font-semibold mb-2">{t('domainReview.approveWithException')}</h3>
               <p className="text-sm text-text-secondary mb-4">
-                Please describe the exception or conditions for this approval.
+                {t('domainReview.exceptionNotes')}
               </p>
               <textarea
                 className="input-field w-full h-28 resize-none"
-                placeholder="Enter exception notes..."
+                placeholder={t('domainReview.exceptionPlaceholder')}
                 value={exceptionNotes}
                 onChange={(e) => setExceptionNotes(e.target.value)}
                 autoFocus
               />
               <div className="flex justify-end gap-2 mt-4">
                 <Button type="default" onClick={() => { setShowExceptionDialog(false); setExceptionNotes(''); }}>
-                  Cancel
+                  {t('common.cancel')}
                 </Button>
                 <Button
                   style={{ background: '#f59e0b', borderColor: '#f59e0b', color: '#fff' }}
                   onClick={() => approveWithExceptionMutation.mutate(exceptionNotes)}
                   disabled={!exceptionNotes.trim() || approveWithExceptionMutation.isPending}
                 >
-                  {approveWithExceptionMutation.isPending ? 'Submitting...' : 'Confirm'}
+                  {approveWithExceptionMutation.isPending ? t('domainReview.submitting') : t('common.confirm')}
                 </Button>
               </div>
             </div>
@@ -620,20 +677,20 @@ export default function DomainReviewDetailPage() {
         {showNotPassDialog && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
-              <h3 className="text-lg font-semibold mb-2">Not Pass</h3>
+              <h3 className="text-lg font-semibold mb-2">{t('domainReview.notPass')}</h3>
               <p className="text-sm text-text-secondary mb-4">
-                Please provide the reason for not passing this review.
+                {t('domainReview.notPassReason')}
               </p>
               <textarea
                 className="input-field w-full h-28 resize-none"
-                placeholder="Enter reason..."
+                placeholder={t('domainReview.notPassPlaceholder')}
                 value={notPassNotes}
                 onChange={(e) => setNotPassNotes(e.target.value)}
                 autoFocus
               />
               <div className="flex justify-end gap-2 mt-4">
                 <Button type="default" onClick={() => { setShowNotPassDialog(false); setNotPassNotes(''); }}>
-                  Cancel
+                  {t('common.cancel')}
                 </Button>
                 <Button
                   danger
@@ -641,7 +698,7 @@ export default function DomainReviewDetailPage() {
                   onClick={() => notPassMutation.mutate(notPassNotes)}
                   disabled={notPassMutation.isPending}
                 >
-                  {notPassMutation.isPending ? 'Submitting...' : 'Confirm Not Pass'}
+                  {notPassMutation.isPending ? t('domainReview.submitting') : t('domainReview.confirmNotPass')}
                 </Button>
               </div>
             </div>
@@ -650,7 +707,7 @@ export default function DomainReviewDetailPage() {
 
         <div className="flex justify-between mt-6 pb-8">
           <Button type="default" onClick={() => router.push('/reviews')}>
-            Back to Reviews
+            {t('reviewDetail.backToReviews')}
           </Button>
         </div>
       </div>

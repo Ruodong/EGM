@@ -8,6 +8,7 @@ import { Button, Input, Tag, Typography } from 'antd';
 import { SearchOutlined, UndoOutlined } from '@ant-design/icons';
 import DataTable, { type Column } from '@/components/shared/DataTable';
 import MultiSelect, { type MultiSelectOption } from '@/components/shared/MultiSelect';
+import { useLocale } from '@/lib/locale-context';
 
 const { Title, Text } = Typography;
 
@@ -57,13 +58,6 @@ const ACTION_TYPE_HEX: Record<string, string> = {
   'Long Term': '#13C2C2',
 };
 
-const STATUS_OPTIONS: MultiSelectOption[] = [
-  { value: 'Created', label: 'Created' },
-  { value: 'Assigned', label: 'Assigned' },
-  { value: 'Closed', label: 'Closed' },
-  { value: 'Cancelled', label: 'Cancelled' },
-];
-
 interface AppliedFilters {
   search: string;
   status: string;
@@ -77,6 +71,15 @@ const INITIAL_FILTERS: AppliedFilters = {
 };
 
 export default function ActionsPage() {
+  const { t } = useLocale();
+
+  const STATUS_OPTIONS: MultiSelectOption[] = [
+    { value: 'Created', label: t('actionStatus.created') },
+    { value: 'Assigned', label: t('actionStatus.assigned') },
+    { value: 'Closed', label: t('actionStatus.closed') },
+    { value: 'Cancelled', label: t('actionStatus.cancelled') },
+  ];
+
   const [sortField, setSortField] = useState('create_at');
   const [sortOrder, setSortOrder] = useState<'ASC' | 'DESC'>('DESC');
 
@@ -160,7 +163,7 @@ export default function ActionsPage() {
   const columns: Column<ActionItem>[] = [
     {
       key: 'gov_request_id',
-      label: 'Request ID',
+      label: t('col.requestId'),
       sortable: true,
       render: (r) => (
         <Link
@@ -174,7 +177,7 @@ export default function ActionsPage() {
     },
     {
       key: 'title',
-      label: 'Action Title',
+      label: t('col.actionTitle'),
       sortable: true,
       render: (r) => (
         <span title={r.title}>
@@ -185,14 +188,14 @@ export default function ActionsPage() {
     },
     {
       key: 'domain',
-      label: 'Domain',
+      label: t('col.domain'),
       sortable: true,
       render: (r) => <span className="font-medium">{r.domainName || r.domainCode}</span>,
       exportValue: (r) => r.domainName || r.domainCode,
     },
     {
       key: 'priority',
-      label: 'Priority',
+      label: t('col.priority'),
       sortable: true,
       render: (r) => (
         <Tag color={PRIORITY_HEX[r.priority] || '#6B7280'}>{r.priority}</Tag>
@@ -201,7 +204,7 @@ export default function ActionsPage() {
     },
     {
       key: 'action_type',
-      label: 'Type',
+      label: t('common.type'),
       render: (r) => (
         <Tag color={ACTION_TYPE_HEX[r.actionType] || '#8C8C8C'}>{r.actionType}</Tag>
       ),
@@ -209,7 +212,7 @@ export default function ActionsPage() {
     },
     {
       key: 'status',
-      label: 'Status',
+      label: t('col.status'),
       sortable: true,
       render: (r) => (
         <Tag color={ACTION_STATUS_HEX[r.status] || '#8C8C8C'}>{r.status}</Tag>
@@ -218,14 +221,14 @@ export default function ActionsPage() {
     },
     {
       key: 'assignee',
-      label: 'Assignee',
+      label: t('col.assignee'),
       sortable: true,
       render: (r) => <>{r.assigneeName || r.assignee || '-'}</>,
       exportValue: (r) => r.assigneeName || r.assignee || '',
     },
     {
       key: 'create_at',
-      label: 'Created',
+      label: t('col.created'),
       sortable: true,
       render: (r) => (
         <Text type="secondary">
@@ -238,13 +241,13 @@ export default function ActionsPage() {
 
   return (
     <div>
-      <Title level={4} style={{ margin: 0, marginBottom: 16 }}>Review Actions</Title>
+      <Title level={4} style={{ margin: 0, marginBottom: 16 }}>{t('actions.title')}</Title>
 
       <div className="border border-border-light rounded-lg px-3 py-2.5 mb-3">
         {/* Row 1 */}
         <div className="flex flex-wrap items-center gap-2 mb-2">
           <Input
-            placeholder="Action Title / Request ID / Assignee"
+            placeholder={t('actions.searchPlaceholder')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             onPressEnter={handleSearch}
@@ -256,7 +259,7 @@ export default function ActionsPage() {
             options={STATUS_OPTIONS}
             selected={statusFilter}
             onChange={setStatusFilter}
-            placeholder="Status"
+            placeholder={t('col.status')}
             size="small"
           />
         </div>
@@ -266,14 +269,14 @@ export default function ActionsPage() {
             options={domainOptions}
             selected={domainFilter}
             onChange={setDomainFilter}
-            placeholder="Domain"
+            placeholder={t('col.domain')}
             size="small"
           />
           <Button type="primary" size="small" icon={<SearchOutlined />} onClick={handleSearch}>
-            Search
+            {t('common.search')}
           </Button>
           <Button size="small" icon={<UndoOutlined />} onClick={handleReset}>
-            Reset
+            {t('common.reset')}
           </Button>
         </div>
       </div>

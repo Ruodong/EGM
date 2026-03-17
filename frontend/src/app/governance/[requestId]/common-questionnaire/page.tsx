@@ -7,6 +7,7 @@ import { api } from '@/lib/api';
 import { useToast } from '@/components/ui/Toast';
 import { PageLayout } from '@/components/layout/PageLayout';
 import { Button } from 'antd';
+import { useLocale } from '@/lib/locale-context';
 
 interface Template {
   id: string;
@@ -45,6 +46,7 @@ export default function CommonQuestionnairePage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const requestId = params.requestId as string;
+  const { t } = useLocale();
 
   const [answers, setAnswers] = useState<Record<string, any>>({});
   const [showChangelog, setShowChangelog] = useState(false);
@@ -85,9 +87,9 @@ export default function CommonQuestionnairePage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['intake-responses', requestId] });
-      toast('Questionnaire saved', 'success');
+      toast(t('commonQ.questionnaireSaved'), 'success');
     },
-    onError: () => toast('Failed to save', 'error'),
+    onError: () => toast(t('commonQ.failedSave'), 'error'),
   });
 
   const handleSaveAndContinue = async () => {
@@ -105,22 +107,22 @@ export default function CommonQuestionnairePage() {
       <div className="max-w-3xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-xl font-bold">Common Questionnaire</h1>
+            <h1 className="text-xl font-bold">{t('commonQ.title')}</h1>
             <p className="text-sm text-text-secondary mt-1">
-              Provide project information shared across all domain reviews.
+              {t('commonQ.subtitle')}
             </p>
           </div>
           <button
             className="text-sm text-primary-blue hover:underline"
             onClick={() => setShowChangelog(!showChangelog)}
           >
-            {showChangelog ? 'Hide' : 'Show'} Change History
+            {showChangelog ? t('commonQ.hideChangeHistory') : t('commonQ.showChangeHistory')}
           </button>
         </div>
 
         {showChangelog && changelog?.data && changelog.data.length > 0 && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
-            <h3 className="text-sm font-semibold mb-2">Change History</h3>
+            <h3 className="text-sm font-semibold mb-2">{t('commonQ.changeHistory')}</h3>
             <div className="space-y-2 text-sm max-h-48 overflow-y-auto">
               {changelog.data.map((c) => (
                 <div key={c.id} className="flex justify-between items-start border-b border-yellow-200 pb-2">
@@ -158,7 +160,7 @@ export default function CommonQuestionnairePage() {
                       value={answers[q.id] || ''}
                       onChange={(e) => setAnswers({ ...answers, [q.id]: e.target.value })}
                     >
-                      <option value="">-- Select --</option>
+                      <option value="">{t('govCreate.selectOption')}</option>
                       {q.options.map((opt) => (
                         <option key={opt} value={opt}>{opt}</option>
                       ))}
@@ -185,7 +187,7 @@ export default function CommonQuestionnairePage() {
 
         <div className="flex justify-between mt-6">
           <Button type="default" onClick={() => router.push(`/governance/${requestId}/scoping`)}>
-            Back to Scoping
+            {t('commonQ.backToScoping')}
           </Button>
           <div className="flex gap-3">
             <Button
@@ -193,7 +195,7 @@ export default function CommonQuestionnairePage() {
               disabled={saveMutation.isPending}
               onClick={() => saveMutation.mutate()}
             >
-              Save Draft
+              {t('scoping.saveDraft')}
             </Button>
             <Button
               type="primary"
@@ -201,7 +203,7 @@ export default function CommonQuestionnairePage() {
               disabled={saveMutation.isPending}
               onClick={handleSaveAndContinue}
             >
-              {saveMutation.isPending ? 'Saving...' : 'Save & Continue'}
+              {saveMutation.isPending ? t('common.saving') : t('scoping.saveContinue')}
             </Button>
           </div>
         </div>

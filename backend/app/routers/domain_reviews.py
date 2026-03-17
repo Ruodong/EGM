@@ -8,6 +8,7 @@ New state machine (2026-03-14):
 """
 from __future__ import annotations
 
+import logging
 from datetime import date as dt_date, timedelta
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,9 +19,37 @@ from app.utils.pagination import PaginationParams, paginated_response
 from app.utils.audit import write_audit
 from app.auth import require_permission, get_current_user, AuthUser, Role
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
 
 TERMINAL_STATUSES = ("Approved", "Approved with Exception", "Not Passed")
+
+
+async def _check_reviewer_questionnaire_complete(db: AsyncSession, review_id: str, domain_code: str):
+    """Check that all required reviewer questionnaire questions are answered.
+    Raises HTTP 400 if any required questions are unanswered.
+    """
+    required_templates = (await db.execute(text(
+        "SELECT id FROM domain_questionnaire_template "
+        "WHERE domain_code = :dc AND is_active = true AND audience = 'reviewer' AND is_required = true"
+    ), {"dc": domain_code})).mappings().all()
+
+    if not required_templates:
+        return  # No required reviewer questions
+
+    answered_ids = (await db.execute(text(
+        "SELECT template_id FROM domain_questionnaire_response "
+        "WHERE domain_review_id = :rid AND answer IS NOT NULL"
+    ), {"rid": review_id})).scalars().all()
+    answered_set = {str(a) for a in answered_ids}
+
+    missing = [str(t["id"]) for t in required_templates if str(t["id"]) not in answered_set]
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Please answer all required reviewer questions before proceeding ({len(missing)} unanswered)"
+        )
 
 
 async def _check_domain_write_access(user: AuthUser, review_row: dict, allow_governance_lead: bool = True):
@@ -338,7 +367,7 @@ async def resubmit_review(review_id: str, body: dict = {}, user: AuthUser = Depe
                       new_value={"domainCode": row["domain_code"]})
     await db.commit()
 
-    # Schedule AI review analysis as background task (non-blocking)
+    # Schedule AI review analysis as background task (non-blocking, observable)
     import asyncio
     try:
         from app.services.ai_review_analysis import run_analysis
@@ -348,12 +377,15 @@ async def resubmit_review(review_id: str, body: dict = {}, user: AuthUser = Depe
             async with AsyncSessionLocal() as bg_db:
                 try:
                     await run_analysis(bg_db, rid, "resubmit", trigger_by)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(
+                        "Background AI analysis failed for review %s on resubmit: %s",
+                        rid, e,
+                    )
 
         asyncio.create_task(_run_bg_resubmit(review_id, user.id))
-    except Exception:
-        pass  # LLM not configured or import failure
+    except Exception as e:
+        logger.warning("Failed to schedule AI analysis on resubmit: %s", e)
 
     return _map(dict(row))
 
@@ -369,6 +401,7 @@ async def approve_review(review_id: str, body: dict = {}, user: AuthUser = Depen
     if existing["status"] != "Accept":
         raise HTTPException(status_code=400, detail="Review must be in 'Accept' status to approve")
     await _check_domain_write_access(user, dict(existing), allow_governance_lead=False)
+    await _check_reviewer_questionnaire_complete(db, review_id, existing["domain_code"])
 
     row = (await db.execute(text(
         "UPDATE domain_review SET status = 'Approved', "
@@ -394,6 +427,7 @@ async def approve_with_exception(review_id: str, body: dict = {}, user: AuthUser
     if existing["status"] != "Accept":
         raise HTTPException(status_code=400, detail="Review must be in 'Accept' status to approve with exception")
     await _check_domain_write_access(user, dict(existing), allow_governance_lead=False)
+    await _check_reviewer_questionnaire_complete(db, review_id, existing["domain_code"])
 
     row = (await db.execute(text(
         "UPDATE domain_review SET status = 'Approved with Exception', "
@@ -419,6 +453,7 @@ async def not_pass_review(review_id: str, body: dict = {}, user: AuthUser = Depe
     if existing["status"] != "Accept":
         raise HTTPException(status_code=400, detail="Review must be in 'Accept' status to mark as not passed")
     await _check_domain_write_access(user, dict(existing), allow_governance_lead=False)
+    await _check_reviewer_questionnaire_complete(db, review_id, existing["domain_code"])
 
     row = (await db.execute(text(
         "UPDATE domain_review SET status = 'Not Passed', "

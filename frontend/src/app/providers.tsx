@@ -4,8 +4,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState } from 'react';
 import { ToastProvider } from '@/components/ui/Toast';
 import { AuthProvider } from '@/lib/auth-context';
+import { LocaleProvider, useLocale } from '@/lib/locale-context';
 import { AntdRegistry } from '@ant-design/nextjs-registry';
 import { ConfigProvider } from 'antd';
+import enUS from 'antd/locale/en_US';
+import zhCN from 'antd/locale/zh_CN';
 
 const antdTheme = {
   token: {
@@ -20,6 +23,17 @@ const antdTheme = {
     fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif",
   },
 };
+
+function AntdConfigured({ children }: { children: React.ReactNode }) {
+  const { locale } = useLocale();
+  return (
+    <AntdRegistry>
+      <ConfigProvider theme={antdTheme} locale={locale === 'zh' ? zhCN : enUS}>
+        {children}
+      </ConfigProvider>
+    </AntdRegistry>
+  );
+}
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -37,13 +51,13 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <ToastProvider>
-          <AntdRegistry>
-            <ConfigProvider theme={antdTheme}>
+        <LocaleProvider>
+          <ToastProvider>
+            <AntdConfigured>
               {children}
-            </ConfigProvider>
-          </AntdRegistry>
-        </ToastProvider>
+            </AntdConfigured>
+          </ToastProvider>
+        </LocaleProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef } from 'react';
+import { useLocale } from '@/lib/locale-context';
 
 interface FileUploadProps {
   files: File[];
@@ -8,6 +9,7 @@ interface FileUploadProps {
 }
 
 export function FileUpload({ files, onChange }: FileUploadProps) {
+  const { t } = useLocale();
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -31,7 +33,7 @@ export function FileUpload({ files, onChange }: FileUploadProps) {
 
   return (
     <div>
-      <label className="block text-sm font-medium mb-1">Attachments</label>
+      <label className="block text-sm font-medium mb-1">{t('fileUpload.attachments')}</label>
       <div className="space-y-2">
         <button
           type="button"
@@ -39,7 +41,7 @@ export function FileUpload({ files, onChange }: FileUploadProps) {
           className="px-3 py-1.5 text-sm rounded-lg border border-border-light bg-white hover:bg-gray-50 transition-colors"
           data-testid="btn-add-attachment"
         >
-          + Add Files
+          {t('fileUpload.addFiles')}
         </button>
         <input
           ref={inputRef}
@@ -61,7 +63,7 @@ export function FileUpload({ files, onChange }: FileUploadProps) {
                   className="text-red-500 hover:text-red-700 text-xs"
                   data-testid={`btn-remove-attachment-${i}`}
                 >
-                  Remove
+                  {t('common.remove')}
                 </button>
               </li>
             ))}
