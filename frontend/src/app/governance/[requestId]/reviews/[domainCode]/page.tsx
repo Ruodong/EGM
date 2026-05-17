@@ -16,6 +16,7 @@ import { DomainPreviewChip } from '../../../_components/DomainPreviewChip';
 import { ActionItemsSection } from '../../../_components/ActionItemsSection';
 import { AskEgmFloating } from '../../../_components/AskEgmFloating';
 import { AIAnalysisSection } from '../../../_components/AIAnalysisSection';
+import { LegalPreReviewSection } from '../../../_components/LegalPreReviewSection';
 import { Button } from 'antd';
 import { useLocale } from '@/lib/locale-context';
 import clsx from 'clsx';
@@ -523,6 +524,14 @@ export default function DomainReviewDetailPage() {
           {/* AI Analysis — between Questionnaire and Activity Log */}
           {review && (
             <AIAnalysisSection domainReviewId={review.id} />
+          )}
+
+          {/* Legal Pre-Review (claude-for-legal PoC) */}
+          {review && (
+            <LegalPreReviewSection
+              domainReviewId={review.id}
+              domainCode={review.domainCode}
+            />
           )}
 
           {/* Activity Log */}

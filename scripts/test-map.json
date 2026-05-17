@@ -134,6 +134,18 @@
       "api": ["api-tests/test_questionnaire_templates.py"],
       "e2e": []
     },
+    "backend/app/routers/legal_pre_review.py": {
+      "api": ["api-tests/test_legal_pre_review.py"],
+      "e2e": []
+    },
+    "backend/app/services/legal_plugin.py": {
+      "api": ["api-tests/test_legal_pre_review.py"],
+      "e2e": []
+    },
+    "frontend/src/app/governance/_components/LegalPreReviewSection.tsx": {
+      "api": [],
+      "e2e": []
+    },
     "frontend/src/app/governance/_components/DomainQuestionnaires.tsx": {
       "api": [],
       "e2e": ["e2e-tests/governance-requests.spec.ts"]

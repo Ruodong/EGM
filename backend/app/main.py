@@ -24,6 +24,7 @@ from app.routers import (
     system_config,
     ask_egm,
     review_analysis,
+    legal_pre_review,
     dev,
 )
 
@@ -60,6 +61,7 @@ app.include_router(review_actions.router, prefix="/api/review-actions", tags=["R
 app.include_router(system_config.router, prefix="/api/system-config", tags=["System Config"])
 app.include_router(ask_egm.router, prefix="/api/ask-egm", tags=["Ask EGM"])
 app.include_router(review_analysis.router, prefix="/api/review-analysis", tags=["AI Review Analysis"])
+app.include_router(legal_pre_review.router, prefix="/api/domain-reviews", tags=["Legal Pre-Review (claude-for-legal)"])
 app.include_router(dev.router, prefix="/api/dev", tags=["Dev"])
 
 
